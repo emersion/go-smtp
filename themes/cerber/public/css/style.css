@@ -1,0 +1,95 @@
+html {
+	position: relative;
+	min-height: 100%;
+}
+body {
+	padding-top: 70px;
+	padding-bottom: 30px;
+	/* Margin bottom by footer height */
+	margin-bottom: 60px;
+}
+.navbar-header img {
+	height: 35px;
+	margin: 8px 0 0 5px;
+	float: left;
+}
+.footer {
+	position: absolute;
+	bottom: 0;
+	width: 100%;
+	/* Set the fixed height of the footer here */
+	height: 60px;
+	background-color: #f5f5f5;
+}
+.footer > .container {
+  padding-right: 15px;
+  padding-left: 15px;
+}
+.footer .container .text-muted {
+  margin: 20px 0;
+}
+
+.nav-tabs .glyphicon:not(.no-margin) { margin-right:10px; }
+.tab-pane .list-group-item:first-child {border-top-right-radius: 0px;border-top-left-radius: 0px;}
+.tab-pane .list-group-item:last-child {border-bottom-right-radius: 0px;border-bottom-left-radius: 0px;}
+.tab-pane .list-group .checkbox { display: inline-block;margin: 0px; }
+.tab-pane .list-group input[type="checkbox"]{ margin-top: 2px; }
+.tab-pane .list-group .glyphicon { margin-right:5px; }
+.tab-pane .list-group .glyphicon:hover { color:#FFBC00; }
+a.list-group-item.unread { color: #222;background-color: #F3F3F3; }
+hr { margin-top: 5px;margin-bottom: 10px; }
+.nav-pills>li>a {padding: 5px 10px;}
+
+#mails > .list-group .list-group-item {
+	padding: 10px, 1px;
+}
+
+a.list-group-item Div.star.col-md-1, a.list-group-item Div.attach.col-md-1{
+	width: 2%;
+	/*padding: 0;*/
+}
+a.list-group-item Div.star.col-md-1{
+	padding-left: 1px;
+}
+a.list-group-item Div.name.col-md-2{
+	width: 22%;
+}
+a.list-group-item Div.date.col-md-1{
+	padding-right: 0px;
+	float: right;
+}
+a.list-group-item Div.attach.col-md-1{
+
+}
+
+.status-dl-horizontal dt {
+	width: 250px;
+}
+
+.status-dl-horizontal dd {
+	margin-left: 260px;
+}
+
+
+.red{
+	color: #e96656;
+}
+.blue {
+	color: #669AE1;
+}
+.pink1 {
+	color: #F0776C;
+}
+/*
+Forked by Stan Williams http://stans-songs.com and http://stanwilliamsmusic.com
+*/
+.colorgraph {
+    height: 5px;
+    border-top: 0;
+    background: #c4e17f;
+    border-radius: 5px;
+    background-image: -webkit-linear-gradient(left, #c4e17f, #c4e17f 12.5%, #f7fdca 12.5%, #f7fdca 25%, #fecf71 25%, #fecf71 37.5%, #f0776c 37.5%, #f0776c 50%, #db9dbe 50%, #db9dbe 62.5%, #c49cde 62.5%, #c49cde 75%, #669ae1 75%, #669ae1 87.5%, #62c2e4 87.5%, #62c2e4);
+    background-image: -moz-linear-gradient(left, #c4e17f, #c4e17f 12.5%, #f7fdca 12.5%, #f7fdca 25%, #fecf71 25%, #fecf71 37.5%, #f0776c 37.5%, #f0776c 50%, #db9dbe 50%, #db9dbe 62.5%, #c49cde 62.5%, #c49cde 75%, #669ae1 75%, #669ae1 87.5%, #62c2e4 87.5%, #62c2e4);
+    background-image: -o-linear-gradient(left, #c4e17f, #c4e17f 12.5%, #f7fdca 12.5%, #f7fdca 25%, #fecf71 25%, #fecf71 37.5%, #f0776c 37.5%, #f0776c 50%, #db9dbe 50%, #db9dbe 62.5%, #c49cde 62.5%, #c49cde 75%, #669ae1 75%, #669ae1 87.5%, #62c2e4 87.5%, #62c2e4);
+    background-image: linear-gradient(to right, #c4e17f, #c4e17f 12.5%, #f7fdca 12.5%, #f7fdca 25%, #fecf71 25%, #fecf71 37.5%, #f0776c 37.5%, #f0776c 50%, #db9dbe 50%, #db9dbe 62.5%, #c49cde 62.5%, #c49cde 75%, #669ae1 75%, #669ae1 87.5%, #62c2e4 87.5%, #62c2e4);
+}
