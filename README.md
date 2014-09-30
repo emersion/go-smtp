@@ -55,19 +55,19 @@ You will need a functioning [Go installation][Golang] for this to work.
 
 Grab the Smtpd source code and compile the daemon:
 
-    ```go get -v github.com/gleez/smtpd```
+    go get -v github.com/gleez/smtpd
 
 Edit etc/smtpd.conf and tailor to your environment.  It should work on most
 Unix and OS X machines as is.  Launch the daemon:
 
-    ```$GOPATH/bin/smtpd -config=$GOPATH/src/github.com/gleez/smtpd/etc/smtpd.conf```
+    $GOPATH/bin/smtpd -config=$GOPATH/src/github.com/gleez/smtpd/etc/smtpd.conf
 
 By default the SMTP server will be listening on localhost port 25000 and
 the web interface will be available at [localhost:10025](http://localhost:10025/).
 
 This will place smtpd in the background and continue running
 
-	```/usr/bin/nohup /home/gleez/smtpd -config=/home/gleez/smtpd.conf -logfile=smtpd.log 2>&1 &```
+	/usr/bin/nohup /home/gleez/smtpd -config=/home/gleez/smtpd.conf -logfile=smtpd.log 2>&1 &
 
 You may also put another process to watch your smtpd process and re-start it
 if something goes wrong.
