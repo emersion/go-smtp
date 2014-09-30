@@ -2,10 +2,8 @@ smtpd
 =========================================================
 
 A Lightweight High Performance SMTP written in Go, made for receiving 
-large volumes of mail, parse and store in mongodb.
-
-The purpose of this daemon is to grab the email, save it to the database
-and disconnect as quickly as possible.
+large volumes of mail, parse and store in mongodb. The purpose of this daemon is 
+to grab the email, save it to the database and disconnect as quickly as possible.
 
 This server does not attempt to check for spam or do any sender 
 verification. These steps should be performed by other programs.
@@ -68,6 +66,7 @@ By default the SMTP server will be listening on localhost port 25000 and
 the web interface will be available at [localhost:10025](http://localhost:10025/).
 
 This will place smtpd in the background and continue running
+
 	```/usr/bin/nohup /home/gleez/smtpd -config=/home/gleez/smtpd.conf -logfile=smtpd.log 2>&1 &```
 
 You may also put another process to watch your smtpd process and re-start it
@@ -91,16 +90,16 @@ implementation of SSL v2/v3 and TLS protocols.
 ```
 mail {
 	#This is the URL to Smtpd's http service which tells Nginx where to proxy the traffic to
-	auth_http 127.0.0.1:10025/;
+	auth_http 127.0.0.1:10025/auth-smtp;
 					
 	server {
 		listen  15.29.8.163:25;
-		protocol smtp;
+		protocol     smtp;
 		server_name  smtp.example.com;
 
 		smtp_auth none;
 		timeout 30000;
-		smtp_capabilities "SIZE 15728640";
+		smtp_capabilities "PIPELINING" "8BITMIME" "SIZE 20480000";
 
 		# ssl default off. Leave off if starttls is on
 		#ssl                   on;
@@ -113,8 +112,9 @@ mail {
 		ssl_prefer_server_ciphers   on;
 
 		# TLS off unless client issues STARTTLS command
-		starttls on;
-		proxy    on;
+		starttls      on;
+		proxy         on;
+		xclient       on;
 	}
 }
 ```
