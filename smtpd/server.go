@@ -2,7 +2,7 @@
 Benchmarking:
 http://www.jrh.org/smtp/index.html
 Test 500 clients:
-$ time smtp-source -c -l 1000 -t test@gleez.in -s 500 -m 5000 localhost:25000
+$ time smtp-source -c -l 1000 -t test@localhost -s 500 -m 5000 localhost:25000
 */
 
 package smtpd
@@ -142,11 +142,11 @@ func NewSmtpServer(cfg config.SmtpConfig, ds *data.DataStore) *Server {
 func (s *Server) Start() {
 	cfg := config.GetSmtpConfig()
 
-	log.LogTrace(fmt.Sprintf("Loading the certificate: %s", cfg.PubKey))
+	log.LogTrace("Loading the certificate: %s", cfg.PubKey)
 	cert, err := tls.LoadX509KeyPair(cfg.PubKey, cfg.PrvKey)
 
 	if err != nil {
-		log.LogError(fmt.Sprintf("There was a problem with loading the certificate: %s", err))
+		log.LogError("There was a problem with loading the certificate: %s", err)
 	} else {
 		s.TLSConfig = &tls.Config{
 			Certificates: []tls.Certificate{cert},
@@ -156,7 +156,7 @@ func (s *Server) Start() {
 		//s.TLSConfig  .Rand = rand.Reader
 	}
 
-	//defer s.Stop()
+	defer s.Stop()
 	addr, err := net.ResolveTCPAddr("tcp4", fmt.Sprintf("%v:%v", cfg.Ip4address, cfg.Ip4port))
 	if err != nil {
 		log.LogError("Failed to build tcp4 address: %v", err)
@@ -361,10 +361,8 @@ func (c *Client) handle(cmd string, arg string, line string) {
 		//return
 	case "AUTH":
 		c.authHandler(cmd, arg)
-		//return
-	case "AUTH2":
-		c.logInfo("Got LOGIN authentication response: '%s', switching to AUTH state", arg)
-		c.Write("334", "UGFzc3dvcmQ6")
+		//c.logInfo("Got LOGIN authentication response: '%s', switching to AUTH state", arg)
+		//c.Write("334", "UGFzc3dvcmQ6")
 	case "STARTTLS":
 		c.tlsHandler()
 		//return
@@ -662,33 +660,25 @@ func (c *Client) handleXCLIENT(cmd string, arg string, line string) {
 		value := parts[1]
 
 		switch name {
-
 		case "NAME":
 			// Unused in smtpd package
 			continue
-
 		case "HELO":
 			newHeloName = value
 			continue
-
 		case "ADDR":
 			newAddr = net.ParseIP(value)
 			continue
-
 		case "PORT":
-			//var err error
-			//newTCPPort, err = strconv.ParseUint(value, 10, 16)
 			_, err := strconv.ParseUint(value, 10, 16)
 			if err != nil {
 				c.Write("502", "Couldn't decode the command.")
 				return
 			}
 			continue
-
 		case "LOGIN":
 			//newUsername = value
 			continue
-
 		case "PROTO":
 			/*			if value == "SMTP" {
 							newProto = SMTP
@@ -696,13 +686,10 @@ func (c *Client) handleXCLIENT(cmd string, arg string, line string) {
 							newProto = ESMTP
 						}*/
 			continue
-
 		default:
 			c.Write("502", "Couldn't decode the command.")
-			//c.server.killClient(c)
 			return
 		}
-
 	}
 
 	if newHeloName != "" {
@@ -711,7 +698,6 @@ func (c *Client) handleXCLIENT(cmd string, arg string, line string) {
 
 	if newAddr != nil {
 		c.remoteHost = newAddr.String()
-
 		// check if client on trusted hosts
 		if c.server.trustedHosts[c.remoteHost] {
 			c.logTrace("Remote Client is Trusted: <%s>", c.remoteHost)

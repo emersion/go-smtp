@@ -2,7 +2,7 @@ package data
 
 import (
 	"fmt"
-	
+
 	"github.com/gleez/smtpd/config"
 	"github.com/gleez/smtpd/log"
 	"labix.org/v2/mgo"

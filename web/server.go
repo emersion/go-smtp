@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gleez/smtpd/config"
@@ -189,27 +190,16 @@ func parseRemoteAddr(r *http.Request) string {
 	}
 
 	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
-		return forwarded
+		// X-Forwarded-For is potentially a list of addresses separated with ","
+		parts := strings.Split(forwarded, ",")
+		for i, p := range parts {
+			parts[i] = strings.TrimSpace(p)
+		}
+
+		// TODO: should return first non-local address
+		return parts[0]
+		//return forwarded
 	}
 
 	return r.RemoteAddr
 }
-
-/*func getIpAddress(r *http.Request) string { 
-	hdr := r.Header 
-	hdrRealIp := hdr.Get("X-Real-Ip") 
-	hdrForwardedFor := hdr.Get("X-Forwarded-For") 
-	if hdrRealIp == "" && hdrForwardedFor == "" { 
-		return ipAddrFromRemoteAddr(r.RemoteAddr) 
-	} 
-	if hdrForwardedFor != "" { 
-		// X-Forwarded-For is potentially a list of addresses separated with "," 
-		parts := strings.Split(hdrForwardedFor, ",") 
-		for i, p := range parts { 
-		        parts[i] = strings.TrimSpace(p) 
-		} 
-		// TODO: should return first non-local address 
-		return parts[0] 
-	}
-	return hdrRealIp 
-}*/

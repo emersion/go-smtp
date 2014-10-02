@@ -8,11 +8,11 @@ import (
 )
 
 type Pagination struct {
-	total	int
-	page 	int
-	limit	int
-	url     string
-	style	int
+	total int
+	page  int
+	limit int
+	url   string
+	style int
 
 	offset   int
 	pages    int
@@ -24,9 +24,9 @@ func NewPagination(total int, limit int, curpage int, url string) *Pagination {
 	p := Pagination{}
 	p.total = total
 	p.limit = limit
-	p.url   = url
+	p.url = url
 	p.style = 2
-	p.page  = curpage
+	p.page = curpage
 
 	p.Paginate()
 	return &p
@@ -71,7 +71,7 @@ func (p *Pagination) Paginate() {
 	}
 
 	//Offset calculation record
-	p.offset   = int((p.page - 1) * p.limit)
+	p.offset = int((p.page - 1) * p.limit)
 }
 
 func (p *Pagination) Html(style int) (output template.HTML) {
@@ -135,7 +135,7 @@ func (p *Pagination) Html(style int) (output template.HTML) {
 			}
 
 			//last page
-			if (p.page != p.endnum) && (p.page < p.endnum){
+			if (p.page != p.endnum) && (p.page < p.endnum) {
 				raw += "<a href='" + p.url + "/" + strconv.Itoa(p.page+1) + "' class='btn btn-default'><span class='glyphicon glyphicon-chevron-right'></span></a>"
 			} else if p.page == p.endnum {
 				raw += "<button type='button' class='btn btn-default' disabled='disabled'><span class='glyphicon glyphicon-chevron-right'></span></button>"

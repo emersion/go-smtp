@@ -73,7 +73,7 @@ func (this *Server) SocketListener(w http.ResponseWriter, r *http.Request) {
 	if this.Debug {
 		log.Printf("Web Socket connected via %s\n", ws.RemoteAddr())
 		//log.Printf("Web Socket connected via %s\n", ws.LocalAddr())
-		log.Printf("Web Socket connected via %s\n", r.Header.Get("X-Forwarded-For") )
+		log.Printf("Web Socket connected via %s\n", r.Header.Get("X-Forwarded-For"))
 	}
 	if err := sock.Authenticate(""); err != nil {
 		if this.Debug {
@@ -82,7 +82,7 @@ func (this *Server) SocketListener(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-/*	if this.Debug {
+	/*	if this.Debug {
 		log.Printf("Web Socket SID: %s, UID: %s\n", sock.SID, sock.UID)
 		count, _ := this.Store.Count()
 		log.Printf("Connected Clients: %d\n", count)
@@ -123,7 +123,7 @@ func (this *Server) LongPollListener(w http.ResponseWriter, r *http.Request) {
 
 	if this.Debug {
 		log.Printf("Long poll connected via %v \n", r.RemoteAddr)
-		log.Printf("Long poll connected via %s\n", r.Header.Get("X-Forwarded-For") )
+		log.Printf("Long poll connected via %s\n", r.Header.Get("X-Forwarded-For"))
 	}
 
 	if err := sock.Authenticate(r.FormValue("user")); err != nil {
@@ -133,7 +133,7 @@ func (this *Server) LongPollListener(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-/*	if this.Debug {
+	/*	if this.Debug {
 		log.Printf("Poll Socket SID: %s, UID: %s\n", sock.SID, sock.UID)
 		count, _ := this.Store.Count()
 		log.Printf("Connected Clients: %d\n", count)

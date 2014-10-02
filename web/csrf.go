@@ -15,17 +15,17 @@ import (
 
 type CSRF struct {
 	// Key is a secret key for your application.
-	Key      string
+	Key string
 	// ID is a unique identifier for the user.
-	Id       string
+	Id string
 	// actionID is the action the user is taking (e.g. POSTing to a particular path)
-	Action   string
+	Action string
 	// The duration that XSRF tokens are valid. 20 * time.Minute
-	Timeout  time.Duration
+	Timeout time.Duration
 }
 
 func NewCSRF(action string, id string, timeout time.Duration) *CSRF {
-	return &CSRF{Key: "45585b28a652a82025397c44e0addc449c4d451c", Id: id, Action: action, Timeout: timeout * time.Minute,}
+	return &CSRF{Key: "45585b28a652a82025397c44e0addc449c4d451c", Id: id, Action: action, Timeout: timeout * time.Minute}
 }
 
 // Generate returns a URL-safe secure XSRF token that expires in 24 hours.

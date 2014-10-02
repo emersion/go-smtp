@@ -9,8 +9,8 @@ import (
 	"math"
 	"net/http"
 	"runtime"
-	"time"
 	"strconv"
+	"time"
 
 	"github.com/gleez/smtpd/config"
 	"github.com/gleez/smtpd/data"
@@ -96,7 +96,7 @@ func MailView(w http.ResponseWriter, r *http.Request, ctx *Context) (err error) 
 	if err == nil {
 		return RenderTemplate("mailbox/_show.html", w, map[string]interface{}{
 			"ctx":     ctx,
-			"title" :  "Mail", 
+			"title":   "Mail",
 			"message": message,
 		})
 	} else {
@@ -134,9 +134,9 @@ func MailList(w http.ResponseWriter, r *http.Request, ctx *Context) (err error) 
 	if err == nil {
 		return RenderTemplate("mailbox/_list.html", w, map[string]interface{}{
 			"ctx":        ctx,
-			"title" :     "Mails", 
+			"title":      "Mails",
 			"messages":   messages,
-			"end":		  p.Offset() + p.Limit(),
+			"end":        p.Offset() + p.Limit(),
 			"pagination": p,
 		})
 	} else {
@@ -160,7 +160,7 @@ func Home(w http.ResponseWriter, r *http.Request, ctx *Context) (err error) {
 func LoginForm(w http.ResponseWriter, req *http.Request, ctx *Context) (err error) {
 	t := NewCSRF("login", ctx.Session.ID, 20)
 	return RenderTemplate("common/login.html", w, map[string]interface{}{
-		"ctx": ctx,
+		"ctx":   ctx,
 		"Token": t.Generate(),
 	})
 }
@@ -178,8 +178,8 @@ func Login(w http.ResponseWriter, req *http.Request, ctx *Context) error {
 			//store the user id in the values and redirect to index
 			log.LogTrace("Login successful for session <%v>", u.Id)
 			ctx.Ds.Users.Update(
-				bson.M{"_id": u.Id}, 
-				bson.M{"$set": bson.M{"lastlogintime": time.Now(), "lastloginip": ctx.ClientIp}, "$inc": bson.M{"logincount": 1} },
+				bson.M{"_id": u.Id},
+				bson.M{"$set": bson.M{"lastlogintime": time.Now(), "lastloginip": ctx.ClientIp}, "$inc": bson.M{"logincount": 1}},
 			)
 
 			if u.IsActive {
@@ -241,14 +241,14 @@ func Register(w http.ResponseWriter, req *http.Request, ctx *Context) error {
 		}
 
 		u := &data.User{
-			Id:           bson.NewObjectId(),
-			Firstname:    req.FormValue("firstname"),
-			Lastname:     req.FormValue("lastname"),
-			Email:        req.FormValue("email"),
-			Username:     r.Username,
-			IsActive:     false,
-			JoinedAt:     time.Now(),
-			LastLoginIp:  ctx.ClientIp,
+			Id:          bson.NewObjectId(),
+			Firstname:   req.FormValue("firstname"),
+			Lastname:    req.FormValue("lastname"),
+			Email:       req.FormValue("email"),
+			Username:    r.Username,
+			IsActive:    false,
+			JoinedAt:    time.Now(),
+			LastLoginIp: ctx.ClientIp,
 		}
 		u.SetPassword(r.Password)
 
@@ -287,7 +287,7 @@ func Status(w http.ResponseWriter, r *http.Request, ctx *Context) (err error) {
 	updateSystemStatus()
 
 	return RenderTemplate("root/status.html", w, map[string]interface{}{
-		"ctx":      ctx,
+		"ctx":       ctx,
 		"SysStatus": sysStatus,
 	})
 }
@@ -303,6 +303,8 @@ func Ping(w http.ResponseWriter, r *http.Request, ctx *Context) error {
 // This could perform auth and load balancing too
 // See http://wiki.nginx.org/MailCoreModule
 func NginxHTTPAuth(w http.ResponseWriter, r *http.Request, ctx *Context) error {
+	log.LogTrace("Nginx Auth Client: %s", parseRemoteAddr(r))
+
 	cfg := config.GetSmtpConfig()
 
 	w.Header().Add("Auth-Status", "OK")

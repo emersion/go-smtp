@@ -11,13 +11,13 @@ import (
 )
 
 type Context struct {
-	Vars        map[string]string
-	Session     *sessions.Session
-	DataStore   *data.DataStore
-	IsJson      bool
-	User        *data.User
-	ClientIp    string
-	Ds 			*data.MongoDB
+	Vars      map[string]string
+	Session   *sessions.Session
+	DataStore *data.DataStore
+	IsJson    bool
+	User      *data.User
+	ClientIp  string
+	Ds        *data.MongoDB
 }
 
 func (c *Context) Close() {
@@ -62,7 +62,7 @@ func NewContext(req *http.Request) (*Context, error) {
 		if bson.IsObjectIdHex(user) {
 			uid := bson.ObjectIdHex(user)
 			err := ctx.Ds.Users.Find(bson.M{"_id": uid}).One(&ctx.User)
-			
+
 			if err != nil {
 				ctx.User = nil
 				return ctx, nil

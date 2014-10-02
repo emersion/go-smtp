@@ -31,8 +31,8 @@ type Message struct {
 	Ip          string
 	Content     *Content
 	MIME        *MIMEBody
-	Starred		bool
-	Unread		bool
+	Starred     bool
+	Unread      bool
 }
 
 type Path struct {
@@ -85,12 +85,12 @@ func ParseSMTPMessage(m *config.SMTPMessage, hostname string, mimeParser bool) *
 	}
 
 	msg := &Message{
-		Id:   bson.NewObjectId().Hex(),
-		From: PathFromString(m.From),
-		To:   arr,
+		Id:      bson.NewObjectId().Hex(),
+		From:    PathFromString(m.From),
+		To:      arr,
 		Created: time.Now(),
 		Ip:      m.Host,
-		Unread: true,
+		Unread:  true,
 		Starred: false,
 	}
 

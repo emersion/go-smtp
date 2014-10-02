@@ -13,33 +13,33 @@ import (
 )
 
 type User struct {
-	Id             bson.ObjectId `bson:"_id"`
-	Firstname      string
-	Lastname       string
-	Email          string
-	Username       string
-	Password       string
-	Avatar         string
-	Website        string
-	Location       string
-	Tagline        string
-	Bio            string
-	JoinedAt       time.Time
-	IsSuperuser    bool
-	IsActive       bool
-	ValidateCode   string
-	ResetCode      string
-	LastLoginTime  time.Time
-	LastLoginIp    string
-	LoginCount     int64
+	Id            bson.ObjectId `bson:"_id"`
+	Firstname     string
+	Lastname      string
+	Email         string
+	Username      string
+	Password      string
+	Avatar        string
+	Website       string
+	Location      string
+	Tagline       string
+	Bio           string
+	JoinedAt      time.Time
+	IsSuperuser   bool
+	IsActive      bool
+	ValidateCode  string
+	ResetCode     string
+	LastLoginTime time.Time
+	LastLoginIp   string
+	LoginCount    int64
 }
 
 type LoginForm struct {
-	Username   string
-	Password   string
-	Token	   string
+	Username string
+	Password string
+	Token    string
 
-	Errors     map[string]string
+	Errors map[string]string
 }
 
 func (f *LoginForm) Validate() bool {
@@ -53,11 +53,11 @@ func (f *LoginForm) Validate() bool {
 		f.Errors["Password"] = "Please enter a password"
 	}
 
-/*	re := regexp.MustCompile(".+@.+\\..+")
-	matched := re.Match([]byte(f.Email))
-	if matched == false {
-		f.Errors["Email"] = "Please enter a valid email address"
-	}*/
+	/*	re := regexp.MustCompile(".+@.+\\..+")
+		matched := re.Match([]byte(f.Email))
+		if matched == false {
+			f.Errors["Email"] = "Please enter a valid email address"
+		}*/
 
 	return len(f.Errors) == 0
 }
