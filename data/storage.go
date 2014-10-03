@@ -34,7 +34,6 @@ func (ds *DataStore) StorageConnect() {
 		s := CreateMongoDB(ds.Config)
 		if s == nil {
 			log.LogInfo("MongoDB storage unavailable")
-			//ds.Storage = storage.CreateMemory(conf)
 		} else {
 			log.LogInfo("Using MongoDB storage")
 			ds.Storage = s
@@ -82,4 +81,14 @@ func (ds *DataStore) SaveMail() {
 			}
 		}
 	}
+}
+
+func (ds *DataStore) HostGreyList(h string) (allow bool) {
+
+	return true
+}
+
+func (ds *DataStore) MailGreyList(t string, m string, d string, h string) (allow bool) {
+
+	return true
 }

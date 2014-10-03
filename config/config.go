@@ -38,8 +38,9 @@ type SmtpConfig struct {
 	PrvKey          string
 	StoreMessages   bool
 	Xclient         bool
-	ClientGreyList  bool
-	DomainGreyList  bool
+	HostGreyList    bool
+	FromGreyList  	bool
+	RcptGreyList  	bool
 	Debug           bool
 	DebugPath       string
 }
@@ -304,6 +305,33 @@ func parseSmtpConfig() error {
 		return fmt.Errorf("Failed to parse [%v]%v: '%v'", section, option, err)
 	}
 	smtpConfig.Xclient = flag
+
+	option = "greylist.host"
+	if Config.HasOption(section, option) {
+		flag, err = Config.Bool(section, option)
+		if err != nil {
+			return fmt.Errorf("Failed to parse [%v]%v: '%v'", section, option, err)
+		}
+		smtpConfig.HostGreyList = flag
+	}
+
+	option = "greylist.from"
+	if Config.HasOption(section, option) {
+		flag, err = Config.Bool(section, option)
+		if err != nil {
+			return fmt.Errorf("Failed to parse [%v]%v: '%v'", section, option, err)
+		}
+		smtpConfig.FromGreyList = flag
+	}
+
+	option = "greylist.to"
+	if Config.HasOption(section, option) {
+		flag, err = Config.Bool(section, option)
+		if err != nil {
+			return fmt.Errorf("Failed to parse [%v]%v: '%v'", section, option, err)
+		}
+		smtpConfig.RcptGreyList = flag
+	}
 
 	option = "debug"
 	if Config.HasOption(section, option) {

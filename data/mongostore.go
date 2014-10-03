@@ -14,6 +14,8 @@ type MongoDB struct {
 	Config     config.DataStoreConfig
 	Collection *mgo.Collection
 	Users      *mgo.Collection
+	Hosts      *mgo.Collection
+	Emails     *mgo.Collection
 }
 
 var (
@@ -45,7 +47,9 @@ func CreateMongoDB(c config.DataStoreConfig) *MongoDB {
 		Session:    session,
 		Config:     c,
 		Collection: session.DB(c.MongoDb).C(c.MongoColl),
-		Users:      session.DB(c.MongoDb).C("users"),
+		Users:      session.DB(c.MongoDb).C("Users"),
+		Hosts:      session.DB(c.MongoDb).C("Hostgrey"),
+		Emails:     session.DB(c.MongoDb).C("Emailgrey"),
 	}
 }
 

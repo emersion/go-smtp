@@ -70,6 +70,9 @@ type Server struct {
 	ForceTLS        bool
 	Debug           bool
 	DebugPath       string
+	HostGreyList  	bool
+	FromGreyList  	bool
+	RcptGreyList  	bool
 	sem             chan int // currently active clients
 }
 
@@ -129,10 +132,13 @@ func NewSmtpServer(cfg config.SmtpConfig, ds *data.DataStore) *Server {
 		waitgroup:       new(sync.WaitGroup),
 		allowedHosts:    allowedHosts,
 		trustedHosts:    trustedHosts,
-		sem:             maxClients,
 		EnableXCLIENT:   cfg.Xclient,
+		HostGreyList:	 cfg.HostGreyList,
+		FromGreyList:    cfg.FromGreyList,
+		RcptGreyList:    cfg.RcptGreyList,
 		Debug:           cfg.Debug,
 		DebugPath:       cfg.DebugPath,
+		sem:             maxClients,
 	}
 }
 
@@ -426,11 +432,19 @@ func (c *Client) mailHandler(cmd string, arg string) {
 		}
 
 		from := m[1]
-		_, _, err := ParseEmailAddress(from)
+		mailbox, domain, err := ParseEmailAddress(from)
 		if err != nil {
 			c.Write("501", "Bad sender address syntax")
 			c.logWarn("Bad address as MAIL arg: %q, %s", from, err)
 			return
+		}
+
+		if c.server.FromGreyList {
+			if ok := c.server.Store.MailGreyList("from", mailbox, domain, c.remoteHost); !ok {
+				c.Write("501", "Bad sender address syntax")
+				c.logWarn("Greylist address MAIL arg: %q, %s", from, err)
+				return
+			}
 		}
 
 		// This is where the client may put BODY=8BITMIME, but we already
@@ -481,7 +495,7 @@ func (c *Client) rcptHandler(cmd string, arg string) {
 
 		// This trim is probably too forgiving
 		recip := strings.Trim(arg[3:], "<> ")
-		_, host, err := ParseEmailAddress(recip)
+		mailbox, host, err := ParseEmailAddress(recip)
 		if err != nil {
 			c.Write("501", "Bad recipient address syntax")
 			c.logWarn("Bad address as RCPT arg: %q, %s", recip, err)
@@ -493,6 +507,14 @@ func (c *Client) rcptHandler(cmd string, arg string) {
 			c.logWarn("Domain not allowed: <%s>", host)
 			c.Write("510", "Recipient address not allowed")
 			return
+		}
+
+		if c.server.RcptGreyList {
+			if ok := c.server.Store.MailGreyList("to", mailbox, host, c.remoteHost); !ok {
+				c.Write("510", "Recipient address not allowed")
+				c.logWarn("Greylist address as RCPT arg: %q, %s", recip, err)
+				return
+			}
 		}
 
 		if len(c.recipients) >= c.server.maxRecips {
