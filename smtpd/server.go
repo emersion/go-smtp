@@ -70,9 +70,9 @@ type Server struct {
 	ForceTLS        bool
 	Debug           bool
 	DebugPath       string
-	HostGreyList  	bool
-	FromGreyList  	bool
-	RcptGreyList  	bool
+	HostGreyList    bool
+	FromGreyList    bool
+	RcptGreyList    bool
 	sem             chan int // currently active clients
 }
 
@@ -133,7 +133,7 @@ func NewSmtpServer(cfg config.SmtpConfig, ds *data.DataStore) *Server {
 		allowedHosts:    allowedHosts,
 		trustedHosts:    trustedHosts,
 		EnableXCLIENT:   cfg.Xclient,
-		HostGreyList:	 cfg.HostGreyList,
+		HostGreyList:    cfg.HostGreyList,
 		FromGreyList:    cfg.FromGreyList,
 		RcptGreyList:    cfg.RcptGreyList,
 		Debug:           cfg.Debug,
@@ -439,12 +439,10 @@ func (c *Client) mailHandler(cmd string, arg string) {
 			return
 		}
 
-		if c.server.FromGreyList {
-			if ok := c.server.Store.MailGreyList("from", mailbox, domain, c.remoteHost); !ok {
-				c.Write("501", "Bad sender address syntax")
-				c.logWarn("Greylist address MAIL arg: %q, %s", from, err)
-				return
-			}
+		if c.server.FromGreyList && c.server.Store.MailGreyList("from", mailbox, domain, c.remoteHost) {
+			c.Write("501", "Bad sender address syntax")
+			c.logWarn("Greylist address MAIL arg: %s, %v", from, err)
+			return
 		}
 
 		// This is where the client may put BODY=8BITMIME, but we already
@@ -509,12 +507,10 @@ func (c *Client) rcptHandler(cmd string, arg string) {
 			return
 		}
 
-		if c.server.RcptGreyList {
-			if ok := c.server.Store.MailGreyList("to", mailbox, host, c.remoteHost); !ok {
-				c.Write("510", "Recipient address not allowed")
-				c.logWarn("Greylist address as RCPT arg: %q, %s", recip, err)
-				return
-			}
+		if c.server.RcptGreyList && c.server.Store.MailGreyList("to", mailbox, host, c.remoteHost) {
+			c.Write("510", "Recipient address not allowed")
+			c.logWarn("Greylist address as RCPT arg: %s, %v", recip, err)
+			return
 		}
 
 		if len(c.recipients) >= c.server.maxRecips {

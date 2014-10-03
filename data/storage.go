@@ -1,6 +1,7 @@
 package data
 
 import (
+	"fmt"
 	"io"
 
 	"github.com/gleez/smtpd/config"
@@ -46,6 +47,12 @@ func (ds *DataStore) StorageConnect() {
 	}
 }
 
+func (ds *DataStore) StorageDisconnect() {
+	if ds.Config.Storage == "mongodb" {
+		ds.Storage.(*MongoDB).Close()
+	}
+}
+
 func (ds *DataStore) SaveMail() {
 	log.LogTrace("Running SaveMail Rotuines")
 	var err error
@@ -83,12 +90,28 @@ func (ds *DataStore) SaveMail() {
 	}
 }
 
-func (ds *DataStore) HostGreyList(h string) (allow bool) {
+// Check if host address is in greylist
+// h -> hostname client ip
+func (ds *DataStore) HostGreyList(h string) bool {
+	to, err := ds.Storage.(*MongoDB).IsGreyHost(h)
+	if err != nil {
+		return false
+	}
 
-	return true
+	return to > 0
 }
 
-func (ds *DataStore) MailGreyList(t string, m string, d string, h string) (allow bool) {
+// Check if email address is in greylist
+// t -> type (from/to)
+// m -> local mailbox
+// d -> domain
+// h -> client IP
+func (ds *DataStore) MailGreyList(t, m, d, h string) bool {
+	e := fmt.Sprintf("%s@%s", m, d)
+	to, err := ds.Storage.(*MongoDB).IsGreyMail(e, t)
+	if err != nil {
+		return false
+	}
 
-	return true
+	return to > 0
 }

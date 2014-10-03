@@ -39,8 +39,8 @@ type SmtpConfig struct {
 	StoreMessages   bool
 	Xclient         bool
 	HostGreyList    bool
-	FromGreyList  	bool
-	RcptGreyList  	bool
+	FromGreyList    bool
+	RcptGreyList    bool
 	Debug           bool
 	DebugPath       string
 }

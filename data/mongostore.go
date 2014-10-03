@@ -10,12 +10,12 @@ import (
 )
 
 type MongoDB struct {
-	Session    *mgo.Session
-	Config     config.DataStoreConfig
-	Collection *mgo.Collection
-	Users      *mgo.Collection
-	Hosts      *mgo.Collection
-	Emails     *mgo.Collection
+	Config   config.DataStoreConfig
+	Session  *mgo.Session
+	Messages *mgo.Collection
+	Users    *mgo.Collection
+	Hosts    *mgo.Collection
+	Emails   *mgo.Collection
 }
 
 var (
@@ -44,12 +44,12 @@ func CreateMongoDB(c config.DataStoreConfig) *MongoDB {
 	}
 
 	return &MongoDB{
-		Session:    session,
-		Config:     c,
-		Collection: session.DB(c.MongoDb).C(c.MongoColl),
-		Users:      session.DB(c.MongoDb).C("Users"),
-		Hosts:      session.DB(c.MongoDb).C("Hostgrey"),
-		Emails:     session.DB(c.MongoDb).C("Emailgrey"),
+		Config:   c,
+		Session:  session,
+		Messages: session.DB(c.MongoDb).C(c.MongoColl),
+		Users:    session.DB(c.MongoDb).C("Users"),
+		Hosts:    session.DB(c.MongoDb).C("GreyHosts"),
+		Emails:   session.DB(c.MongoDb).C("GreyMails"),
 	}
 }
 
@@ -58,7 +58,7 @@ func (mongo *MongoDB) Close() {
 }
 
 func (mongo *MongoDB) Store(m *Message) (string, error) {
-	err := mongo.Collection.Insert(m)
+	err := mongo.Messages.Insert(m)
 	if err != nil {
 		log.LogError("Error inserting message: %s", err)
 		return "", err
@@ -68,7 +68,7 @@ func (mongo *MongoDB) Store(m *Message) (string, error) {
 
 func (mongo *MongoDB) List(start int, limit int) (*Messages, error) {
 	messages := &Messages{}
-	err := mongo.Collection.Find(bson.M{}).Sort("-_id").Skip(start).Limit(limit).Select(bson.M{
+	err := mongo.Messages.Find(bson.M{}).Sort("-_id").Skip(start).Limit(limit).Select(bson.M{
 		"id":          1,
 		"_id":         1,
 		"from":        1,
@@ -86,18 +86,18 @@ func (mongo *MongoDB) List(start int, limit int) (*Messages, error) {
 }
 
 func (mongo *MongoDB) DeleteOne(id string) error {
-	_, err := mongo.Collection.RemoveAll(bson.M{"id": id})
+	_, err := mongo.Messages.RemoveAll(bson.M{"id": id})
 	return err
 }
 
 func (mongo *MongoDB) DeleteAll() error {
-	_, err := mongo.Collection.RemoveAll(bson.M{})
+	_, err := mongo.Messages.RemoveAll(bson.M{})
 	return err
 }
 
 func (mongo *MongoDB) Load(id string) (*Message, error) {
 	result := &Message{}
-	err := mongo.Collection.Find(bson.M{"id": id}).One(&result)
+	err := mongo.Messages.Find(bson.M{"id": id}).One(&result)
 	if err != nil {
 		log.LogError("Error loading message: %s", err)
 		return nil, err
@@ -106,8 +106,7 @@ func (mongo *MongoDB) Load(id string) (*Message, error) {
 }
 
 func (mongo *MongoDB) Total() (int, error) {
-	//var total init
-	total, err := mongo.Collection.Find(bson.M{}).Count()
+	total, err := mongo.Messages.Find(bson.M{}).Count()
 	if err != nil {
 		log.LogError("Error loading message: %s", err)
 		return -1, err
@@ -117,7 +116,7 @@ func (mongo *MongoDB) Total() (int, error) {
 
 func (mongo *MongoDB) LoadAttachment(id string) (*Message, error) {
 	result := &Message{}
-	err := mongo.Collection.Find(bson.M{"attachments.id": id}).Select(bson.M{
+	err := mongo.Messages.Find(bson.M{"attachments.id": id}).Select(bson.M{
 		"id":            1,
 		"attachments.$": 1,
 	}).One(&result)
@@ -143,4 +142,40 @@ func (mongo *MongoDB) Login(username, password string) (*User, error) {
 	}
 
 	return u, nil
+}
+
+func (mongo *MongoDB) StoreGreyHost(h *GreyHost) (string, error) {
+	err := mongo.Hosts.Insert(h)
+	if err != nil {
+		log.LogError("Error inserting greylist ip: %s", err)
+		return "", err
+	}
+	return h.Id.Hex(), nil
+}
+
+func (mongo *MongoDB) StoreGreyMail(m *GreyMail) (string, error) {
+	err := mongo.Emails.Insert(m)
+	if err != nil {
+		log.LogError("Error inserting greylist email: %s", err)
+		return "", err
+	}
+	return m.Id.Hex(), nil
+}
+
+func (mongo *MongoDB) IsGreyHost(hostname string) (int, error) {
+	tl, err := mongo.Hosts.Find(bson.M{"hostname": hostname, "isactive": true}).Count()
+	if err != nil {
+		log.LogError("Error checking host greylist: %s", err)
+		return -1, err
+	}
+	return tl, nil
+}
+
+func (mongo *MongoDB) IsGreyMail(email, t string) (int, error) {
+	tl, err := mongo.Emails.Find(bson.M{"email": email, "type": t, "isactive": true}).Count()
+	if err != nil {
+		log.LogError("Error checking email greylist: %s", err)
+		return -1, err
+	}
+	return tl, nil
 }
