@@ -92,7 +92,7 @@ func (ds *DataStore) SaveMail() {
 
 // Check if host address is in greylist
 // h -> hostname client ip
-func (ds *DataStore) HostGreyList(h string) bool {
+func (ds *DataStore) CheckGreyHost(h string) bool {
 	to, err := ds.Storage.(*MongoDB).IsGreyHost(h)
 	if err != nil {
 		return false
@@ -106,7 +106,7 @@ func (ds *DataStore) HostGreyList(h string) bool {
 // m -> local mailbox
 // d -> domain
 // h -> client IP
-func (ds *DataStore) MailGreyList(t, m, d, h string) bool {
+func (ds *DataStore) CheckGreyMail(t, m, d, h string) bool {
 	e := fmt.Sprintf("%s@%s", m, d)
 	to, err := ds.Storage.(*MongoDB).IsGreyMail(e, t)
 	if err != nil {

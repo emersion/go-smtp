@@ -97,8 +97,13 @@ func setupRoutes(cfg config.WebConfig) {
 	r.Path("/register").Handler(handler(Register)).Methods("POST")
 	r.Path("/register").Handler(handler(RegisterForm)).Name("Register").Methods("GET")
 
-	r.Path("/auth-smtp").Handler(handler(NginxHTTPAuth)).Name("Nginx")
+	// Add to greylist
+	r.Path("/greylist/host/{id:[0-9a-z]+}").Handler(handler(MailView)).Name("GreyHostAdd").Methods("GET")
+	r.Path("/greylist/mailfrom/{id:[0-9a-z]+}").Handler(handler(GreyMailFromAdd)).Name("GreyMailFromAdd").Methods("GET")
+	r.Path("/greylist/tomail/{id:[0-9a-z]+}").Handler(handler(GreyMailFromAdd)).Name("GreyMailToAdd").Methods("GET")
 
+	// Nginx Xclient auth
+	r.Path("/auth-smtp").Handler(handler(NginxHTTPAuth)).Name("Nginx")
 	r.Path("/ping").Handler(handler(Ping)).Name("Ping").Methods("GET")
 
 	// Web-Socket & Fallback longpoll

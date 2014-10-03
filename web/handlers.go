@@ -22,10 +22,6 @@ func MailAttachment(w http.ResponseWriter, r *http.Request, ctx *Context) (err e
 	id := ctx.Vars["id"]
 	log.LogTrace("Loading Attachment <%s> from Mongodb", id)
 
-	if err != nil {
-		return fmt.Errorf("ID provided is invalid: %v", err)
-	}
-
 	//we need a user to sign to
 	if ctx.User == nil {
 		log.LogTrace("This page requires a login.")
@@ -274,6 +270,108 @@ func Register(w http.ResponseWriter, req *http.Request, ctx *Context) error {
 	}
 
 	return fmt.Errorf("Failed to register!")
+}
+
+func GreyMailFromAdd(w http.ResponseWriter, r *http.Request, ctx *Context) (err error) {
+	id := ctx.Vars["id"]
+	log.LogTrace("Greylist add mail %s", id)
+
+	//we need a user to sign to
+	if ctx.User == nil {
+		log.LogWarn("Please login to add to grey list!")
+		http.NotFound(w, r)
+		return
+	}
+
+	// we need a user to be admin
+	if ctx.User.IsSuperuser == false {
+		http.NotFound(w, r)
+		return
+	}
+
+	// we need to load email
+	m, err := ctx.Ds.Load(id)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	e := fmt.Sprintf("%s@%s", m.From.Mailbox, m.From.Domain)
+	if to, _ := ctx.Ds.IsGreyMail(e, "from"); to == 0 {
+		log.LogTrace("Greylist inserting mail %s", e)
+		gm := data.GreyMail{
+			Id:        bson.NewObjectId(),
+			CreatedBy: ctx.User.Id.Hex(),
+			CreatedAt: time.Now(),
+			IsActive:  true,
+			Email:     e,
+			Local:     m.From.Mailbox,
+			Domain:    m.From.Domain,
+			Type:      "from",
+		}
+
+		if err = ctx.Ds.Emails.Insert(gm); err != nil {
+			log.LogError("Error inserting grey list: %s", err)
+			http.NotFound(w, r)
+			return
+		}
+
+		return
+	}
+
+	http.NotFound(w, r)
+	return
+}
+
+func GreyMailToAdd(w http.ResponseWriter, r *http.Request, ctx *Context) (err error) {
+	id := ctx.Vars["id"]
+	log.LogTrace("Greylist add mail %s", id)
+
+	//we need a user to sign to
+	if ctx.User == nil {
+		log.LogWarn("Please login to add to grey list!")
+		http.NotFound(w, r)
+		return
+	}
+
+	// we need a user to be admin
+	if ctx.User.IsSuperuser == false {
+		http.NotFound(w, r)
+		return
+	}
+
+	// we need to load email
+	m, err := ctx.Ds.Load(id)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	e := fmt.Sprintf("%s@%s", m.From.Mailbox, m.From.Domain)
+	if to, _ := ctx.Ds.IsGreyMail(e, "to"); to == 0 {
+		log.LogTrace("Greylist inserting mail %s", e)
+		gm := data.GreyMail{
+			Id:        bson.NewObjectId(),
+			CreatedBy: ctx.User.Id.Hex(),
+			CreatedAt: time.Now(),
+			IsActive:  true,
+			Email:     e,
+			Local:     m.From.Mailbox,
+			Domain:    m.From.Domain,
+			Type:      "to",
+		}
+
+		if err = ctx.Ds.Emails.Insert(gm); err != nil {
+			log.LogError("Error inserting grey list: %s", err)
+			http.NotFound(w, r)
+			return
+		}
+
+		return
+	}
+
+	http.NotFound(w, r)
+	return
 }
 
 func Status(w http.ResponseWriter, r *http.Request, ctx *Context) (err error) {

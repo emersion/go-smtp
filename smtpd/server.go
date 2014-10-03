@@ -439,7 +439,7 @@ func (c *Client) mailHandler(cmd string, arg string) {
 			return
 		}
 
-		if c.server.FromGreyList && c.server.Store.MailGreyList("from", mailbox, domain, c.remoteHost) {
+		if c.server.FromGreyList && c.server.Store.CheckGreyMail("from", mailbox, domain, c.remoteHost) {
 			c.Write("501", "Bad sender address syntax")
 			c.logWarn("Greylist address MAIL arg: %s, %v", from, err)
 			return
@@ -507,7 +507,7 @@ func (c *Client) rcptHandler(cmd string, arg string) {
 			return
 		}
 
-		if c.server.RcptGreyList && c.server.Store.MailGreyList("to", mailbox, host, c.remoteHost) {
+		if c.server.RcptGreyList && c.server.Store.CheckGreyMail("to", mailbox, host, c.remoteHost) {
 			c.Write("510", "Recipient address not allowed")
 			c.logWarn("Greylist address as RCPT arg: %s, %v", recip, err)
 			return
