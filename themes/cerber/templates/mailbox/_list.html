@@ -40,7 +40,7 @@
 
 			{{if .pagination.Total }}
 				<div class="pull-right">
-					<span class="text-muted"><b>{{.pagination.Offset }}</b> - <b>{{.end }}</b> of <b>{{.pagination.Total }}</b></span>
+					<span class="text-muted"><b>{{if eq .pagination.Offset 0}} 1 {{else}} {{.pagination.Offset }} {{end}}</b> - <b>{{if gt .pagination.Total .end}} {{.end }} {{else}} {{.pagination.Total }} {{end}}</b> of <b>{{.pagination.Total }}</b></span>
 					<div class="btn-group btn-group-sm">{{.pagination.Html 3}}</div>
 				</div>
 			{{end}}

@@ -292,6 +292,7 @@ func GreyMailFromAdd(w http.ResponseWriter, r *http.Request, ctx *Context) (err 
 	// we need to load email
 	m, err := ctx.Ds.Load(id)
 	if err != nil {
+		log.LogTrace("Greylist mail Id not found %s", id)
 		http.NotFound(w, r)
 		return
 	}

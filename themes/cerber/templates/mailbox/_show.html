@@ -14,16 +14,16 @@
 {{end}}
 
 {{define "content"}}
-	<div class="col-md-12">
+	<div id="MailBody" class="col-md-12">
 		<div class="page-header">
 			<h2>{{.message.Subject }}</h2>
 		</div>
 		{{$name := .name}}
 		{{$id := .message.Id}}
-		<a class="label label-info" href="/mail/delete/{{$id}}"><div class="glyphicon glyphicon glyphicon-trash"></div></a>
+		<a class="label label-info" href="/mail/delete/{{$id}}"><div class="glyphicon glyphicon-trash"></div></a>
 		<dl class="dl-horizontal">
 			<dt>From</dt>
-			<dd>{{.message.From.Mailbox }}@{{.message.From.Domain }}</dd>
+			<dd>{{.message.From.Mailbox }}@{{.message.From.Domain }}<a id="AddToGreylist" href="/greylist/mailfrom/{{$id}}"><i class="glyphicon glyphicon-thumbs-up"></i></a></dd>
 			<dt>To</dt>
 			<dd>{{range .message.To}} {{.Mailbox }}@{{.Domain }} {{end}}</dd>
 			<dt>Date</dt>
