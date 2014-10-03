@@ -54,7 +54,6 @@ var commands = map[string]bool{
 type Server struct {
 	Store           *data.DataStore
 	domain          string
-	domainNoStore   string
 	maxRecips       int
 	maxIdleSeconds  int
 	maxMessageBytes int
@@ -63,15 +62,15 @@ type Server struct {
 	shutdown        bool
 	waitgroup       *sync.WaitGroup
 	timeout         time.Duration
-	sem             chan int // currently active clients
 	allowedHosts    map[string]bool
 	trustedHosts    map[string]bool
 	maxClients      int
-	EnableXCLIENT   bool        // Enable XCLIENT support (default: false)
-	TLSConfig       *tls.Config // Enable STARTTLS support.
-	ForceTLS        bool        // Force STARTTLS usage.
+	EnableXCLIENT   bool
+	TLSConfig       *tls.Config
+	ForceTLS        bool
 	Debug           bool
 	DebugPath       string
+	sem             chan int // currently active clients
 }
 
 type Client struct {
@@ -127,7 +126,6 @@ func NewSmtpServer(cfg config.SmtpConfig, ds *data.DataStore) *Server {
 		maxIdleSeconds:  cfg.MaxIdleSeconds,
 		maxMessageBytes: cfg.MaxMessageBytes,
 		storeMessages:   cfg.StoreMessages,
-		domainNoStore:   strings.ToLower(cfg.DomainNoStore),
 		waitgroup:       new(sync.WaitGroup),
 		allowedHosts:    allowedHosts,
 		trustedHosts:    trustedHosts,
@@ -434,13 +432,6 @@ func (c *Client) mailHandler(cmd string, arg string) {
 			c.logWarn("Bad address as MAIL arg: %q, %s", from, err)
 			return
 		}
-
-		/*		// check if on allowed hosts
-				if !c.server.allowedHosts[domain]{
-					c.logWarn("Domain not allowed: %s %s", domain)
-					c.Write("501", "Sender address not allowed")
-					return
-				}*/
 
 		// This is where the client may put BODY=8BITMIME, but we already
 		// read the DATA as bytes, so it does not effect our processing.

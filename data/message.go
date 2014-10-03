@@ -112,16 +112,13 @@ func ParseSMTPMessage(m *config.SMTPMessage, hostname string, mimeParser bool) *
 						msg.MIME = MIMEBody
 					}
 				} else {
-					if _, body, err := Partbuf(rm.Body); err == nil {
-						msg.Content.HtmlBody = string(body)
-					}
+					setMailBody(rm, msg)
 				}
 			} else {
-				if _, body, err := Partbuf(rm.Body); err == nil {
-					msg.Content.HtmlBody = string(body)
-					//MimeBodyDecode(string(body), part.Charset, part.TransferEncoding)
-				}
+				setMailBody(rm, msg)
 			}
+		} else {
+			msg.Content.TextBody = m.Data
 		}
 	} else {
 		msg.Content = ContentFromString(m.Data)
@@ -301,7 +298,6 @@ func ContentFromString(data string) *Content {
 			Headers:  h,
 			Body:     x[0],
 			TextBody: x[0],
-			HtmlBody: x[0],
 		}
 	}
 }
@@ -387,4 +383,35 @@ func fixCharset(charset string) string {
 		return fixed_charset
 	}
 	return charset
+}
+
+func setMailBody(rm *mail.Message, msg *Message) {
+	if _, body, err := Partbuf(rm.Body); err == nil {
+		if bodyIsHTML(rm) {
+			msg.Content.HtmlBody = string(body)
+		} else {
+			msg.Content.TextBody = string(body)
+		}
+	}
+}
+
+func bodyIsHTML(mr *mail.Message) bool {
+	ctype := mr.Header.Get("Content-Type")
+	if ctype == "" {
+		return false
+	}
+
+	mediatype, _, err := mime.ParseMediaType(ctype)
+	if err != nil {
+		return false
+	}
+
+	// Figure out our disposition, filename
+	disposition, _, err := mime.ParseMediaType(mr.Header.Get("Content-Disposition"))
+
+	if mediatype == "text/html" && disposition != "attachment" && err == nil {
+		return true
+	}
+
+	return false
 }
