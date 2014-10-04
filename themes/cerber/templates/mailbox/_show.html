@@ -15,15 +15,22 @@
 
 {{define "content"}}
 	<div id="MailBody" class="col-md-12">
-		<div class="page-header">
-			<h2>{{.message.Subject }}</h2>
-		</div>
-		{{$name := .name}}
 		{{$id := .message.Id}}
-		<a class="label label-info" href="/mail/delete/{{$id}}"><div class="glyphicon glyphicon-trash"></div></a>
+		<div class="page-header">
+			<h2>{{.message.Subject }}
+				{{if .ctx.User.IsSuperuser}}
+					<a class="btn btn-danger pull-right" href="/mail/delete/{{$id}}"><i class="glyphicon glyphicon-trash"></i></a>
+				{{end}}
+			</h2>
+		</div>
 		<dl class="dl-horizontal">
 			<dt>From</dt>
-			<dd>{{.message.From.Mailbox }}@{{.message.From.Domain }}<a id="AddToGreylist" href="/greylist/mailfrom/{{$id}}"><i class="glyphicon glyphicon-thumbs-up"></i></a></dd>
+			<dd>
+				{{.message.From.Mailbox }}@{{.message.From.Domain }}
+				{{if .ctx.User.IsSuperuser }}
+					<a id="AddToGreylist" href="/greylist/mailfrom/{{$id}}"><i class="glyphicon glyphicon-thumbs-up"></i></a>
+				{{end}}
+			</dd>
 			<dt>To</dt>
 			<dd>{{range .message.To}} {{.Mailbox }}@{{.Domain }} {{end}}</dd>
 			<dt>Date</dt>
@@ -35,11 +42,13 @@
 
 	<div class="col-md-12">
 		{{if .message.Attachments }}
-			{{range $e := .message.Attachments }}
-				{{if $e.FileName }}
-					<h4><a class="label label-info" href="/mail/attachment/{{$e.Id}}/{{$e.FileName}}" target="_blank">{{$e.FileName}}</a></h4>
+			<ul class="nav nav-pills">
+				{{range $e := .message.Attachments }}
+					{{if $e.FileName }}
+						<li class="active"><a href="/mail/attachment/{{$e.Id}}/{{$e.FileName}}" target="_blank">{{$e.FileName}}</a></li>
+					{{end}}
 				{{end}}
-			{{end}}
+			</ul>
 		{{end}}
 	</div>
 

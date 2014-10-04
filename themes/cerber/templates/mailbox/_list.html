@@ -60,7 +60,7 @@
 					<div class="list-group">
 						{{range .messages}}
 						{{$id := .Id}}
-							<a href="/mail/{{$id}}" class="list-group-item {{.Unread}}">
+							<a href="/mail/{{$id}}" class="list-group-item{{if .Unread}} unread {{else}} read{{end}}">
 								<div class="star col-md-1" style="margin: 0; padding: 0; font-size: 9px;">
 									<input type="checkbox">
 								</div>

@@ -36,7 +36,7 @@ body {
 .tab-pane .list-group input[type="checkbox"]{ margin-top: 2px; }
 .tab-pane .list-group .glyphicon { margin-right:5px; }
 .tab-pane .list-group .glyphicon:hover { color:#FFBC00; }
-a.list-group-item.unread { color: #222;background-color: #F3F3F3; }
+a.list-group-item.unread { color: #222;background-color: #F3F3F3; font-weight: bold; }
 hr { margin-top: 5px;margin-bottom: 10px; }
 .nav-pills>li>a {padding: 5px 10px;}
 

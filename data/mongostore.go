@@ -70,13 +70,14 @@ func (mongo *MongoDB) List(start int, limit int) (*Messages, error) {
 	messages := &Messages{}
 	err := mongo.Messages.Find(bson.M{}).Sort("-_id").Skip(start).Limit(limit).Select(bson.M{
 		"id":          1,
-		"_id":         1,
 		"from":        1,
 		"to":          1,
 		"attachments": 1,
 		"created":     1,
 		"ip":          1,
 		"subject":     1,
+		"starred":     1,
+		"unread":      1,
 	}).All(messages)
 	if err != nil {
 		log.LogError("Error loading messages: %s", err)

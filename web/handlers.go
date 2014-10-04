@@ -88,12 +88,16 @@ func MailView(w http.ResponseWriter, r *http.Request, ctx *Context) (err error) 
 		return LoginForm(w, r, ctx)
 	}
 
-	message, err := ctx.Ds.Load(id)
+	m, err := ctx.Ds.Load(id)
 	if err == nil {
+		ctx.Ds.Messages.Update(
+			bson.M{"id": m.Id},
+			bson.M{"$set": bson.M{"unread": false}},
+		)
 		return RenderTemplate("mailbox/_show.html", w, map[string]interface{}{
 			"ctx":     ctx,
 			"title":   "Mail",
-			"message": message,
+			"message": m,
 		})
 	} else {
 		http.NotFound(w, r)
