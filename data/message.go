@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
-	"labix.org/v2/mgo/bson"
 	"mime"
 	"mime/multipart"
 	"net/mail"
@@ -17,6 +16,7 @@ import (
 	"github.com/gleez/smtpd/config"
 	"github.com/gleez/smtpd/log"
 	"github.com/sloonz/go-iconv"
+	"gopkg.in/mgo.v2/bson"
 )
 
 type Messages []Message

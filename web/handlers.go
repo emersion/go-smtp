@@ -15,7 +15,8 @@ import (
 	"github.com/gleez/smtpd/config"
 	"github.com/gleez/smtpd/data"
 	"github.com/gleez/smtpd/log"
-	"labix.org/v2/mgo/bson"
+
+	"gopkg.in/mgo.v2/bson"
 )
 
 func MailAttachment(w http.ResponseWriter, r *http.Request, ctx *Context) (err error) {

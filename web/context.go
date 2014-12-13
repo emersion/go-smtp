@@ -7,7 +7,7 @@ import (
 	"github.com/gleez/smtpd/data"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
-	"labix.org/v2/mgo/bson"
+	"gopkg.in/mgo.v2/bson"
 )
 
 type Context struct {

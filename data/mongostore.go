@@ -5,8 +5,9 @@ import (
 
 	"github.com/gleez/smtpd/config"
 	"github.com/gleez/smtpd/log"
-	"labix.org/v2/mgo"
-	"labix.org/v2/mgo/bson"
+
+	"gopkg.in/mgo.v2"
+	"gopkg.in/mgo.v2/bson"
 )
 
 type MongoDB struct {
