@@ -3,9 +3,11 @@ package data
 import (
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/gleez/smtpd/config"
 	"github.com/gleez/smtpd/log"
+	"gopkg.in/mgo.v2/bson"
 )
 
 type DataStore struct {
@@ -114,4 +116,18 @@ func (ds *DataStore) CheckGreyMail(t, m, d, h string) bool {
 	}
 
 	return to > 0
+}
+
+func (ds *DataStore) SaveSpamIP(ip string, email string) {
+	s := SpamIP{
+		Id:        bson.NewObjectId(),
+		CreatedAt: time.Now(),
+		IsActive:  true,
+		Email:     email,
+		IPAddress: ip,
+	}
+
+	if _, err := ds.Storage.(*MongoDB).StoreSpamIp(s); err != nil {
+		log.LogError("Error inserting Spam IPAddress: %s", err)
+	}
 }

@@ -17,6 +17,7 @@ type MongoDB struct {
 	Users    *mgo.Collection
 	Hosts    *mgo.Collection
 	Emails   *mgo.Collection
+	Spamdb   *mgo.Collection
 }
 
 var (
@@ -51,6 +52,7 @@ func CreateMongoDB(c config.DataStoreConfig) *MongoDB {
 		Users:    session.DB(c.MongoDb).C("Users"),
 		Hosts:    session.DB(c.MongoDb).C("GreyHosts"),
 		Emails:   session.DB(c.MongoDb).C("GreyMails"),
+		Spamdb:   session.DB(c.MongoDb).C("SpamDB"),
 	}
 }
 
@@ -180,4 +182,13 @@ func (mongo *MongoDB) IsGreyMail(email, t string) (int, error) {
 		return -1, err
 	}
 	return tl, nil
+}
+
+func (mongo *MongoDB) StoreSpamIp(s SpamIP) (string, error) {
+	err := mongo.Spamdb.Insert(s)
+	if err != nil {
+		log.LogError("Error inserting greylist ip: %s", err)
+		return "", err
+	}
+	return s.Id.Hex(), nil
 }

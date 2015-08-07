@@ -407,7 +407,8 @@ func Ping(w http.ResponseWriter, r *http.Request, ctx *Context) error {
 // This could perform auth and load balancing too
 // See http://wiki.nginx.org/MailCoreModule
 func NginxHTTPAuth(w http.ResponseWriter, r *http.Request, ctx *Context) error {
-	log.LogTrace("Nginx Auth Client: %s", parseRemoteAddr(r))
+	//log.LogTrace("Nginx Auth Client: %s", parseRemoteAddr(r))
+	log.LogTrace("Nginx Auth Client IP <%s> (%s)", r.Header.Get("Client-IP"), r.Header.Get("Client-Host"))
 
 	cfg := config.GetSmtpConfig()
 

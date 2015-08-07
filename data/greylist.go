@@ -24,3 +24,13 @@ type GreyMail struct {
 	CreatedAt time.Time
 	IsActive  bool
 }
+
+type SpamIP struct {
+	Id        bson.ObjectId `bson:"_id"`
+	Hostname  string
+	IPAddress string
+	Type      string
+	Email     string
+	CreatedAt time.Time
+	IsActive  bool
+}

@@ -43,6 +43,7 @@ type SmtpConfig struct {
 	RcptGreyList    bool
 	Debug           bool
 	DebugPath       string
+	SpamRegex       string
 }
 
 type Pop3Config struct {
@@ -353,6 +354,15 @@ func parseSmtpConfig() error {
 		smtpConfig.DebugPath = str
 	} else {
 		smtpConfig.DebugPath = "/tmp/smtpd"
+	}
+
+	option = "spam.regex"
+	if Config.HasOption(section, option) {
+		str, err := Config.String(section, option)
+		if err != nil {
+			return fmt.Errorf("Failed to parse [%v]%v: '%v'", section, option, err)
+		}
+		smtpConfig.SpamRegex = str
 	}
 
 	return nil
