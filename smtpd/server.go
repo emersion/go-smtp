@@ -2,7 +2,7 @@
 Benchmarking:
 http://www.jrh.org/smtp/index.html
 Test 500 clients:
-$ time smtp-source -c -l 1000 -t test@localhost -s 500 -m 5000 localhost:25000
+$ time go-smtp-source -c -l 1000 -t test@localhost -s 500 -m 5000 localhost:25000
 */
 
 package smtpd
@@ -750,19 +750,6 @@ func (c *Client) processData() {
 
 		text := string(buf[0:n])
 		msg += text
-
-		// @TODO load the regex from config
-		//r, _ := regexp.Compile("email(.*?)@yandex.ru|my profile is here:|my name is Natalia|e-mail:(.*?)@yandex.ru")
-		//		r, _ := regexp.Compile(c.server.SpamRegex)
-		//		if r.MatchString(msg) {
-		//			c.logWarn("Spam Received from <%s> email: ip:<%s>\n", c.from, c.remoteHost)
-		//			c.Write("250", "Ok")
-
-		//			go c.server.Store.SaveSpamIP(c.remoteHost,c.from)
-		//			c.server.closeClient(c)
-
-		//			return
-		//		}
 
 		// If we have debug true, save the mail to file for review
 		if c.server.Debug {
