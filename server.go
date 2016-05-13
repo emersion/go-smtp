@@ -57,7 +57,6 @@ type Client struct {
 	errors     int
 	id         int64
 	tlsConn    *tls.Conn
-	trusted    bool
 }
 
 // Init a new Client object
@@ -200,12 +199,6 @@ func (s *Server) handleClient(c *Client) {
 	}()
 
 	c.greet()
-
-	// check if client on trusted hosts
-	if s.trustedHosts[net.ParseIP(c.remoteHost).String()] {
-		c.logInfo("Remote Client is Trusted: <%s>", c.remoteHost)
-		c.trusted = true
-	}
 
 	// This is our command reading loop
 	for i := 0; i < 100; i++ {
@@ -371,12 +364,6 @@ func (c *Client) mailHandler(cmd string, arg string) {
 			return
 		}
 
-		if c.server.FromGreyList && c.server.Store.CheckGreyMail("from", mailbox, domain, c.remoteHost) {
-			c.Write("501", "Bad sender address syntax")
-			c.logWarn("Greylist address MAIL arg: %s, %v", from, err)
-			return
-		}
-
 		// This is where the client may put BODY=8BITMIME, but we already
 		// read the DATA as bytes, so it does not effect our processing.
 		if m[2] != "" {
@@ -429,19 +416,6 @@ func (c *Client) rcptHandler(cmd string, arg string) {
 		if err != nil {
 			c.Write("501", "Bad recipient address syntax")
 			c.logWarn("Bad address as RCPT arg: %q, %s", recip, err)
-			return
-		}
-
-		// check if on allowed hosts if client ip not trusted
-		if !c.server.allowedHosts[host] && !c.trusted {
-			c.logWarn("Domain not allowed: <%s>", host)
-			c.Write("510", "Recipient address not allowed")
-			return
-		}
-
-		if c.server.RcptGreyList && c.server.Store.CheckGreyMail("to", mailbox, host, c.remoteHost) {
-			c.Write("510", "Recipient address not allowed")
-			c.logWarn("Greylist address as RCPT arg: %s, %v", recip, err)
 			return
 		}
 
