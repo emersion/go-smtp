@@ -10,7 +10,7 @@ WIP
 
 ## Licence
 
-Copyright ©‎ 2014, Gleez Technologies (http://www.gleeztech.com).
-Copyright ©‎ 2016, emersion (http://emersion.fr).
+Copyright ©‎ 2014, Gleez Technologies  
+Copyright ©‎ 2016, emersion  
 
 Released under MIT license, see [LICENSE](license) for details.
