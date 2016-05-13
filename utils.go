@@ -11,7 +11,7 @@ import (
 
 // Take "user+ext" and return "user", aka the mailbox we'll store it in
 // Return error if it contains invalid characters, we don't accept anything
-// that must be quoted according to RFC3696.
+// that must be quoted according to RFC 3696.
 func ParseMailboxName(localPart string) (result string, err error) {
 	if localPart == "" {
 		return "", fmt.Errorf("Mailbox name cannot be empty")
@@ -112,7 +112,7 @@ func ValidateDomainPart(domain string) bool {
 
 // ParseEmailAddress unescapes an email address, and splits the local part from the domain part.
 // An error is returned if the local or domain parts fail validation following the guidelines
-// in RFC3696.
+// in RFC 3696.
 func ParseEmailAddress(address string) (local string, domain string, err error) {
 	if address == "" {
 		return "", "", fmt.Errorf("Empty address")

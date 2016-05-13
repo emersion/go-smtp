@@ -26,19 +26,14 @@ type Server struct {
 	maxRecips       int
 	maxIdleSeconds  int
 	maxMessageBytes int
-	storeMessages   bool
 	listener        net.Listener
 	shutdown        bool
 	waitgroup       *sync.WaitGroup
 	timeout         time.Duration
-	allowedHosts    map[string]bool
-	trustedHosts    map[string]bool
 	maxClients      int
-	EnableXCLIENT   bool
 	TLSConfig       *tls.Config
 	ForceTLS        bool
 	sem             chan int // currently active clients
-	SpamRegex       string
 }
 
 type Client struct {
@@ -54,7 +49,7 @@ type Client struct {
 	subject    string
 	hash       string
 	time       int64
-	tlsOn     bool
+	tlsOn      bool
 	conn       net.Conn
 	bufin      *bufio.Reader
 	bufout     *bufio.Writer
@@ -66,24 +61,7 @@ type Client struct {
 }
 
 // Init a new Client object
-func NewSmtpServer(cfg config.SmtpConfig, ds *data.DataStore) *Server {
-	var allowedHosts = make(map[string]bool, 15)
-	var trustedHosts = make(map[string]bool, 15)
-
-	// map the allow hosts for easy lookup
-	if arr := strings.Split(cfg.AllowedHosts, ","); len(arr) > 0 {
-		for i := 0; i < len(arr); i++ {
-			allowedHosts[strings.Trim(arr[i], " ")] = true
-		}
-	}
-
-	// map the allow hosts for easy lookup
-	if arr := strings.Split(cfg.TrustedHosts, ","); len(arr) > 0 {
-		for i := 0; i < len(arr); i++ {
-			trustedHosts[net.ParseIP(arr[i]).String()] = true
-		}
-	}
-
+func NewSmtpServer(cfg config.SmtpConfig, ds *DataStore) *Server {
 	// sem is an active clients channel used for counting clients
 	maxClients := make(chan int, cfg.MaxClients)
 
@@ -93,11 +71,7 @@ func NewSmtpServer(cfg config.SmtpConfig, ds *data.DataStore) *Server {
 		maxRecips:       cfg.MaxRecipients,
 		maxIdleSeconds:  cfg.MaxIdleSeconds,
 		maxMessageBytes: cfg.MaxMessageBytes,
-		storeMessages:   cfg.StoreMessages,
 		waitgroup:       new(sync.WaitGroup),
-		allowedHosts:    allowedHosts,
-		trustedHosts:    trustedHosts,
-		EnableXCLIENT:   cfg.Xclient,
 		sem:             maxClients,
 	}
 }
@@ -330,8 +304,6 @@ func (c *Client) handle(cmd string, arg string, line string) {
 	case "STARTTLS":
 		c.tlsHandler()
 		//return
-	case "XCLIENT":
-		c.handleXCLIENT(cmd, arg, line)
 	default:
 		c.errors++
 		if c.errors > 3 {
@@ -597,94 +569,6 @@ func (c *Client) dataHandler(cmd string, arg string) {
 	return
 }
 
-func (c *Client) handleXCLIENT(cmd string, arg string, line string) {
-
-	if !c.server.EnableXCLIENT {
-		c.Write("550", "XCLIENT not enabled")
-		return
-	}
-
-	var (
-		newHeloName        = ""
-		newAddr     net.IP = nil
-	)
-
-	// Important set the trusted to false
-	c.trusted = false
-
-	c.logTrace("Handle XCLIENT args: %q", arg)
-	line1 := strings.Fields(arg)
-
-	for _, item := range line1[0:] {
-
-		parts := strings.Split(item, "=")
-		c.logTrace("Handle XCLIENT parts: %q", parts)
-
-		if len(parts) != 2 {
-			c.Write("502", "Couldn't decode the command.")
-			return
-		}
-
-		name := parts[0]
-		value := parts[1]
-
-		switch name {
-		case "NAME":
-			// Unused in smtpd package
-			continue
-		case "HELO":
-			newHeloName = value
-			continue
-		case "ADDR":
-			newAddr = net.ParseIP(value)
-			continue
-		case "PORT":
-			_, err := strconv.ParseUint(value, 10, 16)
-			if err != nil {
-				c.Write("502", "Couldn't decode the command.")
-				return
-			}
-			continue
-		case "LOGIN":
-			//newUsername = value
-			continue
-		case "PROTO":
-			/*			if value == "SMTP" {
-							newProto = SMTP
-						} else if value == "ESMTP" {
-							newProto = ESMTP
-						}*/
-			continue
-		default:
-			c.Write("502", "Couldn't decode the command.")
-			return
-		}
-	}
-
-	if newHeloName != "" {
-		c.helo = newHeloName
-	}
-
-	if newAddr != nil {
-		c.remoteHost = newAddr.String()
-		// check if client on trusted hosts
-		if c.server.trustedHosts[c.remoteHost] {
-			c.logTrace("Remote Client is Trusted: <%s>", c.remoteHost)
-			c.trusted = true
-		}
-
-		c.logTrace("XClient from ip via: <%s>", c.remoteHost)
-		c.Write("250", "Ok")
-	} else {
-		c.logTrace("XClient unable to proceed")
-
-		c.Write("421", "Bye bye")
-		c.server.killClient(c)
-	}
-
-	return
-}
-
 func (c *Client) processData() {
 	var msg string
 
@@ -732,53 +616,32 @@ func (c *Client) processData() {
 		msg = strings.TrimSuffix(msg, "\r\n.\r\n")
 		c.data = msg
 
-		r, _ := regexp.Compile(c.server.SpamRegex)
-		if r.MatchString(msg) {
-			c.logWarn("Spam Received from <%s> email: ip:<%s>\n", c.from, c.remoteHost)
-			c.Write("250", "Ok")
+		// Create Message Structure
+		mc := &config.SMTPMessage{}
+		mc.Helo = c.helo
+		mc.From = c.from
+		mc.To = c.recipients
+		mc.Data = c.data
+		mc.Host = c.remoteHost
+		mc.Domain = c.server.domain
+		mc.Notify = make(chan int)
 
-			go c.server.Store.SaveSpamIP(c.remoteHost, c.from)
-			c.reset()
-			c.server.closeClient(c)
+		// Send to savemail channel
+		c.server.Store.SaveMailChan <- mc
 
-			return
-		}
-
-		if c.server.storeMessages {
-			// Create Message Structure
-			mc := &config.SMTPMessage{}
-			mc.Helo = c.helo
-			mc.From = c.from
-			mc.To = c.recipients
-			mc.Data = c.data
-			mc.Host = c.remoteHost
-			mc.Domain = c.server.domain
-			mc.Notify = make(chan int)
-
-			// Send to savemail channel
-			c.server.Store.SaveMailChan <- mc
-
-			select {
-			// wait for the save to complete
-			case status := <-mc.Notify:
-				if status == 1 {
-					c.Write("250", "Ok: queued as "+mc.Hash)
-					c.logInfo("Message size %v bytes", len(msg))
-				} else {
-					c.Write("554", "Error: transaction failed, blame it on the weather")
-					c.logError("Message save failed")
-				}
-			case <-time.After(time.Second * 60):
+		select {
+		// wait for the save to complete
+		case status := <-mc.Notify:
+			if status == 1 {
+				c.Write("250", "Ok: queued as "+mc.Hash)
+				c.logInfo("Message size %v bytes", len(msg))
+			} else {
 				c.Write("554", "Error: transaction failed, blame it on the weather")
-				c.logError("Message save timeout")
+				c.logError("Message save failed")
 			}
-		} else {
-			//Notify web socket with timestamp
-			c.server.Store.NotifyMailChan <- time.Now().Unix()
-
-			// we dont store messages here, just deliver to hell
-			c.Write("250", "Mail accepted for delivery")
-			c.logInfo("Message size %v bytes", len(msg))
+		case <-time.After(time.Second * 60):
+			c.Write("554", "Error: transaction failed, blame it on the weather")
+			c.logError("Message save timeout")
 		}
 	}
 
@@ -796,7 +659,7 @@ func (c *Client) enterState(state State) {
 }
 
 func (c *Client) greet() {
-	c.Write("220", fmt.Sprintf("%v Gleez SMTP # %s (%s) %s", c.server.domain, strconv.FormatInt(c.id, 10), strconv.Itoa(len(c.server.sem)), time.Now().Format(time.RFC1123Z)))
+	c.Write("220", fmt.Sprintf("%v SMTP # %s (%s) %s", c.server.domain, strconv.FormatInt(c.id, 10), strconv.Itoa(len(c.server.sem)), time.Now().Format(time.RFC1123Z)))
 	c.state = 1
 }
 
@@ -874,10 +737,8 @@ func (c *Client) parseCmd(line string) (cmd string, arg string, ok bool) {
 	line = strings.TrimRight(line, "\r\n")
 	l := len(line)
 	switch {
-	case strings.Index(line, "STARTTLS") == 0:
+	case strings.HasPrefix(line, "STARTTLS"):
 		return "STARTTLS", "", true
-	case strings.Index(line, "XCLIENT") == 0:
-		return strings.ToUpper(line[0:7]), strings.ToUpper(line[8:]), true
 	case l == 0:
 		return "", "", true
 	case l < 4:
