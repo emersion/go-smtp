@@ -1,11 +1,5 @@
-/*
-Benchmarking:
-http://www.jrh.org/smtp/index.html
-Test 500 clients:
-$ time go-smtp-source -c -l 1000 -t test@localhost -s 500 -m 5000 localhost:25000
-*/
-
-package smtpd
+// A ESMTP server library.
+package smtp
 
 import (
 	"bufio"
@@ -21,34 +15,9 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/gleez/smtpd/config"
-	"github.com/gleez/smtpd/data"
-	"github.com/gleez/smtpd/log"
 )
 
 type State int
-
-var commands = map[string]bool{
-	"HELO":     true,
-	"EHLO":     true,
-	"MAIL":     true,
-	"RCPT":     true,
-	"DATA":     true,
-	"RSET":     true,
-	"SEND":     true,
-	"SOML":     true,
-	"SAML":     true,
-	"VRFY":     true,
-	"EXPN":     true,
-	"HELP":     true,
-	"NOOP":     true,
-	"QUIT":     true,
-	"TURN":     true,
-	"AUTH":     true,
-	"STARTTLS": true,
-	"XCLIENT":  true,
-}
 
 // Real server code starts here
 type Server struct {
@@ -68,11 +37,6 @@ type Server struct {
 	EnableXCLIENT   bool
 	TLSConfig       *tls.Config
 	ForceTLS        bool
-	Debug           bool
-	DebugPath       string
-	HostGreyList    bool
-	FromGreyList    bool
-	RcptGreyList    bool
 	sem             chan int // currently active clients
 	SpamRegex       string
 }
@@ -90,7 +54,7 @@ type Client struct {
 	subject    string
 	hash       string
 	time       int64
-	tls_on     bool
+	tlsOn     bool
 	conn       net.Conn
 	bufin      *bufio.Reader
 	bufout     *bufio.Writer
@@ -134,13 +98,7 @@ func NewSmtpServer(cfg config.SmtpConfig, ds *data.DataStore) *Server {
 		allowedHosts:    allowedHosts,
 		trustedHosts:    trustedHosts,
 		EnableXCLIENT:   cfg.Xclient,
-		HostGreyList:    cfg.HostGreyList,
-		FromGreyList:    cfg.FromGreyList,
-		RcptGreyList:    cfg.RcptGreyList,
-		Debug:           cfg.Debug,
-		DebugPath:       cfg.DebugPath,
 		sem:             maxClients,
-		SpamRegex:       cfg.SpamRegex,
 	}
 }
 
@@ -402,7 +360,7 @@ func (c *Client) greetHandler(cmd string, arg string) {
 			return
 		}
 
-		if c.server.TLSConfig != nil && !c.tls_on {
+		if c.server.TLSConfig != nil && !c.tlsOn {
 			c.Write("250", "Hello "+domain+"["+c.remoteHost+"]", "PIPELINING", "8BITMIME", "STARTTLS", "AUTH EXTERNAL CRAM-MD5 LOGIN PLAIN", fmt.Sprintf("SIZE %v", c.server.maxMessageBytes))
 			//c.Write("250", "Hello "+domain+"["+c.remoteHost+"]", "8BITMIME", fmt.Sprintf("SIZE %v", c.server.maxMessageBytes), "HELP")
 		} else {
@@ -575,7 +533,7 @@ func (c *Client) authHandler(cmd string, arg string) {
 }
 
 func (c *Client) tlsHandler() {
-	if c.tls_on {
+	if c.tlsOn {
 		c.Write("502", "Already running in TLS")
 		return
 	}
@@ -598,7 +556,7 @@ func (c *Client) tlsHandler() {
 		c.conn = tlsConn
 		c.bufin = bufio.NewReader(c.conn)
 		c.bufout = bufio.NewWriter(c.conn)
-		c.tls_on = true
+		c.tlsOn = true
 
 		// Reset envelope as a new EHLO/HELO is required after STARTTLS
 		c.reset()
@@ -975,27 +933,6 @@ func (c *Client) ooSeq(cmd string) {
 	c.logWarn("Wasn't expecting %v here", cmd)
 }
 
-// Session specific logging methods
-func (c *Client) logTrace(msg string, args ...interface{}) {
-	log.LogTrace("SMTP[%v]<%v> %v", c.remoteHost, c.id, fmt.Sprintf(msg, args...))
-}
-
-func (c *Client) logInfo(msg string, args ...interface{}) {
-	log.LogInfo("SMTP[%v]<%v> %v", c.remoteHost, c.id, fmt.Sprintf(msg, args...))
-}
-
-func (c *Client) logWarn(msg string, args ...interface{}) {
-	// Update metrics
-	//expWarnsTotal.Add(1)
-	log.LogWarn("SMTP[%v]<%v> %v", c.remoteHost, c.id, fmt.Sprintf(msg, args...))
-}
-
-func (c *Client) logError(msg string, args ...interface{}) {
-	// Update metrics
-	//expErrorsTotal.Add(1)
-	log.LogError("SMTP[%v]<%v> %v", c.remoteHost, c.id, fmt.Sprintf(msg, args...))
-}
-
 func parseHelloArgument(arg string) (string, error) {
 	domain := arg
 	if idx := strings.IndexRune(arg, ' '); idx >= 0 {
@@ -1005,21 +942,4 @@ func parseHelloArgument(arg string) (string, error) {
 		return "", fmt.Errorf("Invalid domain")
 	}
 	return domain, nil
-}
-
-// Debug mail data to file
-func (c *Client) saveMailDatatoFile(msg string) {
-	filename := fmt.Sprintf("%s/%s-%s-%s.raw", c.server.DebugPath, c.remoteHost, c.from, time.Now().Format("Jan-2-2006-3:04:00pm"))
-	f, err := os.Create(filename)
-
-	if err != nil {
-		log.LogError("Error saving file %v", err)
-	}
-
-	defer f.Close()
-	n, err := io.WriteString(f, msg)
-
-	if err != nil {
-		log.LogError("Error saving file %v: %v", n, err)
-	}
 }

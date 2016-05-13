@@ -1,4 +1,4 @@
-package smtpd
+package smtp
 
 import (
 	"bytes"
