@@ -17,11 +17,8 @@ import (
 	"time"
 )
 
-type State int
-
-// Real server code starts here
 type Server struct {
-	Store           *data.DataStore
+	Backend         Backend
 	domain          string
 	maxRecips       int
 	maxIdleSeconds  int
@@ -36,87 +33,24 @@ type Server struct {
 	sem             chan int // currently active clients
 }
 
-type Client struct {
-	server     *Server
-	state      State
-	helo       string
-	from       string
-	recipients []string
-	response   string
-	remoteHost string
-	sendError  error
-	data       string
-	subject    string
-	hash       string
-	time       int64
-	tlsOn      bool
-	conn       net.Conn
-	bufin      *bufio.Reader
-	bufout     *bufio.Writer
-	kill_time  int64
-	errors     int
-	id         int64
-	tlsConn    *tls.Conn
-}
-
-// Init a new Client object
-func NewSmtpServer(cfg config.SmtpConfig, ds *DataStore) *Server {
-	// sem is an active clients channel used for counting clients
+// Create a new SMTP server.
+func New(l net.Listener, cfg Config, bkd Backend) *Server {
 	maxClients := make(chan int, cfg.MaxClients)
 
 	return &Server{
-		Store:           ds,
+		Backend:         bkd,
 		domain:          cfg.Domain,
 		maxRecips:       cfg.MaxRecipients,
 		maxIdleSeconds:  cfg.MaxIdleSeconds,
 		maxMessageBytes: cfg.MaxMessageBytes,
+		listener:        l,
 		waitgroup:       new(sync.WaitGroup),
 		sem:             maxClients,
 	}
 }
 
 // Main listener loop
-func (s *Server) Start() {
-	cfg := config.GetSmtpConfig()
-
-	log.LogTrace("Loading the certificate: %s", cfg.PubKey)
-	cert, err := tls.LoadX509KeyPair(cfg.PubKey, cfg.PrvKey)
-
-	if err != nil {
-		log.LogError("There was a problem with loading the certificate: %s", err)
-	} else {
-		s.TLSConfig = &tls.Config{
-			Certificates: []tls.Certificate{cert},
-			ClientAuth:   tls.VerifyClientCertIfGiven,
-			ServerName:   cfg.Domain,
-		}
-		//s.TLSConfig  .Rand = rand.Reader
-	}
-
-	defer s.Stop()
-	addr, err := net.ResolveTCPAddr("tcp4", fmt.Sprintf("%v:%v", cfg.Ip4address, cfg.Ip4port))
-	if err != nil {
-		log.LogError("Failed to build tcp4 address: %v", err)
-		// TODO More graceful early-shutdown procedure
-		//panic(err)
-		s.Stop()
-		return
-	}
-
-	// Start listening for SMTP connections
-	log.LogInfo("SMTP listening on TCP4 %v", addr)
-	s.listener, err = net.ListenTCP("tcp4", addr)
-	if err != nil {
-		log.LogError("SMTP failed to start tcp4 listener: %v", err)
-		// TODO More graceful early-shutdown procedure
-		//panic(err)
-		s.Stop()
-		return
-	}
-
-	//Connect database
-	s.Store.StorageConnect()
-
+func (s *Server) Listen() {
 	var tempDelay time.Duration
 	var clientId int64
 
@@ -166,8 +100,7 @@ func (s *Server) Start() {
 	}
 }
 
-// Stop requests the SMTP server closes it's listener
-func (s *Server) Stop() {
+func (s *Server) Close() {
 	log.LogTrace("SMTP shutdown requested, connections will be drained")
 	s.shutdown = true
 	s.listener.Close()
@@ -236,6 +169,31 @@ func (s *Server) handleClient(c *Client) {
 	}
 
 	c.logInfo("Closing connection")
+}
+
+type State int
+
+type Client struct {
+	server     *Server
+	state      State
+	helo       string
+	from       string
+	recipients []string
+	response   string
+	remoteHost string
+	sendError  error
+	data       string
+	subject    string
+	hash       string
+	time       int64
+	tlsOn      bool
+	conn       net.Conn
+	bufin      *bufio.Reader
+	bufout     *bufio.Writer
+	kill_time  int64
+	errors     int
+	id         int64
+	tlsConn    *tls.Conn
 }
 
 // Commands are dispatched to the appropriate handler functions.
