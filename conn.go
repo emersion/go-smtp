@@ -104,8 +104,12 @@ func (c *Conn) greetHandler(cmd string, arg string) {
 			caps = append(caps, "STARTTLS")
 		}
 		if c.IsTLS() || c.server.Config.AllowInsecureAuth {
-			//caps = append(caps, "AUTH EXTERNAL CRAM-MD5 LOGIN PLAIN")
-			caps = append(caps, "AUTH LOGIN PLAIN")
+			authCap := "AUTH"
+			for name, _ := range c.server.auths {
+				authCap += " " + name
+			}
+
+			caps = append(caps, authCap)
 		}
 		caps = append(caps, fmt.Sprintf("SIZE %v", c.server.Config.MaxMessageBytes))
 
