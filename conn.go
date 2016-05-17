@@ -371,7 +371,7 @@ func (c *Conn) Reject() {
 }
 
 func (c *Conn) greet() {
-	c.Write("220", fmt.Sprintf("%v SMTP Service Ready", c.server.Config.Domain))
+	c.Write("220", fmt.Sprintf("%v ESMTP Service Ready", c.server.Config.Domain))
 }
 
 // Calculate the next read or write deadline based on maxIdleSeconds
@@ -381,6 +381,7 @@ func (c *Conn) nextDeadline() time.Time {
 
 func (c *Conn) Write(code string, text ...string) {
 	c.conn.SetDeadline(c.nextDeadline())
+
 	if len(text) == 1 {
 		c.conn.Write([]byte(code + " " + text[0] + "\r\n"))
 		return

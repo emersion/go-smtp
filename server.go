@@ -27,29 +27,6 @@ type Server struct {
 	auths    map[string]SaslServerFactory
 }
 
-// Create a new SMTP server.
-func New(l net.Listener, cfg *Config, bkd Backend) *Server {
-	return &Server{
-		Backend:  bkd,
-		Config:   cfg,
-		listener: l,
-		caps:     []string{"PIPELINING", "8BITMIME"},
-		auths:    map[string]SaslServerFactory{
-			"PLAIN": func(conn *Conn) sasl.Server {
-				return sasl.NewPlainServer(func(username, password string) error {
-					user, err := bkd.Login(username, password)
-					if err != nil {
-						return err
-					}
-
-					conn.User = user
-					return nil
-				})
-			},
-		},
-	}
-}
-
 // Listen for incoming connections.
 func (s *Server) Listen() error {
 	for {
@@ -64,6 +41,10 @@ func (s *Server) Listen() error {
 			reader: bufio.NewReader(conn),
 		})
 	}
+}
+
+func (s *Server) Addr() net.Addr {
+	return s.listener.Addr()
 }
 
 func (s *Server) Close() {
@@ -99,4 +80,49 @@ func (s *Server) handleConn(c *Conn) error {
 			return err
 		}
 	}
+}
+
+// Create a new SMTP server.
+func New(l net.Listener, cfg *Config, bkd Backend) *Server {
+	return &Server{
+		Backend:  bkd,
+		Config:   cfg,
+		listener: l,
+		caps:     []string{"PIPELINING", "8BITMIME"},
+		auths:    map[string]SaslServerFactory{
+			"PLAIN": func(conn *Conn) sasl.Server {
+				return sasl.NewPlainServer(func(username, password string) error {
+					user, err := bkd.Login(username, password)
+					if err != nil {
+						return err
+					}
+
+					conn.User = user
+					return nil
+				})
+			},
+		},
+	}
+}
+
+func Listen(addr string, cfg *Config, bkd Backend) (s *Server, err error) {
+	l, err := net.Listen("tcp", addr)
+	if err != nil {
+		return
+	}
+
+	s = New(l, cfg, bkd)
+	go s.Listen()
+	return
+}
+
+func ListenTLS(addr string, cfg *Config, bkd Backend, tlsConfig *tls.Config) (s *Server, err error) {
+	l, err := tls.Listen("tcp", addr, tlsConfig)
+	if err != nil {
+		return
+	}
+
+	s = New(l, cfg, bkd)
+	go s.Listen()
+	return
 }
