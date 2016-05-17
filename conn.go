@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/tls"
+	"encoding/base64"
 	"fmt"
 	"net"
 	"regexp"
@@ -15,7 +16,7 @@ import (
 type Conn struct {
 	server    *Server
 	helo      string
-	user      User
+	User      User
 	msg       *Message
 	conn      net.Conn
 	reader    *bufio.Reader
@@ -214,27 +215,60 @@ func (c *Conn) authHandler(cmd string, arg string) {
 	parts := strings.Fields(arg)
 	mechanism := strings.ToUpper(parts[0])
 
-	/*scanner := bufio.NewScanner(c.bufin)
-		line := scanner.Text()
-		c.logTrace("Read Line %s", line)
-		if !scanner.Scan() {
-			return
-		}
-	*/
-	switch mechanism {
-	case "LOGIN":
-		c.Write("334", "VXNlcm5hbWU6")
-	case "PLAIN":
-		c.Write("235", "Authentication successful")
-	case "CRAM-MD5":
-		c.Write("334", "PDQxOTI5NDIzNDEuMTI4Mjg0NzJAc291cmNlZm91ci5hbmRyZXcuY211LmVkdT4=")
-	case "EXTERNAL":
-		c.Write("235", "Authentication successful")
-	default:
+	// Parse client initial response if there is one
+	encoded := ""
+	if len(parts) > 1 {
+		encoded = parts[1]
+	}
+	// TODO: client IR support
+
+	newSasl, ok := c.server.auths[mechanism]
+	if !ok {
 		c.Write("504", "Unsupported authentication mechanism")
+		return
 	}
 
-	c.msg = &Message{}
+	sasl := newSasl(c)
+
+	ir, err := sasl.Start()
+	if err != nil {
+		return
+	}
+
+	encoded = ""
+	if len(ir) > 0 {
+		encoded = base64.StdEncoding.EncodeToString(ir)
+	}
+	c.Write("334", encoded)
+
+	scanner := bufio.NewScanner(c.reader)
+	for scanner.Scan() {
+		encoded := scanner.Text()
+
+		var challenge []byte
+		if encoded != "" {
+			challenge, err = base64.StdEncoding.DecodeString(encoded)
+			if err != nil {
+				return
+			}
+		}
+
+		var res []byte
+		if res, err = sasl.Next(challenge); err != nil {
+			return
+		}
+
+		if res == nil { // Authentication finished
+			break
+		}
+
+		encoded = base64.StdEncoding.EncodeToString(res)
+		c.Write("334", encoded)
+	}
+
+	if c.User != nil {
+		c.msg = &Message{}
+	}
 }
 
 func (c *Conn) tlsHandler() {
@@ -321,7 +355,7 @@ func (c *Conn) processData() {
 		msg = strings.TrimSuffix(msg, "\r\n.\r\n")
 		c.msg.Data = []byte(msg)
 
-		if err := c.user.Send(c.msg); err != nil {
+		if err := c.User.Send(c.msg); err != nil {
 			c.Write("554", "Error: transaction failed, blame it on the weather")
 		} else {
 			c.Write("250", "Ok: queued")

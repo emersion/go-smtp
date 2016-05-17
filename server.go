@@ -1,4 +1,4 @@
-// A ESMTP server library.
+// An ESMTP server library.
 package smtp
 
 import (
@@ -6,19 +6,25 @@ import (
 	"crypto/tls"
 	"io"
 	"net"
+
+	"github.com/emersion/go-sasl"
 )
+
+// A function that creates SASL servers.
+type SaslServerFactory func(conn *Conn) sasl.Server
 
 // A SMTP server.
 type Server struct {
 	// The server backend.
-	Backend           Backend
+	Backend Backend
 	// The server configuration.
-	Config            *Config
+	Config *Config
 	// The server TLS configuration.
-	TLSConfig         *tls.Config
+	TLSConfig *tls.Config
 
-	listener          net.Listener
-	caps              []string
+	listener net.Listener
+	caps     []string
+	auths    map[string]SaslServerFactory
 }
 
 // Create a new SMTP server.
@@ -28,6 +34,19 @@ func New(l net.Listener, cfg *Config, bkd Backend) *Server {
 		Config:   cfg,
 		listener: l,
 		caps:     []string{"PIPELINING", "8BITMIME"},
+		auths:    map[string]SaslServerFactory{
+			"PLAIN": func(conn *Conn) sasl.Server {
+				return sasl.NewPlainServer(func(username, password string) error {
+					user, err := bkd.Login(username, password)
+					if err != nil {
+						return err
+					}
+
+					conn.User = user
+					return nil
+				})
+			},
+		},
 	}
 }
 
