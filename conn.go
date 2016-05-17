@@ -1,40 +1,38 @@
 package smtp
 
-type State int
+import (
+	"bufio"
+	"bytes"
+	"crypto/tls"
+	"fmt"
+	"net"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+)
 
 type Conn struct {
-	server     *Server
-	helo       string
-	from       string
-	recipients []string
-	response   string
-	data       string
-	subject    string
-	hash       string
-	conn       net.Conn
-	errors     int
+	server    *Server
+	helo      string
+	user      User
+	msg       *Message
+	conn      net.Conn
+	reader    *bufio.Reader
+	nbrErrors int
 }
 
 // Commands are dispatched to the appropriate handler functions.
-func (c *Conn) handle(cmd string, arg string, line string) {
-	c.logTrace("In state %d, got command '%s', args '%s'", c.state, cmd, arg)
-
-	// Check against valid SMTP commands
+func (c *Conn) handle(cmd string, arg string) {
 	if cmd == "" {
 		c.Write("500", "Speak up")
-		//return
-	}
-
-	if cmd != "" && !commands[cmd] {
-		c.Write("500", fmt.Sprintf("Syntax error, %v command unrecognized", cmd))
-		c.logWarn("Unrecognized command: %v", cmd)
+		return
 	}
 
 	switch cmd {
 	case "SEND", "SOML", "SAML", "EXPN", "HELP", "TURN":
 		// These commands are not implemented in any state
 		c.Write("502", fmt.Sprintf("%v command not implemented", cmd))
-		c.logWarn("Command %v not implemented by Gsmtpd", cmd)
 	case "HELO", "EHLO":
 		c.greetHandler(cmd, arg)
 	case "MAIL":
@@ -46,7 +44,6 @@ func (c *Conn) handle(cmd string, arg string, line string) {
 	case "NOOP":
 		c.Write("250", "I have sucessfully done nothing")
 	case "RSET": // Reset session
-		c.logTrace("Resetting session state on RSET request")
 		c.reset()
 		c.Write("250", "Session reset")
 	case "DATA":
@@ -59,12 +56,24 @@ func (c *Conn) handle(cmd string, arg string, line string) {
 	case "STARTTLS":
 		c.tlsHandler()
 	default:
-		c.errors++
-		if c.errors > 3 {
+		c.Write("500", fmt.Sprintf("Syntax error, %v command unrecognized", cmd))
+
+		c.nbrErrors++
+		if c.nbrErrors > 3 {
 			c.Write("500", "Too many unrecognized commands")
 			c.Close()
 		}
 	}
+}
+
+func (c *Conn) Close() error {
+	return c.conn.Close()
+}
+
+// Check if this connection is encrypted.
+func (c *Conn) IsTLS() bool {
+	_, ok := c.conn.(*tls.Conn)
+	return ok
 }
 
 // GREET state -> waiting for HELO
@@ -77,8 +86,8 @@ func (c *Conn) greetHandler(cmd string, arg string) {
 			return
 		}
 		c.helo = domain
+
 		c.Write("250", fmt.Sprintf("Hello %s", domain))
-		c.state = 1
 	case "EHLO":
 		domain, err := parseHelloArgument(arg)
 		if err != nil {
@@ -86,14 +95,22 @@ func (c *Conn) greetHandler(cmd string, arg string) {
 			return
 		}
 
-		if c.server.TLSConfig != nil && !c.tlsOn {
-			c.Write("250", "Hello "+domain+"["+c.remoteHost+"]", "PIPELINING", "8BITMIME", "STARTTLS", "AUTH EXTERNAL CRAM-MD5 LOGIN PLAIN", fmt.Sprintf("SIZE %v", c.server.maxMessageBytes))
-			//c.Write("250", "Hello "+domain+"["+c.remoteHost+"]", "8BITMIME", fmt.Sprintf("SIZE %v", c.server.maxMessageBytes), "HELP")
-		} else {
-			c.Write("250", "Hello "+domain+"["+c.remoteHost+"]", "PIPELINING", "8BITMIME", "AUTH EXTERNAL CRAM-MD5 LOGIN PLAIN", fmt.Sprintf("SIZE %v", c.server.maxMessageBytes))
-		}
 		c.helo = domain
-		c.state = 1
+
+		caps := []string{}
+		caps = append(caps, c.server.caps...)
+		if c.server.TLSConfig != nil && !c.IsTLS() {
+			caps = append(caps, "STARTTLS")
+		}
+		if c.IsTLS() || c.server.Config.AllowInsecureAuth {
+			//caps = append(caps, "AUTH EXTERNAL CRAM-MD5 LOGIN PLAIN")
+			caps = append(caps, "AUTH LOGIN PLAIN")
+		}
+		caps = append(caps, fmt.Sprintf("SIZE %v", c.server.Config.MaxMessageBytes))
+
+		args := []string{"Hello "+domain}
+		args = append(args, caps...)
+		c.Write("250", args...)
 	default:
 		c.ooSeq(cmd)
 	}
@@ -101,146 +118,127 @@ func (c *Conn) greetHandler(cmd string, arg string) {
 
 // READY state -> waiting for MAIL
 func (c *Conn) mailHandler(cmd string, arg string) {
-	if cmd == "MAIL" {
-		if c.helo == "" {
-			c.Write("502", "Please introduce yourself first.")
-			return
-		}
+	if cmd != "MAIL" {
+		c.ooSeq(cmd)
+		return
+	}
 
-		// Match FROM, while accepting '>' as quoted pair and in double quoted strings
-		// (?i) makes the regex case insensitive, (?:) is non-grouping sub-match
-		re := regexp.MustCompile("(?i)^FROM:\\s*<((?:\\\\>|[^>])+|\"[^\"]+\"@[^>]+)>( [\\w= ]+)?$")
-		m := re.FindStringSubmatch(arg)
-		if m == nil {
-			c.Write("501", "Was expecting MAIL arg syntax of FROM:<address>")
-			c.logWarn("Bad MAIL argument: %q", arg)
-			return
-		}
+	if c.helo == "" {
+		c.Write("502", "Please introduce yourself first.")
+		return
+	}
 
-		from := m[1]
-		mailbox, domain, err := ParseEmailAddress(from)
+	// Match FROM, while accepting '>' as quoted pair and in double quoted strings
+	// (?i) makes the regex case insensitive, (?:) is non-grouping sub-match
+	re := regexp.MustCompile("(?i)^FROM:\\s*<((?:\\\\>|[^>])+|\"[^\"]+\"@[^>]+)>( [\\w= ]+)?$")
+	m := re.FindStringSubmatch(arg)
+	if m == nil {
+		c.Write("501", "Was expecting MAIL arg syntax of FROM:<address>")
+		return
+	}
+
+	from := m[1]
+
+	// This is where the Conn may put BODY=8BITMIME, but we already
+	// read the DATA as bytes, so it does not effect our processing.
+	if m[2] != "" {
+		args, err := parseArgs(m[2])
 		if err != nil {
-			c.Write("501", "Bad sender address syntax")
-			c.logWarn("Bad address as MAIL arg: %q, %s", from, err)
+			c.Write("501", "Unable to parse MAIL ESMTP parameters")
 			return
 		}
 
-		// This is where the Conn may put BODY=8BITMIME, but we already
-		// read the DATA as bytes, so it does not effect our processing.
-		if m[2] != "" {
-			args, ok := c.parseArgs(m[2])
-			if !ok {
-				c.Write("501", "Unable to parse MAIL ESMTP parameters")
-				c.logWarn("Bad MAIL argument: %q", arg)
+		if args["SIZE"] != "" {
+			size, err := strconv.ParseInt(args["SIZE"], 10, 32)
+			if err != nil {
+				c.Write("501", "Unable to parse SIZE as an integer")
 				return
 			}
-			if args["SIZE"] != "" {
-				size, err := strconv.ParseInt(args["SIZE"], 10, 32)
-				if err != nil {
-					c.Write("501", "Unable to parse SIZE as an integer")
-					c.logWarn("Unable to parse SIZE %q as an integer", args["SIZE"])
-					return
-				}
-				if int(size) > c.server.maxMessageBytes {
-					c.Write("552", "Max message size exceeded")
-					c.logWarn("Conn wanted to send oversized message: %v", args["SIZE"])
-					return
-				}
+
+			if int(size) > c.server.Config.MaxMessageBytes {
+				c.Write("552", "Max message size exceeded")
+				return
 			}
 		}
-		c.from = from
-		c.logInfo("Mail from: %v", from)
-		c.Write("250", fmt.Sprintf("Roger, accepting mail from <%v>", from))
-		c.state = 1
-	} else {
-		c.ooSeq(cmd)
 	}
+
+	c.msg.From = from
+	c.Write("250", fmt.Sprintf("Roger, accepting mail from <%v>", from))
 }
 
 // MAIL state -> waiting for RCPTs followed by DATA
 func (c *Conn) rcptHandler(cmd string, arg string) {
-	if cmd == "RCPT" {
-		if c.from == "" {
-			c.Write("502", "Missing MAIL FROM command.")
-			return
-		}
-
-		if (len(arg) < 4) || (strings.ToUpper(arg[0:3]) != "TO:") {
-			c.Write("501", "Was expecting RCPT arg syntax of TO:<address>")
-			c.logWarn("Bad RCPT argument: %q", arg)
-			return
-		}
-
-		// This trim is probably too forgiving
-		recip := strings.Trim(arg[3:], "<> ")
-		mailbox, host, err := ParseEmailAddress(recip)
-		if err != nil {
-			c.Write("501", "Bad recipient address syntax")
-			c.logWarn("Bad address as RCPT arg: %q, %s", recip, err)
-			return
-		}
-
-		if len(c.recipients) >= c.server.maxRecips {
-			c.logWarn("Maximum limit of %v recipients reached", c.server.maxRecips)
-			c.Write("552", fmt.Sprintf("Maximum limit of %v recipients reached", c.server.maxRecips))
-			return
-		}
-
-		c.recipients = append(c.recipients, recip)
-		c.logInfo("Recipient: %v", recip)
-		c.Write("250", fmt.Sprintf("I'll make sure <%v> gets this", recip))
-		return
-	} else {
+	if cmd != "RCPT" {
 		c.ooSeq(cmd)
+		return
 	}
+
+	if c.msg == nil || c.msg.From == "" {
+		c.Write("502", "Missing MAIL FROM command.")
+		return
+	}
+
+	if (len(arg) < 4) || (strings.ToUpper(arg[0:3]) != "TO:") {
+		c.Write("501", "Was expecting RCPT arg syntax of TO:<address>")
+		return
+	}
+
+	// This trim is probably too forgiving
+	recipient := strings.Trim(arg[3:], "<> ")
+
+	if len(c.msg.To) >= c.server.Config.MaxRecipients {
+		c.Write("552", fmt.Sprintf("Maximum limit of %v recipients reached", c.server.Config.MaxRecipients))
+		return
+	}
+
+	c.msg.To = append(c.msg.To, recipient)
+	c.Write("250", fmt.Sprintf("I'll make sure <%v> gets this", recipient))
 }
 
 func (c *Conn) authHandler(cmd string, arg string) {
-	if cmd == "AUTH" {
-		if c.helo == "" {
-			c.Write("502", "Please introduce yourself first.")
-			return
-		}
-
-		if arg == "" {
-			c.Write("502", "Missing parameter")
-			return
-		}
-
-		c.logTrace("Got AUTH command, staying in MAIL state %s", arg)
-		parts := strings.Fields(arg)
-		mechanism := strings.ToUpper(parts[0])
-
-		/*	scanner := bufio.NewScanner(c.bufin)
-			line := scanner.Text()
-			c.logTrace("Read Line %s", line)
-			if !scanner.Scan() {
-				return
-			}
-		*/
-		switch mechanism {
-		case "LOGIN":
-			c.Write("334", "VXNlcm5hbWU6")
-		case "PLAIN":
-			c.logInfo("Got PLAIN authentication: %s", mechanism)
-			c.Write("235", "Authentication successful")
-		case "CRAM-MD5":
-			c.logInfo("Got CRAM-MD5 authentication, switching to AUTH state")
-			c.Write("334", "PDQxOTI5NDIzNDEuMTI4Mjg0NzJAc291cmNlZm91ci5hbmRyZXcuY211LmVkdT4=")
-		case "EXTERNAL":
-			c.logInfo("Got EXTERNAL authentication: %s", strings.TrimPrefix(arg, "EXTERNAL "))
-			c.Write("235", "Authentication successful")
-		default:
-			c.logTrace("Unsupported authentication mechanism %v", arg)
-			c.Write("504", "Unsupported authentication mechanism")
-		}
-	} else {
+	if cmd != "AUTH" {
 		c.ooSeq(cmd)
+		return
 	}
+
+	if c.helo == "" {
+		c.Write("502", "Please introduce yourself first.")
+		return
+	}
+
+	if arg == "" {
+		c.Write("502", "Missing parameter")
+		return
+	}
+
+	parts := strings.Fields(arg)
+	mechanism := strings.ToUpper(parts[0])
+
+	/*scanner := bufio.NewScanner(c.bufin)
+		line := scanner.Text()
+		c.logTrace("Read Line %s", line)
+		if !scanner.Scan() {
+			return
+		}
+	*/
+	switch mechanism {
+	case "LOGIN":
+		c.Write("334", "VXNlcm5hbWU6")
+	case "PLAIN":
+		c.Write("235", "Authentication successful")
+	case "CRAM-MD5":
+		c.Write("334", "PDQxOTI5NDIzNDEuMTI4Mjg0NzJAc291cmNlZm91ci5hbmRyZXcuY211LmVkdT4=")
+	case "EXTERNAL":
+		c.Write("235", "Authentication successful")
+	default:
+		c.Write("504", "Unsupported authentication mechanism")
+	}
+
+	c.msg = &Message{}
 }
 
 func (c *Conn) tlsHandler() {
-	if c.tlsOn {
+	if c.IsTLS() {
 		c.Write("502", "Already running in TLS")
 		return
 	}
@@ -250,57 +248,38 @@ func (c *Conn) tlsHandler() {
 		return
 	}
 
-	log.LogTrace("Ready to start TLS")
 	c.Write("220", "Ready to start TLS")
 
-	// upgrade to TLS
+	// Upgrade to TLS
 	var tlsConn *tls.Conn
 	tlsConn = tls.Server(c.conn, c.server.TLSConfig)
-	err := tlsConn.Handshake() // not necessary to call here, but might as well
 
-	if err == nil {
-		//c.conn   = net.Conn(tlsConn)
-		c.conn = tlsConn
-		c.bufin = bufio.NewReader(c.conn)
-		c.bufout = bufio.NewWriter(c.conn)
-		c.tlsOn = true
-
-		// Reset envelope as a new EHLO/HELO is required after STARTTLS
-		c.reset()
-
-		// Reset deadlines on the underlying connection before I replace it
-		// with a TLS connection
-		c.conn.SetDeadline(time.Time{})
-		c.flush()
-	} else {
-		c.logWarn("Could not TLS handshake:%v", err)
+	if err := tlsConn.Handshake(); err != nil {
 		c.Write("550", "Handshake error")
 	}
 
-	c.state = 1
+	c.conn = tlsConn
+
+	// Reset envelope as a new EHLO/HELO is required after STARTTLS
+	c.reset()
 }
 
 // DATA
 func (c *Conn) dataHandler(cmd string, arg string) {
-	c.logTrace("Enter dataHandler %d", c.state)
-
 	if arg != "" {
 		c.Write("501", "DATA command should not have any arguments")
-		c.logWarn("Got unexpected args on DATA: %q", arg)
 		return
 	}
 
-	if len(c.recipients) > 0 {
-		// We have recipients, go to accept data
-		c.logTrace("Go ahead we have recipients %d", len(c.recipients))
-		c.Write("354", "Go ahead. End your data with <CR><LF>.<CR><LF>")
-		c.state = 2
-		return
-	} else {
+	if c.msg == nil || c.msg.From == "" || len(c.msg.To) == 0 {
 		c.Write("502", "Missing RCPT TO command.")
 		return
 	}
 
+	// We have recipients, go to accept data
+	c.Write("354", "Go ahead. End your data with <CR><LF>.<CR><LF>")
+
+	c.processData()
 	return
 }
 
@@ -311,9 +290,8 @@ func (c *Conn) processData() {
 		buf := make([]byte, 1024)
 		n, err := c.conn.Read(buf)
 
-		if n == 0 {
-			c.logInfo("Connection closed by remote host\n")
-			c.server.killConn(c)
+		if n == 0 { // Connection closed by remote host
+			c.Close()
 			break
 		}
 
@@ -321,110 +299,62 @@ func (c *Conn) processData() {
 			if neterr, ok := err.(net.Error); ok && neterr.Timeout() {
 				c.Write("221", "Idle timeout, bye bye")
 			}
-			c.logInfo("Error reading from socket: %s\n", err)
-			break
+			break // Error reading from socket
 		}
 
 		text := string(buf[0:n])
 		msg += text
 
-		// If we have debug true, save the mail to file for review
-		if c.server.Debug {
-			c.saveMailDatatoFile(msg)
-		}
-
-		if len(msg) > c.server.maxMessageBytes {
-			c.logWarn("Maximum DATA size exceeded (%s)", strconv.Itoa(c.server.maxMessageBytes))
+		if len(msg) > c.server.Config.MaxMessageBytes {
 			c.Write("552", "Maximum message size exceeded")
 			c.reset()
 			return
 		}
 
-		//Postfix bug ugly hack (\r\n.\r\nQUIT\r\n)
+		// Postfix bug ugly hack (\r\n.\r\nQUIT\r\n)
 		if strings.HasSuffix(msg, "\r\n.\r\n") || strings.LastIndex(msg, "\r\n.\r\n") != -1 {
 			break
 		}
 	}
 
-	if len(msg) > 0 {
-		c.logTrace("Got EOF, storing message and switching to MAIL state")
+	if len(msg) > 0 { // Got EOF, storing message and switching to MAIL state
 		msg = strings.TrimSuffix(msg, "\r\n.\r\n")
-		c.data = msg
+		c.msg.Data = []byte(msg)
 
-		// Create Message Structure
-		mc := &config.SMTPMessage{}
-		mc.Helo = c.helo
-		mc.From = c.from
-		mc.To = c.recipients
-		mc.Data = c.data
-		mc.Host = c.remoteHost
-		mc.Domain = c.server.domain
-		mc.Notify = make(chan int)
-
-		// Send to savemail channel
-		c.server.Store.SaveMailChan <- mc
-
-		select {
-		// wait for the save to complete
-		case status := <-mc.Notify:
-			if status == 1 {
-				c.Write("250", "Ok: queued as "+mc.Hash)
-				c.logInfo("Message size %v bytes", len(msg))
-			} else {
-				c.Write("554", "Error: transaction failed, blame it on the weather")
-				c.logError("Message save failed")
-			}
-		case <-time.After(time.Second * 60):
+		if err := c.user.Send(c.msg); err != nil {
 			c.Write("554", "Error: transaction failed, blame it on the weather")
-			c.logError("Message save timeout")
+		} else {
+			c.Write("250", "Ok: queued")
 		}
 	}
 
 	c.reset()
 }
 
-func (c *Conn) reject() {
+func (c *Conn) Reject() {
 	c.Write("421", "Too busy. Try again later.")
-	c.server.closeConn(c)
-}
-
-func (c *Conn) enterState(state State) {
-	c.state = state
-	c.logTrace("Entering state %v", state)
+	c.Close()
 }
 
 func (c *Conn) greet() {
-	c.Write("220", fmt.Sprintf("%v SMTP # %s (%s) %s", c.server.domain, strconv.FormatInt(c.id, 10), strconv.Itoa(len(c.server.sem)), time.Now().Format(time.RFC1123Z)))
-	c.state = 1
-}
-
-func (c *Conn) flush() {
-	c.conn.SetWriteDeadline(c.nextDeadline())
-	c.bufout.Flush()
-	c.conn.SetReadDeadline(c.nextDeadline())
+	c.Write("220", fmt.Sprintf("%v SMTP Service Ready", c.server.Config.Domain))
 }
 
 // Calculate the next read or write deadline based on maxIdleSeconds
 func (c *Conn) nextDeadline() time.Time {
-	return time.Now().Add(time.Duration(c.server.maxIdleSeconds) * time.Second)
+	return time.Now().Add(time.Duration(c.server.Config.MaxIdleSeconds) * time.Second)
 }
 
 func (c *Conn) Write(code string, text ...string) {
 	c.conn.SetDeadline(c.nextDeadline())
 	if len(text) == 1 {
-		c.logTrace(">> Sent %d bytes: %s >>", len(text[0]), text[0])
 		c.conn.Write([]byte(code + " " + text[0] + "\r\n"))
-		c.bufout.Flush()
 		return
 	}
 	for i := 0; i < len(text)-1; i++ {
-		c.logTrace(">> Sent %d bytes: %s >>", len(text[i]), text[i])
 		c.conn.Write([]byte(code + "-" + text[i] + "\r\n"))
 	}
-	c.logTrace(">> Sent %d bytes: %s >>", len(text[len(text)-1]), text[len(text)-1])
 	c.conn.Write([]byte(code + " " + text[len(text)-1] + "\r\n"))
-
-	c.bufout.Flush()
 }
 
 // readByteLine reads a line of input into the provided buffer. Does
@@ -434,13 +364,13 @@ func (c *Conn) readByteLine(buf *bytes.Buffer) error {
 		return err
 	}
 	for {
-		line, err := c.bufin.ReadBytes('\r')
+		line, err := c.reader.ReadBytes('\r')
 		if err != nil {
 			return err
 		}
 		buf.Write(line)
 		// Read the next byte looking for '\n'
-		c, err := c.bufin.ReadByte()
+		c, err := c.reader.ReadByte()
 		if err != nil {
 			return err
 		}
@@ -451,7 +381,6 @@ func (c *Conn) readByteLine(buf *bytes.Buffer) error {
 		}
 		// Else, keep looking
 	}
-	// Should be unreachable
 }
 
 // Reads a line of input
@@ -460,82 +389,19 @@ func (c *Conn) readLine() (line string, err error) {
 		return "", err
 	}
 
-	line, err = c.bufin.ReadString('\n')
+	line, err = c.reader.ReadString('\n')
 	if err != nil {
 		return "", err
 	}
-	c.logTrace("<< %v <<", strings.TrimRight(line, "\r\n"))
+
 	return line, nil
 }
 
-func (c *Conn) parseCmd(line string) (cmd string, arg string, ok bool) {
-	line = strings.TrimRight(line, "\r\n")
-	l := len(line)
-	switch {
-	case strings.HasPrefix(line, "STARTTLS"):
-		return "STARTTLS", "", true
-	case l == 0:
-		return "", "", true
-	case l < 4:
-		c.logWarn("Command too short: %q", line)
-		return "", "", false
-	case l == 4:
-		return strings.ToUpper(line), "", true
-	case l == 5:
-		// Too long to be only command, too short to have args
-		c.logWarn("Mangled command: %q", line)
-		return "", "", false
-	}
-	// If we made it here, command is long enough to have args
-	if line[4] != ' ' {
-		// There wasn't a space after the command?
-		c.logWarn("Mangled command: %q", line)
-		return "", "", false
-	}
-	// I'm not sure if we should trim the args or not, but we will for now
-	//return strings.ToUpper(line[0:4]), strings.Trim(line[5:], " "), true
-	return strings.ToUpper(line[0:4]), strings.Trim(line[5:], " \n\r"), true
-}
-
-// parseArgs takes the arguments proceeding a command and files them
-// into a map[string]string after uppercasing each key.  Sample arg
-// string:
-//		" BODY=8BITMIME SIZE=1024"
-// The leading space is mandatory.
-func (c *Conn) parseArgs(arg string) (args map[string]string, ok bool) {
-	args = make(map[string]string)
-	re := regexp.MustCompile(" (\\w+)=(\\w+)")
-	pm := re.FindAllStringSubmatch(arg, -1)
-	if pm == nil {
-		c.logWarn("Failed to parse arg string: %q")
-		return nil, false
-	}
-	for _, m := range pm {
-		args[strings.ToUpper(m[1])] = m[2]
-	}
-	c.logTrace("ESMTP params: %v", args)
-	return args, true
-}
-
 func (c *Conn) reset() {
-	c.state = 1
-	c.from = ""
 	c.helo = ""
-	c.recipients = nil
+	c.msg = nil
 }
 
 func (c *Conn) ooSeq(cmd string) {
 	c.Write("503", fmt.Sprintf("Command %v is out of sequence", cmd))
-	c.logWarn("Wasn't expecting %v here", cmd)
-}
-
-func parseHelloArgument(arg string) (string, error) {
-	domain := arg
-	if idx := strings.IndexRune(arg, ' '); idx >= 0 {
-		domain = arg[:idx]
-	}
-	if domain == "" {
-		return "", fmt.Errorf("Invalid domain")
-	}
-	return domain, nil
 }

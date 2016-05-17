@@ -12,6 +12,11 @@ type Message struct {
 
 // A SMTP server backend.
 type Backend interface {
+	Login(username, password string) (User, error)
+}
+
+// An authenticated user.
+type User interface {
 	// Send an e-mail.
 	Send(msg *Message) error
 }
