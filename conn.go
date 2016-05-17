@@ -433,6 +433,7 @@ func (c *Conn) readLine() (line string, err error) {
 
 func (c *Conn) reset() {
 	c.helo = ""
+	c.User = nil
 	c.msg = nil
 }
 
