@@ -1,5 +1,8 @@
 # smtp
 
+[![GoDoc](https://godoc.org/github.com/emersion/smtp?status.svg)](https://godoc.org/github.com/emersion/smtp)
+[![Build Status](https://travis-ci.org/emersion/smtp.svg?branch=master)](https://travis-ci.org/emersion/smtp)
+
 WIP
 
 ## Features
