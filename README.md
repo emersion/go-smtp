@@ -44,6 +44,7 @@ func main() {
 		Domain: "localhost",
 		MaxIdleSeconds: 300,
 		MaxMessageBytes: 1024 * 1024,
+		MaxRecipients: 50,
 		AllowInsecureAuth: true,
 	}
 
