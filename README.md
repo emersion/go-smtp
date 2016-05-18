@@ -1,7 +1,7 @@
 # smtp
 
-[![GoDoc](https://godoc.org/github.com/emersion/smtp?status.svg)](https://godoc.org/github.com/emersion/smtp)
-[![Build Status](https://travis-ci.org/emersion/smtp.svg?branch=master)](https://travis-ci.org/emersion/smtp)
+[![GoDoc](https://godoc.org/github.com/emersion/go-smtp?status.svg)](https://godoc.org/github.com/emersion/go-smtp)
+[![Build Status](https://travis-ci.org/emersion/go-smtp.svg?branch=master)](https://travis-ci.org/emersion/go-smtp)
 
 An ESMTP server library written in Go.
 
