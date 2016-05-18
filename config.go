@@ -5,7 +5,6 @@ type Config struct {
 	Domain            string
 	MaxRecipients     int
 	MaxIdleSeconds    int
-	MaxClients        int
 	MaxMessageBytes   int
 	AllowInsecureAuth bool
 }

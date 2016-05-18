@@ -17,20 +17,39 @@ An ESMTP server library written in Go.
 package main
 
 import (
+	"errors"
 	"log"
 
 	smtpserver "github.com/emersion/go-smtp-server"
 )
 
+type Backend struct {}
+
+func (bkd *Backend) Login(username, password string) (smtp.User, error) {
+	if username != "username" || password != "password" {
+		return nil, errors.New("Invalid username or password")
+	}
+	return &User{}, nil
+}
+
+type User struct {}
+
+func (u *User) Send(msg *smtp.Message) error {
+	log.Println("Message sent:", msg)
+	return nil
+}
+
 func main() {
-	cfg := &smtpserver.Config{
+	cfg := &smtp.Config{
 		Domain: "localhost",
 		MaxIdleSeconds: 300,
 		MaxMessageBytes: 1024 * 1024,
 		AllowInsecureAuth: true,
 	}
 
-	s, err := smtpserver.Listen(":3000", cfg, nil)
+	bkd := &Backend{}
+
+	s, err := smtp.Listen(":3000", cfg, bkd)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -40,6 +59,19 @@ func main() {
 	done := make(chan bool)
 	<-done
 }
+```
+
+You can use the server manually with `telnet`:
+```
+$ telnet localhost 3000
+EHLO localhost
+AUTH PLAIN
+AHVzZXJuYW1lAHBhc3N3b3Jk
+MAIL FROM:<root@nsa.gov>
+RCPT TO:<root@gchq.gov.uk>
+DATA
+Hey <3
+.
 ```
 
 ## Licence

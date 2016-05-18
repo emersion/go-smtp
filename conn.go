@@ -242,6 +242,7 @@ func (c *Conn) authHandler(cmd string, arg string) {
 	for {
 		challenge, done, err := sasl.Next(response)
 		if err != nil {
+			c.Write("454", err.Error())
 			return
 		}
 
@@ -263,12 +264,15 @@ func (c *Conn) authHandler(cmd string, arg string) {
 		if encoded != "" {
 			response, err = base64.StdEncoding.DecodeString(encoded)
 			if err != nil {
+				c.Write("454", "Invalid base64 data")
 				return
 			}
 		}
 	}
 
 	if c.User != nil {
+		c.Write("235", "Authentication succeeded")
+
 		c.msg = &Message{}
 	}
 }
