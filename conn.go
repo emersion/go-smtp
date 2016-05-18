@@ -220,11 +220,14 @@ func (c *Conn) authHandler(cmd string, arg string) {
 	mechanism := strings.ToUpper(parts[0])
 
 	// Parse client initial response if there is one
-	encoded := ""
+	var ir []byte
 	if len(parts) > 1 {
-		encoded = parts[1]
+		var err error
+		ir, err = base64.StdEncoding.DecodeString(parts[1])
+		if err != nil {
+			return
+		}
 	}
-	// TODO: client IR support
 
 	newSasl, ok := c.server.auths[mechanism]
 	if !ok {
@@ -233,41 +236,36 @@ func (c *Conn) authHandler(cmd string, arg string) {
 	}
 
 	sasl := newSasl(c)
-
-	ir, err := sasl.Start()
-	if err != nil {
-		return
-	}
-
-	encoded = ""
-	if len(ir) > 0 {
-		encoded = base64.StdEncoding.EncodeToString(ir)
-	}
-	c.Write("334", encoded)
-
 	scanner := bufio.NewScanner(c.reader)
-	for scanner.Scan() {
-		encoded := scanner.Text()
 
-		var challenge []byte
+	response := ir
+	for {
+		challenge, done, err := sasl.Next(response)
+		if err != nil {
+			return
+		}
+
+		if done {
+			break
+		}
+
+		encoded := ""
+		if len(challenge) > 0 {
+			encoded = base64.StdEncoding.EncodeToString(challenge)
+		}
+		c.Write("334", encoded)
+
+		if !scanner.Scan() {
+			return
+		}
+
+		encoded = scanner.Text()
 		if encoded != "" {
-			challenge, err = base64.StdEncoding.DecodeString(encoded)
+			response, err = base64.StdEncoding.DecodeString(encoded)
 			if err != nil {
 				return
 			}
 		}
-
-		var res []byte
-		if res, err = sasl.Next(challenge); err != nil {
-			return
-		}
-
-		if res == nil { // Authentication finished
-			break
-		}
-
-		encoded = base64.StdEncoding.EncodeToString(res)
-		c.Write("334", encoded)
 	}
 
 	if c.User != nil {

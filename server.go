@@ -4,6 +4,7 @@ package smtp
 import (
 	"bufio"
 	"crypto/tls"
+	"errors"
 	"io"
 	"net"
 
@@ -91,7 +92,11 @@ func New(l net.Listener, cfg *Config, bkd Backend) *Server {
 		caps:     []string{"PIPELINING", "8BITMIME"},
 		auths:    map[string]SaslServerFactory{
 			"PLAIN": func(conn *Conn) sasl.Server {
-				return sasl.NewPlainServer(func(username, password string) error {
+				return sasl.NewPlainServer(func(identity, username, password string) error {
+					if identity != "" && identity != username {
+						return errors.New("Identities not supported")
+					}
+
 					user, err := bkd.Login(username, password)
 					if err != nil {
 						return err
