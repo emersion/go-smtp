@@ -111,7 +111,9 @@ func (c *Conn) greetHandler(cmd string, arg string) {
 
 			caps = append(caps, authCap)
 		}
-		caps = append(caps, fmt.Sprintf("SIZE %v", c.server.Config.MaxMessageBytes))
+		if c.server.Config.MaxMessageBytes > 0 {
+			caps = append(caps, fmt.Sprintf("SIZE %v", c.server.Config.MaxMessageBytes))
+		}
 
 		args := []string{"Hello "+domain}
 		args = append(args, caps...)
@@ -160,7 +162,7 @@ func (c *Conn) mailHandler(cmd string, arg string) {
 				return
 			}
 
-			if int(size) > c.server.Config.MaxMessageBytes {
+			if c.server.Config.MaxMessageBytes > 0 && int(size) > c.server.Config.MaxMessageBytes {
 				c.Write("552", "Max message size exceeded")
 				return
 			}
@@ -191,7 +193,7 @@ func (c *Conn) rcptHandler(cmd string, arg string) {
 	// This trim is probably too forgiving
 	recipient := strings.Trim(arg[3:], "<> ")
 
-	if len(c.msg.To) >= c.server.Config.MaxRecipients {
+	if c.server.Config.MaxRecipients > 0 && len(c.msg.To) >= c.server.Config.MaxRecipients {
 		c.Write("552", fmt.Sprintf("Maximum limit of %v recipients reached", c.server.Config.MaxRecipients))
 		return
 	}
@@ -345,7 +347,7 @@ func (c *Conn) processData() {
 		text := string(buf[0:n])
 		msg += text
 
-		if len(msg) > c.server.Config.MaxMessageBytes {
+		if c.server.Config.MaxMessageBytes > 0 && len(msg) > c.server.Config.MaxMessageBytes {
 			c.Write("552", "Maximum message size exceeded")
 			c.reset()
 			return
@@ -380,8 +382,12 @@ func (c *Conn) greet() {
 	c.Write("220", fmt.Sprintf("%v ESMTP Service Ready", c.server.Config.Domain))
 }
 
-// Calculate the next read or write deadline based on maxIdleSeconds
+// Calculate the next read or write deadline based on MaxIdleSeconds.
 func (c *Conn) nextDeadline() time.Time {
+	if c.server.Config.MaxIdleSeconds == 0 {
+		return time.Time{} // No deadline
+	}
+
 	return time.Now().Add(time.Duration(c.server.Config.MaxIdleSeconds) * time.Second)
 }
 
