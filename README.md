@@ -25,7 +25,7 @@ import (
 
 type Backend struct {}
 
-func (bkd *Backend) Login(username, password string) (smtp.User, error) {
+func (bkd *Backend) Login(username, password string) (smtpserver.User, error) {
 	if username != "username" || password != "password" {
 		return nil, errors.New("Invalid username or password")
 	}
@@ -34,13 +34,13 @@ func (bkd *Backend) Login(username, password string) (smtp.User, error) {
 
 type User struct {}
 
-func (u *User) Send(msg *smtp.Message) error {
+func (u *User) Send(msg *smtpserver.Message) error {
 	log.Println("Message sent:", msg)
 	return nil
 }
 
 func main() {
-	cfg := &smtp.Config{
+	cfg := &smtpserver.Config{
 		Domain: "localhost",
 		MaxIdleSeconds: 300,
 		MaxMessageBytes: 1024 * 1024,
@@ -50,7 +50,7 @@ func main() {
 
 	bkd := &Backend{}
 
-	s, err := smtp.Listen(":3000", cfg, bkd)
+	s, err := smtpserver.Listen(":3000", cfg, bkd)
 	if err != nil {
 		log.Fatal(err)
 	}
