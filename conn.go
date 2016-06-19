@@ -2,11 +2,12 @@ package smtp
 
 import (
 	"bufio"
-	"bytes"
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"net"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -20,7 +21,31 @@ type Conn struct {
 	msg       *Message
 	conn      net.Conn
 	reader    *bufio.Reader
+	writer    *bufio.Writer
 	nbrErrors int
+}
+
+func newConn(c net.Conn, s *Server) *Conn {
+	sc := &Conn{
+		server: s,
+		conn:   c,
+	}
+
+	sc.init()
+	return sc
+}
+
+func (c *Conn) init() {
+	r := io.Reader(c.conn)
+	w := io.Writer(c.conn)
+
+	if c.server.Config.Debug {
+		r = io.TeeReader(r, os.Stdout)
+		w = io.MultiWriter(w, os.Stdout)
+	}
+
+	c.reader = bufio.NewReader(r)
+	c.writer = bufio.NewWriter(w)
 }
 
 // Commands are dispatched to the appropriate handler functions.
@@ -301,6 +326,7 @@ func (c *Conn) tlsHandler() {
 	}
 
 	c.conn = tlsConn
+	c.init()
 
 	// Reset envelope as a new EHLO/HELO is required after STARTTLS
 	c.reset()
@@ -326,11 +352,12 @@ func (c *Conn) dataHandler(cmd string, arg string) {
 }
 
 func (c *Conn) processData() {
+	// TODO: use a bufio.Scanner here
 	var msg string
 
+	b := make([]byte, 1024)
 	for {
-		buf := make([]byte, 1024)
-		n, err := c.conn.Read(buf)
+		n, err := c.conn.Read(b)
 
 		if n == 0 { // Connection closed by remote host
 			c.Close()
@@ -344,8 +371,7 @@ func (c *Conn) processData() {
 			break // Error reading from socket
 		}
 
-		text := string(buf[0:n])
-		msg += text
+		msg += string(b[0:n])
 
 		if c.server.Config.MaxMessageBytes > 0 && len(msg) > c.server.Config.MaxMessageBytes {
 			c.Write("552", "Maximum message size exceeded")
@@ -392,42 +418,19 @@ func (c *Conn) nextDeadline() time.Time {
 }
 
 func (c *Conn) Write(code string, text ...string) {
+	// TODO: error handling
+
 	c.conn.SetDeadline(c.nextDeadline())
 
 	if len(text) == 1 {
-		c.conn.Write([]byte(code + " " + text[0] + "\r\n"))
+		c.writer.Write([]byte(code + " " + text[0] + "\r\n"))
 		return
 	}
 	for i := 0; i < len(text)-1; i++ {
-		c.conn.Write([]byte(code + "-" + text[i] + "\r\n"))
+		c.writer.Write([]byte(code + "-" + text[i] + "\r\n"))
 	}
-	c.conn.Write([]byte(code + " " + text[len(text)-1] + "\r\n"))
-}
-
-// readByteLine reads a line of input into the provided buffer. Does
-// not reset the Buffer - please do so prior to calling.
-func (c *Conn) readByteLine(buf *bytes.Buffer) error {
-	if err := c.conn.SetReadDeadline(c.nextDeadline()); err != nil {
-		return err
-	}
-	for {
-		line, err := c.reader.ReadBytes('\r')
-		if err != nil {
-			return err
-		}
-		buf.Write(line)
-		// Read the next byte looking for '\n'
-		c, err := c.reader.ReadByte()
-		if err != nil {
-			return err
-		}
-		buf.WriteByte(c)
-		if c == '\n' {
-			// We've reached the end of the line, return
-			return nil
-		}
-		// Else, keep looking
-	}
+	c.writer.Write([]byte(code + " " + text[len(text)-1] + "\r\n"))
+	c.writer.Flush()
 }
 
 // Reads a line of input

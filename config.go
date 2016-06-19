@@ -7,4 +7,5 @@ type Config struct {
 	MaxIdleSeconds    int
 	MaxMessageBytes   int
 	AllowInsecureAuth bool
+	Debug             bool
 }

@@ -2,7 +2,6 @@
 package smtp
 
 import (
-	"bufio"
 	"crypto/tls"
 	"errors"
 	"io"
@@ -31,16 +30,12 @@ type Server struct {
 // Listen for incoming connections.
 func (s *Server) Listen() error {
 	for {
-		conn, err := s.listener.Accept()
+		c, err := s.listener.Accept()
 		if err != nil {
 			return err
 		}
 
-		go s.handleConn(&Conn{
-			server: s,
-			conn:   conn,
-			reader: bufio.NewReader(conn),
-		})
+		go s.handleConn(newConn(c, s))
 	}
 }
 
