@@ -57,8 +57,8 @@ func main() {
 
 	log.Println("Server listening at", s.Addr())
 
-	done := make(chan bool)
-	<-done
+	// Do something else to keep the server alive
+	select {}
 }
 ```
 
