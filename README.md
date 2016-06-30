@@ -39,6 +39,10 @@ func (u *User) Send(msg *smtpserver.Message) error {
 	return nil
 }
 
+func (u *User) Logout() error {
+	return nil
+}
+
 func main() {
 	cfg := &smtpserver.Config{
 		Domain: "localhost",
@@ -57,8 +61,7 @@ func main() {
 
 	log.Println("Server listening at", s.Addr())
 
-	done := make(chan bool)
-	<-done
+	select {}
 }
 ```
 

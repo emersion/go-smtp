@@ -19,4 +19,6 @@ type Backend interface {
 type User interface {
 	// Send an e-mail.
 	Send(msg *Message) error
+	// Logout is called when this User will no longer be used.
+	Logout() error
 }

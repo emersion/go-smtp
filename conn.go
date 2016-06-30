@@ -93,6 +93,10 @@ func (c *Conn) handle(cmd string, arg string) {
 }
 
 func (c *Conn) Close() error {
+	if c.User != nil {
+		c.User.Logout()
+	}
+
 	return c.conn.Close()
 }
 
@@ -448,6 +452,10 @@ func (c *Conn) readLine() (line string, err error) {
 }
 
 func (c *Conn) reset() {
+	if c.User != nil {
+		c.User.Logout()
+	}
+
 	c.helo = ""
 	c.User = nil
 	c.msg = nil
