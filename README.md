@@ -61,6 +61,7 @@ func main() {
 
 	log.Println("Server listening at", s.Addr())
 
+	// Do something else to keep the server alive
 	select {}
 }
 ```
