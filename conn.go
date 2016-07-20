@@ -163,6 +163,10 @@ func (c *Conn) mailHandler(cmd string, arg string) {
 		c.Write("502", "Please introduce yourself first.")
 		return
 	}
+	if c.msg == nil {
+		c.Write("502", "Please authenticate first.")
+		return
+	}
 
 	// Match FROM, while accepting '>' as quoted pair and in double quoted strings
 	// (?i) makes the regex case insensitive, (?:) is non-grouping sub-match
@@ -426,10 +430,6 @@ func (c *Conn) Write(code string, text ...string) {
 
 	c.conn.SetDeadline(c.nextDeadline())
 
-	if len(text) == 1 {
-		c.writer.Write([]byte(code + " " + text[0] + "\r\n"))
-		return
-	}
 	for i := 0; i < len(text)-1; i++ {
 		c.writer.Write([]byte(code + "-" + text[i] + "\r\n"))
 	}
