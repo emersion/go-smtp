@@ -144,7 +144,7 @@ func (c *Conn) greetHandler(cmd string, arg string) {
 			caps = append(caps, fmt.Sprintf("SIZE %v", c.server.Config.MaxMessageBytes))
 		}
 
-		args := []string{"Hello "+domain}
+		args := []string{"Hello " + domain}
 		args = append(args, caps...)
 		c.Write("250", args...)
 	default:

@@ -85,7 +85,7 @@ func New(l net.Listener, cfg *Config, bkd Backend) *Server {
 		Config:   cfg,
 		listener: l,
 		caps:     []string{"PIPELINING", "8BITMIME"},
-		auths:    map[string]SaslServerFactory{
+		auths: map[string]SaslServerFactory{
 			"PLAIN": func(conn *Conn) sasl.Server {
 				return sasl.NewPlainServer(func(identity, username, password string) error {
 					if identity != "" && identity != username {
