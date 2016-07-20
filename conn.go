@@ -60,11 +60,11 @@ func (c *Conn) handle(cmd string, arg string) {
 		// These commands are not implemented in any state
 		c.Write("502", fmt.Sprintf("%v command not implemented", cmd))
 	case "HELO", "EHLO":
-		c.greetHandler(cmd, arg)
+		c.handleGreet((cmd == "EHLO"), arg)
 	case "MAIL":
-		c.mailHandler(cmd, arg)
+		c.handleMail(arg)
 	case "RCPT":
-		c.rcptHandler(cmd, arg)
+		c.handleRcpt(arg)
 	case "VRFY":
 		c.Write("252", "Cannot VRFY user, but will accept message")
 	case "NOOP":
@@ -73,14 +73,14 @@ func (c *Conn) handle(cmd string, arg string) {
 		c.reset()
 		c.Write("250", "Session reset")
 	case "DATA":
-		c.dataHandler(cmd, arg)
+		c.handleData(arg)
 	case "QUIT":
 		c.Write("221", "Goodnight and good luck")
 		c.Close()
 	case "AUTH":
-		c.authHandler(cmd, arg)
+		c.handleAuth(arg)
 	case "STARTTLS":
-		c.tlsHandler()
+		c.handleStartTLS()
 	default:
 		c.Write("500", fmt.Sprintf("Syntax error, %v command unrecognized", cmd))
 
@@ -107,9 +107,8 @@ func (c *Conn) IsTLS() bool {
 }
 
 // GREET state -> waiting for HELO
-func (c *Conn) greetHandler(cmd string, arg string) {
-	switch cmd {
-	case "HELO":
+func (c *Conn) handleGreet(enhanced bool, arg string) {
+	if !enhanced {
 		domain, err := parseHelloArgument(arg)
 		if err != nil {
 			c.Write("501", "Domain/address argument required for HELO")
@@ -118,7 +117,7 @@ func (c *Conn) greetHandler(cmd string, arg string) {
 		c.helo = domain
 
 		c.Write("250", fmt.Sprintf("Hello %s", domain))
-	case "EHLO":
+	} else {
 		domain, err := parseHelloArgument(arg)
 		if err != nil {
 			c.Write("501", "Domain/address argument required for EHLO")
@@ -147,18 +146,11 @@ func (c *Conn) greetHandler(cmd string, arg string) {
 		args := []string{"Hello " + domain}
 		args = append(args, caps...)
 		c.Write("250", args...)
-	default:
-		c.ooSeq(cmd)
 	}
 }
 
 // READY state -> waiting for MAIL
-func (c *Conn) mailHandler(cmd string, arg string) {
-	if cmd != "MAIL" {
-		c.ooSeq(cmd)
-		return
-	}
-
+func (c *Conn) handleMail(arg string) {
 	if c.helo == "" {
 		c.Write("502", "Please introduce yourself first.")
 		return
@@ -207,12 +199,7 @@ func (c *Conn) mailHandler(cmd string, arg string) {
 }
 
 // MAIL state -> waiting for RCPTs followed by DATA
-func (c *Conn) rcptHandler(cmd string, arg string) {
-	if cmd != "RCPT" {
-		c.ooSeq(cmd)
-		return
-	}
-
+func (c *Conn) handleRcpt(arg string) {
 	if c.msg == nil || c.msg.From == "" {
 		c.Write("502", "Missing MAIL FROM command.")
 		return
@@ -223,7 +210,7 @@ func (c *Conn) rcptHandler(cmd string, arg string) {
 		return
 	}
 
-	// This trim is probably too forgiving
+	// TODO: This trim is probably too forgiving
 	recipient := strings.Trim(arg[3:], "<> ")
 
 	if c.server.Config.MaxRecipients > 0 && len(c.msg.To) >= c.server.Config.MaxRecipients {
@@ -235,12 +222,7 @@ func (c *Conn) rcptHandler(cmd string, arg string) {
 	c.Write("250", fmt.Sprintf("I'll make sure <%v> gets this", recipient))
 }
 
-func (c *Conn) authHandler(cmd string, arg string) {
-	if cmd != "AUTH" {
-		c.ooSeq(cmd)
-		return
-	}
-
+func (c *Conn) handleAuth(arg string) {
 	if c.helo == "" {
 		c.Write("502", "Please introduce yourself first.")
 		return
@@ -312,7 +294,7 @@ func (c *Conn) authHandler(cmd string, arg string) {
 	}
 }
 
-func (c *Conn) tlsHandler() {
+func (c *Conn) handleStartTLS() {
 	if c.IsTLS() {
 		c.Write("502", "Already running in TLS")
 		return
@@ -341,7 +323,7 @@ func (c *Conn) tlsHandler() {
 }
 
 // DATA
-func (c *Conn) dataHandler(cmd string, arg string) {
+func (c *Conn) handleData(arg string) {
 	if arg != "" {
 		c.Write("501", "DATA command should not have any arguments")
 		return
@@ -459,8 +441,4 @@ func (c *Conn) reset() {
 	c.helo = ""
 	c.User = nil
 	c.msg = nil
-}
-
-func (c *Conn) ooSeq(cmd string) {
-	c.Write("503", fmt.Sprintf("Command %v is out of sequence", cmd))
 }
