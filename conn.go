@@ -380,7 +380,7 @@ func (c *Conn) processData() {
 		c.msg.Data = []byte(msg)
 
 		if err := c.User.Send(c.msg); err != nil {
-			c.Write("554", "Error: transaction failed, blame it on the weather")
+			c.Write("554", "Error: transaction failed, blame it on the weather: " + err.Error())
 		} else {
 			c.Write("250", "Ok: queued")
 		}
