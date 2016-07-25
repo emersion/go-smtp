@@ -36,19 +36,20 @@ func (u *user) Logout() error {
 }
 
 func testServer(t *testing.T) (be *backend, s *smtpserver.Server, c net.Conn, scanner *bufio.Scanner) {
-	cfg := &smtpserver.Config{
-		Domain: "localhost",
-		AllowInsecureAuth: true,
-	}
-
-	be = &backend{}
-
-	s, err := smtpserver.Listen("127.0.0.1:0", cfg, be)
+	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	c, err = net.Dial("tcp", s.Addr().String())
+	cfg := &smtpserver.Config{
+		Domain: "localhost",
+		AllowInsecureAuth: true,
+	}
+	be = &backend{}
+	s = smtpserver.New(cfg, be)
+	go s.Serve(l)
+
+	c, err = net.Dial("tcp", l.Addr().String())
 	if err != nil {
 		t.Fatal(err)
 	}

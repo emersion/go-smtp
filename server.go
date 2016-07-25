@@ -15,36 +15,59 @@ type SaslServerFactory func(conn *Conn) sasl.Server
 
 // A SMTP server.
 type Server struct {
+	// TCP address to listen on.
+	Addr string
+	// The server TLS configuration.
+	TLSConfig *tls.Config
+
 	// The server backend.
 	Backend Backend
 	// The server configuration.
 	Config *Config
-	// The server TLS configuration.
-	TLSConfig *tls.Config
 
 	listener net.Listener
 	caps     []string
 	auths    map[string]SaslServerFactory
 }
 
-// Listen for incoming connections.
-func (s *Server) Listen() error {
+// Create a new SMTP server.
+func New(cfg *Config, bkd Backend) *Server {
+	return &Server{
+		Backend:  bkd,
+		Config:   cfg,
+		caps:     []string{"PIPELINING", "8BITMIME"},
+		auths: map[string]SaslServerFactory{
+			"PLAIN": func(conn *Conn) sasl.Server {
+				return sasl.NewPlainServer(func(identity, username, password string) error {
+					if identity != "" && identity != username {
+						return errors.New("Identities not supported")
+					}
+
+					user, err := bkd.Login(username, password)
+					if err != nil {
+						return err
+					}
+
+					conn.User = user
+					return nil
+				})
+			},
+		},
+	}
+}
+
+func (s *Server) Serve(l net.Listener) error {
+	s.listener = l
+	defer s.Close()
+
 	for {
-		c, err := s.listener.Accept()
+		c, err := l.Accept()
 		if err != nil {
 			return err
 		}
 
 		go s.handleConn(newConn(c, s))
 	}
-}
-
-func (s *Server) Addr() net.Addr {
-	return s.listener.Addr()
-}
-
-func (s *Server) Close() {
-	s.listener.Close()
 }
 
 func (s *Server) handleConn(c *Conn) error {
@@ -78,51 +101,44 @@ func (s *Server) handleConn(c *Conn) error {
 	}
 }
 
-// Create a new SMTP server.
-func New(l net.Listener, cfg *Config, bkd Backend) *Server {
-	return &Server{
-		Backend:  bkd,
-		Config:   cfg,
-		listener: l,
-		caps:     []string{"PIPELINING", "8BITMIME"},
-		auths: map[string]SaslServerFactory{
-			"PLAIN": func(conn *Conn) sasl.Server {
-				return sasl.NewPlainServer(func(identity, username, password string) error {
-					if identity != "" && identity != username {
-						return errors.New("Identities not supported")
-					}
-
-					user, err := bkd.Login(username, password)
-					if err != nil {
-						return err
-					}
-
-					conn.User = user
-					return nil
-				})
-			},
-		},
+// ListenAndServe listens on the TCP network address s.Addr and then calls Serve
+// to handle requests on incoming connections.
+//
+// If s.Addr is blank, ":smtp" is used.
+func (s *Server) ListenAndServe() error {
+	addr := s.Addr
+	if addr == "" {
+		addr = ":smtp"
 	}
-}
 
-func Listen(addr string, cfg *Config, bkd Backend) (s *Server, err error) {
 	l, err := net.Listen("tcp", addr)
 	if err != nil {
-		return
+		return err
 	}
 
-	s = New(l, cfg, bkd)
-	go s.Listen()
-	return
+	return s.Serve(l)
 }
 
-func ListenTLS(addr string, cfg *Config, bkd Backend, tlsConfig *tls.Config) (s *Server, err error) {
-	l, err := tls.Listen("tcp", addr, tlsConfig)
-	if err != nil {
-		return
+// ListenAndServeTLS listens on the TCP network address s.Addr and then calls
+// Serve to handle requests on incoming TLS connections.
+//
+// If s.Addr is blank, ":smtps" is used.
+func (s *Server) ListenAndServeTLS() error {
+	addr := s.Addr
+	if addr == "" {
+		addr = ":smtps"
 	}
 
-	s = New(l, cfg, bkd)
-	go s.Listen()
-	return
+	l, err := tls.Listen("tcp", addr, s.TLSConfig)
+	if err != nil {
+		return err
+	}
+
+	return s.Serve(l)
+}
+
+func (s *Server) Close() {
+	// TODO: say bye to all clients
+
+	s.listener.Close()
 }
