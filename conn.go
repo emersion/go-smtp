@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -39,9 +38,9 @@ func (c *Conn) init() {
 	r := io.Reader(c.conn)
 	w := io.Writer(c.conn)
 
-	if c.server.Config.Debug {
-		r = io.TeeReader(r, os.Stdout)
-		w = io.MultiWriter(w, os.Stdout)
+	if c.server.Debug != nil {
+		r = io.TeeReader(r, c.server.Debug)
+		w = io.MultiWriter(w, c.server.Debug)
 	}
 
 	c.reader = bufio.NewReader(r)
@@ -131,7 +130,7 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 		if c.server.TLSConfig != nil && !c.IsTLS() {
 			caps = append(caps, "STARTTLS")
 		}
-		if c.IsTLS() || c.server.Config.AllowInsecureAuth {
+		if c.IsTLS() || c.server.AllowInsecureAuth {
 			authCap := "AUTH"
 			for name, _ := range c.server.auths {
 				authCap += " " + name
@@ -139,8 +138,8 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 
 			caps = append(caps, authCap)
 		}
-		if c.server.Config.MaxMessageBytes > 0 {
-			caps = append(caps, fmt.Sprintf("SIZE %v", c.server.Config.MaxMessageBytes))
+		if c.server.MaxMessageBytes > 0 {
+			caps = append(caps, fmt.Sprintf("SIZE %v", c.server.MaxMessageBytes))
 		}
 
 		args := []string{"Hello " + domain}
@@ -187,7 +186,7 @@ func (c *Conn) handleMail(arg string) {
 				return
 			}
 
-			if c.server.Config.MaxMessageBytes > 0 && int(size) > c.server.Config.MaxMessageBytes {
+			if c.server.MaxMessageBytes > 0 && int(size) > c.server.MaxMessageBytes {
 				c.Write("552", "Max message size exceeded")
 				return
 			}
@@ -213,8 +212,8 @@ func (c *Conn) handleRcpt(arg string) {
 	// TODO: This trim is probably too forgiving
 	recipient := strings.Trim(arg[3:], "<> ")
 
-	if c.server.Config.MaxRecipients > 0 && len(c.msg.To) >= c.server.Config.MaxRecipients {
-		c.Write("552", fmt.Sprintf("Maximum limit of %v recipients reached", c.server.Config.MaxRecipients))
+	if c.server.MaxRecipients > 0 && len(c.msg.To) >= c.server.MaxRecipients {
+		c.Write("552", fmt.Sprintf("Maximum limit of %v recipients reached", c.server.MaxRecipients))
 		return
 	}
 
@@ -363,7 +362,7 @@ func (c *Conn) processData() {
 
 		msg += string(b[0:n])
 
-		if c.server.Config.MaxMessageBytes > 0 && len(msg) > c.server.Config.MaxMessageBytes {
+		if c.server.MaxMessageBytes > 0 && len(msg) > c.server.MaxMessageBytes {
 			c.Write("552", "Maximum message size exceeded")
 			c.reset()
 			return
@@ -395,16 +394,16 @@ func (c *Conn) Reject() {
 }
 
 func (c *Conn) greet() {
-	c.Write("220", fmt.Sprintf("%v ESMTP Service Ready", c.server.Config.Domain))
+	c.Write("220", fmt.Sprintf("%v ESMTP Service Ready", c.server.Domain))
 }
 
 // Calculate the next read or write deadline based on MaxIdleSeconds.
 func (c *Conn) nextDeadline() time.Time {
-	if c.server.Config.MaxIdleSeconds == 0 {
+	if c.server.MaxIdleSeconds == 0 {
 		return time.Time{} // No deadline
 	}
 
-	return time.Now().Add(time.Duration(c.server.Config.MaxIdleSeconds) * time.Second)
+	return time.Now().Add(time.Duration(c.server.MaxIdleSeconds) * time.Second)
 }
 
 func (c *Conn) Write(code string, text ...string) {

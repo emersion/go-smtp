@@ -41,12 +41,12 @@ func testServer(t *testing.T) (be *backend, s *smtpserver.Server, c net.Conn, sc
 		t.Fatal(err)
 	}
 
-	cfg := &smtpserver.Config{
-		Domain: "localhost",
-		AllowInsecureAuth: true,
-	}
 	be = &backend{}
-	s = smtpserver.New(cfg, be)
+
+	s = smtpserver.New(be)
+	s.Domain = "localhost"
+	s.AllowInsecureAuth = true
+
 	go s.Serve(l)
 
 	c, err = net.Dial("tcp", l.Addr().String())

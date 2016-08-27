@@ -20,10 +20,15 @@ type Server struct {
 	// The server TLS configuration.
 	TLSConfig *tls.Config
 
+	Domain            string
+	MaxRecipients     int
+	MaxIdleSeconds    int
+	MaxMessageBytes   int
+	AllowInsecureAuth bool
+	Debug             io.Writer
+
 	// The server backend.
 	Backend Backend
-	// The server configuration.
-	Config *Config
 
 	listener net.Listener
 	caps     []string
@@ -31,10 +36,9 @@ type Server struct {
 }
 
 // Create a new SMTP server.
-func New(cfg *Config, bkd Backend) *Server {
+func New(bkd Backend) *Server {
 	return &Server{
 		Backend:  bkd,
-		Config:   cfg,
 		caps:     []string{"PIPELINING", "8BITMIME"},
 		auths: map[string]SaslServerFactory{
 			"PLAIN": func(conn *Conn) sasl.Server {
