@@ -1,13 +1,17 @@
 package smtp
 
+import (
+	"io"
+)
+
 // A SMTP message.
 type Message struct {
 	// The sender e-mail address.
 	From string
 	// The recipients e-mail addresses.
 	To []string
-	// The message data.
-	Data []byte
+	// The message data. Make sure to always close the reader.
+	Data io.ReadCloser
 }
 
 // A SMTP server backend.

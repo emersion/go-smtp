@@ -14,16 +14,19 @@ An ESMTP server library written in Go.
 ## Usage
 
 ```go
+// +build ignore
+
 package main
 
 import (
 	"errors"
+	"io/ioutil"
 	"log"
 
 	smtpserver "github.com/emersion/go-smtp-server"
 )
 
-type Backend struct {}
+type Backend struct{}
 
 func (bkd *Backend) Login(username, password string) (smtpserver.User, error) {
 	if username != "username" || password != "password" {
@@ -32,10 +35,18 @@ func (bkd *Backend) Login(username, password string) (smtpserver.User, error) {
 	return &User{}, nil
 }
 
-type User struct {}
+type User struct{}
 
 func (u *User) Send(msg *smtpserver.Message) error {
-	log.Println("Message sent:", msg)
+	defer msg.Data.Close()
+
+	log.Println("Sending message:", msg)
+
+	if b, err := ioutil.ReadAll(msg.Data); err != nil {
+		return err
+	} else {
+		log.Println("Data:", string(b))
+	}
 	return nil
 }
 
@@ -44,31 +55,27 @@ func (u *User) Logout() error {
 }
 
 func main() {
-	cfg := &smtpserver.Config{
-		Domain: "localhost",
-		MaxIdleSeconds: 300,
-		MaxMessageBytes: 1024 * 1024,
-		MaxRecipients: 50,
-		AllowInsecureAuth: true,
-	}
-
 	bkd := &Backend{}
 
-	s, err := smtpserver.Listen(":3000", cfg, bkd)
-	if err != nil {
+	s := smtpserver.New(bkd)
+
+	s.Addr = ":1025"
+	s.Domain = "localhost"
+	s.MaxIdleSeconds = 300
+	s.MaxMessageBytes = 1024 * 1024
+	s.MaxRecipients = 50
+	s.AllowInsecureAuth = true
+
+	log.Println("Starting server at", s.Addr)
+	if err := s.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
-
-	log.Println("Server listening at", s.Addr())
-
-	// Do something else to keep the server alive
-	select {}
 }
 ```
 
 You can use the server manually with `telnet`:
 ```
-$ telnet localhost 3000
+$ telnet localhost 1025
 EHLO localhost
 AUTH PLAIN
 AHVzZXJuYW1lAHBhc3N3b3Jk

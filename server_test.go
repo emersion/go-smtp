@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"io"
+	"io/ioutil"
 	"net"
 	"strings"
 	"testing"
@@ -13,6 +14,7 @@ import (
 
 type backend struct {
 	messages []*smtpserver.Message
+	data [][]byte
 }
 
 func (be *backend) Login(username, password string) (smtpserver.User, error) {
@@ -28,6 +30,11 @@ type user struct {
 
 func (u *user) Send(msg *smtpserver.Message) error {
 	u.backend.messages = append(u.backend.messages, msg)
+	if b, err := ioutil.ReadAll(msg.Data); err != nil {
+		return err
+	} else {
+		u.backend.data = append(u.backend.data, b)
+	}
 	return nil
 }
 
@@ -163,7 +170,9 @@ func TestServer(t *testing.T) {
 	if len(msg.To) != 1 || msg.To[0] != "root@gchq.gov.uk" {
 		t.Fatal("Invalid mail recipients:", msg.To)
 	}
-	if string(msg.Data) != "Hey <3" {
-		t.Fatal("Invalid mail data:", string(msg.Data))
+
+	data := be.data[0]
+	if string(data) != "Hey <3\n" {
+		t.Fatal("Invalid mail data:", string(data))
 	}
 }

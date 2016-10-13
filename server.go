@@ -35,11 +35,11 @@ type Server struct {
 	auths    map[string]SaslServerFactory
 }
 
-// Create a new SMTP server.
+// New creates a new SMTP server.
 func New(bkd Backend) *Server {
 	return &Server{
-		Backend:  bkd,
-		caps:     []string{"PIPELINING", "8BITMIME"},
+		Backend: bkd,
+		caps:    []string{"PIPELINING", "8BITMIME"},
 		auths: map[string]SaslServerFactory{
 			"PLAIN": func(conn *Conn) sasl.Server {
 				return sasl.NewPlainServer(func(identity, username, password string) error {
@@ -60,6 +60,7 @@ func New(bkd Backend) *Server {
 	}
 }
 
+// Serve accepts incoming connections on the Listener l.
 func (s *Server) Serve(l net.Listener) error {
 	s.listener = l
 	defer s.Close()
@@ -141,8 +142,17 @@ func (s *Server) ListenAndServeTLS() error {
 	return s.Serve(l)
 }
 
+// Close stops the server.
 func (s *Server) Close() {
 	// TODO: say bye to all clients
 
 	s.listener.Close()
+}
+
+// EnableAuth enables an authentication mechanism on this server.
+//
+// This function should not be called directly, it must only be used by
+// libraries implementing extensions of the IMAP protocol.
+func (s *Server) EnableAuth(name string, f SaslServerFactory) {
+	s.auths[name] = f
 }

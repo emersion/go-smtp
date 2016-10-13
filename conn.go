@@ -336,53 +336,15 @@ func (c *Conn) handleData(arg string) {
 	// We have recipients, go to accept data
 	c.Write("354", "Go ahead. End your data with <CR><LF>.<CR><LF>")
 
-	c.processData()
-	return
-}
-
-func (c *Conn) processData() {
-	// TODO: use a bufio.Scanner here
-	var msg string
-
-	b := make([]byte, 1024)
-	for {
-		n, err := c.conn.Read(b)
-
-		if n == 0 { // Connection closed by remote host
-			c.Close()
-			break
-		}
-
-		if err != nil {
-			if neterr, ok := err.(net.Error); ok && neterr.Timeout() {
-				c.Write("221", "Idle timeout, bye bye")
-			}
-			break // Error reading from socket
-		}
-
-		msg += string(b[0:n])
-
-		if c.server.MaxMessageBytes > 0 && len(msg) > c.server.MaxMessageBytes {
-			c.Write("552", "Maximum message size exceeded")
-			c.reset()
-			return
-		}
-
-		// Postfix bug ugly hack (\r\n.\r\nQUIT\r\n)
-		if strings.HasSuffix(msg, "\r\n.\r\n") || strings.LastIndex(msg, "\r\n.\r\n") != -1 {
-			break
-		}
-	}
-
-	if len(msg) > 0 { // Got EOF, storing message and switching to MAIL state
-		msg = strings.TrimSuffix(msg, "\r\n.\r\n")
-		c.msg.Data = []byte(msg)
-
-		if err := c.User.Send(c.msg); err != nil {
-			c.Write("554", "Error: transaction failed, blame it on the weather: " + err.Error())
+	c.msg.Data = newDataReader(c)
+	if err := c.User.Send(c.msg); err != nil {
+		if err, ok := err.(*smtpError); ok {
+			c.Write(err.Code, err.Message)
 		} else {
-			c.Write("250", "Ok: queued")
+			c.Write("554", "Error: transaction failed, blame it on the weather: "+err.Error())
 		}
+	} else {
+		c.Write("250", "Ok: queued")
 	}
 
 	c.reset()
