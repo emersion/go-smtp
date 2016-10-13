@@ -38,8 +38,6 @@ func (bkd *Backend) Login(username, password string) (smtpserver.User, error) {
 type User struct{}
 
 func (u *User) Send(msg *smtpserver.Message) error {
-	defer msg.Data.Close()
-
 	log.Println("Sending message:", msg)
 
 	if b, err := ioutil.ReadAll(msg.Data); err != nil {
