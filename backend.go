@@ -10,8 +10,8 @@ type Message struct {
 	From string
 	// The recipients e-mail addresses.
 	To []string
-	// The message data. Make sure to always close the reader.
-	Data io.ReadCloser
+	// The message data.
+	Data io.Reader
 }
 
 // A SMTP server backend.

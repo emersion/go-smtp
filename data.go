@@ -2,7 +2,6 @@ package smtp
 
 import (
 	"io"
-	"io/ioutil"
 	"net/textproto"
 )
 
@@ -28,7 +27,7 @@ type dataReader struct {
 	n int64 // Maximum bytes remaining
 }
 
-func newDataReader(c *Conn) io.ReadCloser {
+func newDataReader(c *Conn) io.Reader {
 	dr := &dataReader{
 		c: c,
 		r: textproto.NewReader(c.reader).DotReader(),
@@ -58,11 +57,4 @@ func (r *dataReader) Read(b []byte) (n int, err error) {
 		r.n -= int64(n)
 	}
 	return
-}
-
-func (r *dataReader) Close() error {
-	if _, err := io.Copy(ioutil.Discard, r); err != nil {
-		return err
-	}
-	return nil
 }
