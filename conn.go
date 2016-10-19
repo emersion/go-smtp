@@ -91,6 +91,10 @@ func (c *Conn) handle(cmd string, arg string) {
 	}
 }
 
+func (c *Conn) Server() *Server {
+	return c.server
+}
+
 func (c *Conn) Close() error {
 	if c.User != nil {
 		c.User.Logout()
