@@ -86,7 +86,4 @@ Hey <3
 
 ## Licence
 
-Copyright © 2014 Gleez Technologies  
-Copyright © 2016 emersion  
-
-Released under MIT license, see [LICENSE](LICENSE) for details.
+MIT
