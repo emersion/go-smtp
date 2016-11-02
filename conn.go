@@ -25,11 +25,8 @@ type message struct {
 }
 
 type Conn struct {
-	// Text is the textproto.Conn used by the Conn. It is exported to allow for
-	// servers to add extensions.
-	Text *textproto.Conn
-
 	conn      net.Conn
+	text      *textproto.Conn
 	server    *Server
 	helo      string
 	User      User
@@ -61,7 +58,7 @@ func (c *Conn) init() {
 		}
 	}
 
-	c.Text = textproto.NewConn(rwc)
+	c.text = textproto.NewConn(rwc)
 }
 
 // Commands are dispatched to the appropriate handler functions.
@@ -292,7 +289,7 @@ func (c *Conn) handleAuth(arg string) {
 		}
 		c.WriteResponse(334, encoded)
 
-		encoded, err = c.Text.ReadLine()
+		encoded, err = c.ReadLine()
 		if err != nil {
 			return // TODO: error handling
 		}
@@ -392,9 +389,9 @@ func (c *Conn) WriteResponse(code int, text ...string) {
 	c.conn.SetDeadline(c.nextDeadline())
 
 	for i := 0; i < len(text)-1; i++ {
-		c.Text.PrintfLine("%v-%v", code, text[i])
+		c.text.PrintfLine("%v-%v", code, text[i])
 	}
-	c.Text.PrintfLine("%v %v", code, text[len(text)-1])
+	c.text.PrintfLine("%v %v", code, text[len(text)-1])
 }
 
 // Reads a line of input
@@ -403,7 +400,7 @@ func (c *Conn) ReadLine() (string, error) {
 		return "", err
 	}
 
-	return c.Text.ReadLine()
+	return c.text.ReadLine()
 }
 
 func (c *Conn) reset() {
