@@ -7,7 +7,10 @@ package smtp_test
 import (
 	"fmt"
 	"log"
-	"net/smtp"
+	"strings"
+
+	"github.com/emersion/go-sasl"
+	"github.com/emersion/go-smtp"
 )
 
 func Example() {
@@ -50,14 +53,14 @@ func Example() {
 // unnecessary noise there.
 var (
 	from       = "gopher@example.net"
-	msg        = []byte("dummy message")
+	msg        = strings.NewReader("dummy message")
 	recipients = []string{"foo@example.com"}
 )
 
 func ExamplePlainAuth() {
 	// hostname is used by PlainAuth to validate the TLS certificate.
 	hostname := "mail.example.com"
-	auth := smtp.PlainAuth("", "user@example.com", "password", hostname)
+	auth := sasl.NewPlainClient("", "user@example.com", "password")
 
 	err := smtp.SendMail(hostname+":25", auth, from, recipients, msg)
 	if err != nil {
@@ -67,12 +70,12 @@ func ExamplePlainAuth() {
 
 func ExampleSendMail() {
 	// Set up authentication information.
-	auth := smtp.PlainAuth("", "user@example.com", "password", "mail.example.com")
+	auth := sasl.NewPlainClient("", "user@example.com", "password")
 
 	// Connect to the server, authenticate, set the sender and recipient,
 	// and send the email all in one step.
 	to := []string{"recipient@example.net"}
-	msg := []byte("To: recipient@example.net\r\n" +
+	msg := strings.NewReader("To: recipient@example.net\r\n" +
 		"Subject: discount Gophers!\r\n" +
 		"\r\n" +
 		"This is the email body.\r\n")
