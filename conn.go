@@ -47,7 +47,7 @@ func newConn(c net.Conn, s *Server) *Conn {
 func (c *Conn) init() {
 	var rwc io.ReadWriteCloser = c.conn
 	if c.server.Debug != nil {
-		rwc = struct{
+		rwc = struct {
 			io.Reader
 			io.Writer
 			io.Closer

@@ -14,7 +14,7 @@ import (
 
 type message struct {
 	From string
-	To []string
+	To   []string
 	Data []byte
 }
 
@@ -39,7 +39,7 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 	} else {
 		u.backend.messages = append(u.backend.messages, &message{
 			From: from,
-			To: to,
+			To:   to,
 			Data: b,
 		})
 	}

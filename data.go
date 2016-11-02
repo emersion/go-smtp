@@ -5,7 +5,7 @@ import (
 )
 
 type smtpError struct {
-	Code int
+	Code    int
 	Message string
 }
 
@@ -14,7 +14,7 @@ func (err *smtpError) Error() string {
 }
 
 var ErrDataTooLarge = &smtpError{
-	Code: 552,
+	Code:    552,
 	Message: "Maximum message size exceeded",
 }
 
@@ -22,7 +22,7 @@ type dataReader struct {
 	r io.Reader
 
 	limited bool
-	n int64 // Maximum bytes remaining
+	n       int64 // Maximum bytes remaining
 }
 
 func newDataReader(c *Conn) io.Reader {
