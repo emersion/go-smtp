@@ -280,24 +280,24 @@ var testHookStartTLS func(*tls.Config) // nil, except for tests
 // SendMail connects to the server at addr, switches to TLS if
 // possible, authenticates with the optional mechanism a if possible,
 // and then sends an email from address from, to addresses to, with
-// message msg.
+// message r.
 // The addr must include a port, as in "mail.example.com:smtp".
 //
 // The addresses in the to parameter are the SMTP RCPT addresses.
 //
-// The msg parameter should be an RFC 822-style email with headers
-// first, a blank line, and then the message body. The lines of msg
-// should be CRLF terminated. The msg headers should usually include
+// The r parameter should be an RFC 822-style email with headers
+// first, a blank line, and then the message body. The lines of r
+// should be CRLF terminated. The r headers should usually include
 // fields such as "From", "To", "Subject", and "Cc".  Sending "Bcc"
 // messages is accomplished by including an email address in the to
-// parameter but not including it in the msg headers.
+// parameter but not including it in the r headers.
 //
 // The SendMail function and the the net/smtp package are low-level
 // mechanisms and provide no support for DKIM signing, MIME
 // attachments (see the mime/multipart package), or other mail
 // functionality. Higher-level packages exist outside of the standard
 // library.
-func SendMail(addr string, a sasl.Client, from string, to []string, msg []byte) error {
+func SendMail(addr string, a sasl.Client, from string, to []string, r io.Reader) error {
 	c, err := Dial(addr)
 	if err != nil {
 		return err
@@ -334,7 +334,7 @@ func SendMail(addr string, a sasl.Client, from string, to []string, msg []byte) 
 	if err != nil {
 		return err
 	}
-	_, err = w.Write(msg)
+	_, err = io.Copy(w, r)
 	if err != nil {
 		return err
 	}

@@ -389,7 +389,7 @@ func TestSendMail(t *testing.T) {
 		}
 	}(strings.Split(server, "\r\n"))
 
-	err = SendMail(l.Addr().String(), nil, "test@example.com", []string{"other@example.com"}, []byte(strings.Replace(`From: test@example.com
+	err = SendMail(l.Addr().String(), nil, "test@example.com", []string{"other@example.com"}, strings.NewReader(strings.Replace(`From: test@example.com
 To: other@example.com
 Subject: SendMail test
 
@@ -627,7 +627,7 @@ func sendMail(hostPort string) error {
 	auth := sasl.NewPlainClient("", "", "")
 	from := "joe1@example.com"
 	to := []string{"joe2@example.com"}
-	return SendMail(hostPort, auth, from, to, []byte("Subject: test\n\nhowdy!"))
+	return SendMail(hostPort, auth, from, to, strings.NewReader("Subject: test\n\nhowdy!"))
 }
 
 // (copied from net/http/httptest)
