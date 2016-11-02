@@ -13,11 +13,22 @@ import (
 	"time"
 )
 
+// A SMTP message.
+type message struct {
+	// The message contents.
+	io.Reader
+
+	// The sender e-mail address.
+	From string
+	// The recipients e-mail addresses.
+	To []string
+}
+
 type Conn struct {
 	server    *Server
 	helo      string
 	User      User
-	msg       *Message
+	msg       *message
 	conn      net.Conn
 	reader    *bufio.Reader
 	writer    *bufio.Writer
@@ -293,7 +304,7 @@ func (c *Conn) handleAuth(arg string) {
 	if c.User != nil {
 		c.Write("235", "Authentication succeeded")
 
-		c.msg = &Message{}
+		c.msg = &message{}
 	}
 }
 
@@ -341,7 +352,7 @@ func (c *Conn) handleData(arg string) {
 	c.Write("354", "Go ahead. End your data with <CR><LF>.<CR><LF>")
 
 	c.msg.Reader = newDataReader(c)
-	if err := c.User.Send(c.msg); err != nil {
+	if err := c.User.Send(c.msg.From, c.msg.To, c.msg.Reader); err != nil {
 		if err, ok := err.(*smtpError); ok {
 			c.Write(err.Code, err.Message)
 		} else {

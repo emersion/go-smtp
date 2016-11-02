@@ -12,9 +12,14 @@ import (
 	"github.com/emersion/go-smtp-server"
 )
 
+type message struct {
+	From string
+	To []string
+	Data []byte
+}
+
 type backend struct {
-	messages []*smtp.Message
-	data [][]byte
+	messages []*message
 }
 
 func (be *backend) Login(username, password string) (smtp.User, error) {
@@ -28,12 +33,15 @@ type user struct {
 	backend *backend
 }
 
-func (u *user) Send(msg *smtp.Message) error {
-	u.backend.messages = append(u.backend.messages, msg)
-	if b, err := ioutil.ReadAll(msg.Reader); err != nil {
+func (u *user) Send(from string, to []string, r io.Reader) error {
+	if b, err := ioutil.ReadAll(r); err != nil {
 		return err
 	} else {
-		u.backend.data = append(u.backend.data, b)
+		u.backend.messages = append(u.backend.messages, &message{
+			From: from,
+			To: to,
+			Data: b,
+		})
 	}
 	return nil
 }
@@ -170,9 +178,7 @@ func TestServer(t *testing.T) {
 	if len(msg.To) != 1 || msg.To[0] != "root@gchq.gov.uk" {
 		t.Fatal("Invalid mail recipients:", msg.To)
 	}
-
-	data := be.data[0]
-	if string(data) != "Hey <3\n" {
-		t.Fatal("Invalid mail data:", string(data))
+	if string(msg.Data) != "Hey <3\n" {
+		t.Fatal("Invalid mail data:", string(msg.Data))
 	}
 }
