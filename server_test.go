@@ -9,15 +9,20 @@ import (
 	"strings"
 	"testing"
 
-	smtpserver "github.com/emersion/go-smtp-server"
+	"github.com/emersion/go-smtp-server"
 )
 
-type backend struct {
-	messages []*smtpserver.Message
-	data [][]byte
+type message struct {
+	From string
+	To   []string
+	Data []byte
 }
 
-func (be *backend) Login(username, password string) (smtpserver.User, error) {
+type backend struct {
+	messages []*message
+}
+
+func (be *backend) Login(username, password string) (smtp.User, error) {
 	if username != "username" || password != "password" {
 		return nil, errors.New("Invalid username or password")
 	}
@@ -28,12 +33,15 @@ type user struct {
 	backend *backend
 }
 
-func (u *user) Send(msg *smtpserver.Message) error {
-	u.backend.messages = append(u.backend.messages, msg)
-	if b, err := ioutil.ReadAll(msg.Data); err != nil {
+func (u *user) Send(from string, to []string, r io.Reader) error {
+	if b, err := ioutil.ReadAll(r); err != nil {
 		return err
 	} else {
-		u.backend.data = append(u.backend.data, b)
+		u.backend.messages = append(u.backend.messages, &message{
+			From: from,
+			To:   to,
+			Data: b,
+		})
 	}
 	return nil
 }
@@ -42,7 +50,7 @@ func (u *user) Logout() error {
 	return nil
 }
 
-func testServer(t *testing.T) (be *backend, s *smtpserver.Server, c net.Conn, scanner *bufio.Scanner) {
+func testServer(t *testing.T) (be *backend, s *smtp.Server, c net.Conn, scanner *bufio.Scanner) {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -50,7 +58,7 @@ func testServer(t *testing.T) (be *backend, s *smtpserver.Server, c net.Conn, sc
 
 	be = &backend{}
 
-	s = smtpserver.New(be)
+	s = smtp.NewServer(be)
 	s.Domain = "localhost"
 	s.AllowInsecureAuth = true
 
@@ -65,7 +73,7 @@ func testServer(t *testing.T) (be *backend, s *smtpserver.Server, c net.Conn, sc
 	return
 }
 
-func testServerGreeted(t *testing.T) (be *backend, s *smtpserver.Server, c net.Conn, scanner *bufio.Scanner) {
+func testServerGreeted(t *testing.T) (be *backend, s *smtp.Server, c net.Conn, scanner *bufio.Scanner) {
 	be, s, c, scanner = testServer(t)
 
 	scanner.Scan()
@@ -76,7 +84,7 @@ func testServerGreeted(t *testing.T) (be *backend, s *smtpserver.Server, c net.C
 	return
 }
 
-func testServerEhlo(t *testing.T) (be *backend, s *smtpserver.Server, c net.Conn, scanner *bufio.Scanner) {
+func testServerEhlo(t *testing.T) (be *backend, s *smtp.Server, c net.Conn, scanner *bufio.Scanner) {
 	be, s, c, scanner = testServerGreeted(t)
 
 	io.WriteString(c, "EHLO localhost\r\n")
@@ -112,7 +120,7 @@ func testServerEhlo(t *testing.T) (be *backend, s *smtpserver.Server, c net.Conn
 	return
 }
 
-func testServerAuthenticated(t *testing.T) (be *backend, s *smtpserver.Server, c net.Conn, scanner *bufio.Scanner) {
+func testServerAuthenticated(t *testing.T) (be *backend, s *smtp.Server, c net.Conn, scanner *bufio.Scanner) {
 	be, s, c, scanner = testServerEhlo(t)
 
 	io.WriteString(c, "AUTH PLAIN\r\n")
@@ -170,9 +178,7 @@ func TestServer(t *testing.T) {
 	if len(msg.To) != 1 || msg.To[0] != "root@gchq.gov.uk" {
 		t.Fatal("Invalid mail recipients:", msg.To)
 	}
-
-	data := be.data[0]
-	if string(data) != "Hey <3\n" {
-		t.Fatal("Invalid mail data:", string(data))
+	if string(msg.Data) != "Hey <3\n" {
+		t.Fatal("Invalid mail data:", string(msg.Data))
 	}
 }

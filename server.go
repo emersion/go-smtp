@@ -36,9 +36,9 @@ type Server struct {
 }
 
 // New creates a new SMTP server.
-func New(bkd Backend) *Server {
+func NewServer(be Backend) *Server {
 	return &Server{
-		Backend: bkd,
+		Backend: be,
 		caps:    []string{"PIPELINING", "8BITMIME"},
 		auths: map[string]SaslServerFactory{
 			sasl.Plain: func(conn *Conn) sasl.Server {
@@ -47,7 +47,7 @@ func New(bkd Backend) *Server {
 						return errors.New("Identities not supported")
 					}
 
-					user, err := bkd.Login(username, password)
+					user, err := be.Login(username, password)
 					if err != nil {
 						return err
 					}
@@ -80,12 +80,12 @@ func (s *Server) handleConn(c *Conn) error {
 	c.greet()
 
 	for {
-		line, err := c.readLine()
+		line, err := c.ReadLine()
 		if err == nil {
 			cmd, arg, err := parseCmd(line)
 			if err != nil {
 				c.nbrErrors++
-				c.Write("501", "Bad command")
+				c.WriteResponse(501, "Bad command")
 				continue
 			}
 
@@ -96,11 +96,11 @@ func (s *Server) handleConn(c *Conn) error {
 			}
 
 			if neterr, ok := err.(net.Error); ok && neterr.Timeout() {
-				c.Write("221", "Idle timeout, bye bye")
+				c.WriteResponse(221, "Idle timeout, bye bye")
 				return nil
 			}
 
-			c.Write("221", "Connection error, sorry")
+			c.WriteResponse(221, "Connection error, sorry")
 			return err
 		}
 	}

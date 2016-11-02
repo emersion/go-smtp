@@ -2,16 +2,19 @@
 
 [![GoDoc](https://godoc.org/github.com/emersion/go-smtp-server?status.svg)](https://godoc.org/github.com/emersion/go-smtp-server)
 [![Build Status](https://travis-ci.org/emersion/go-smtp-server.svg?branch=master)](https://travis-ci.org/emersion/go-smtp-server)
+[![stability-unstable](https://img.shields.io/badge/stability-unstable-yellow.svg)](https://github.com/emersion/stability-badges#unstable)
 
-An ESMTP server library written in Go.
+An ESMTP client and server library written in Go.
 
 ## Features
 
-* ESMTP server implementing [RFC 5321](https://tools.ietf.org/html/rfc5321)
-* Support for SMTP AUTH ([RFC 4954](https://tools.ietf.org/html/rfc4954)) and PIPELINING ([RFC 2920](https://tools.ietf.org/html/rfc2920))
+* ESMTP client & server implementing [RFC 5321](https://tools.ietf.org/html/rfc5321)
+* Support for SMTP [AUTH](https://tools.ietf.org/html/rfc4954) and [PIPELINING](https://tools.ietf.org/html/rfc2920)
 * UTF-8 support for subject and message
 
 ## Usage
+
+### Server
 
 ```go
 // +build ignore
@@ -23,12 +26,12 @@ import (
 	"io/ioutil"
 	"log"
 
-	smtpserver "github.com/emersion/go-smtp-server"
+	"github.com/emersion/go-smtp"
 )
 
 type Backend struct{}
 
-func (bkd *Backend) Login(username, password string) (smtpserver.User, error) {
+func (bkd *Backend) Login(username, password string) (smtp.User, error) {
 	if username != "username" || password != "password" {
 		return nil, errors.New("Invalid username or password")
 	}
@@ -37,10 +40,10 @@ func (bkd *Backend) Login(username, password string) (smtpserver.User, error) {
 
 type User struct{}
 
-func (u *User) Send(msg *smtpserver.Message) error {
-	log.Println("Sending message:", msg)
+func (u *User) Send(from string, to []string, r io.Reader) error {
+	log.Println("Sending message:", from, to)
 
-	if b, err := ioutil.ReadAll(msg.Data); err != nil {
+	if b, err := ioutil.ReadAll(r); err != nil {
 		return err
 	} else {
 		log.Println("Data:", string(b))
@@ -53,9 +56,9 @@ func (u *User) Logout() error {
 }
 
 func main() {
-	bkd := &Backend{}
+	be := &Backend{}
 
-	s := smtpserver.New(bkd)
+	s := smtp.NewServer(be)
 
 	s.Addr = ":1025"
 	s.Domain = "localhost"
