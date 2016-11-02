@@ -1,12 +1,12 @@
 package smtp
 
 import (
-	"bufio"
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
 	"io"
 	"net"
+	"net/textproto"
 	"regexp"
 	"strconv"
 	"strings"
@@ -25,13 +25,15 @@ type message struct {
 }
 
 type Conn struct {
+	// Text is the textproto.Conn used by the Conn. It is exported to allow for
+	// servers to add extensions.
+	Text *textproto.Conn
+
+	conn      net.Conn
 	server    *Server
 	helo      string
 	User      User
 	msg       *message
-	conn      net.Conn
-	reader    *bufio.Reader
-	writer    *bufio.Writer
 	nbrErrors int
 }
 
@@ -46,29 +48,33 @@ func newConn(c net.Conn, s *Server) *Conn {
 }
 
 func (c *Conn) init() {
-	r := io.Reader(c.conn)
-	w := io.Writer(c.conn)
-
+	var rwc io.ReadWriteCloser = c.conn
 	if c.server.Debug != nil {
-		r = io.TeeReader(r, c.server.Debug)
-		w = io.MultiWriter(w, c.server.Debug)
+		rwc = struct{
+			io.Reader
+			io.Writer
+			io.Closer
+		}{
+			io.TeeReader(c.conn, c.server.Debug),
+			io.MultiWriter(c.conn, c.server.Debug),
+			c.conn,
+		}
 	}
 
-	c.reader = bufio.NewReader(r)
-	c.writer = bufio.NewWriter(w)
+	c.Text = textproto.NewConn(rwc)
 }
 
 // Commands are dispatched to the appropriate handler functions.
 func (c *Conn) handle(cmd string, arg string) {
 	if cmd == "" {
-		c.Write("500", "Speak up")
+		c.WriteResponse(500, "Speak up")
 		return
 	}
 
 	switch cmd {
 	case "SEND", "SOML", "SAML", "EXPN", "HELP", "TURN":
 		// These commands are not implemented in any state
-		c.Write("502", fmt.Sprintf("%v command not implemented", cmd))
+		c.WriteResponse(502, fmt.Sprintf("%v command not implemented", cmd))
 	case "HELO", "EHLO":
 		c.handleGreet((cmd == "EHLO"), arg)
 	case "MAIL":
@@ -76,27 +82,27 @@ func (c *Conn) handle(cmd string, arg string) {
 	case "RCPT":
 		c.handleRcpt(arg)
 	case "VRFY":
-		c.Write("252", "Cannot VRFY user, but will accept message")
+		c.WriteResponse(252, "Cannot VRFY user, but will accept message")
 	case "NOOP":
-		c.Write("250", "I have sucessfully done nothing")
+		c.WriteResponse(250, "I have sucessfully done nothing")
 	case "RSET": // Reset session
 		c.reset()
-		c.Write("250", "Session reset")
+		c.WriteResponse(250, "Session reset")
 	case "DATA":
 		c.handleData(arg)
 	case "QUIT":
-		c.Write("221", "Goodnight and good luck")
+		c.WriteResponse(221, "Goodnight and good luck")
 		c.Close()
 	case "AUTH":
 		c.handleAuth(arg)
 	case "STARTTLS":
 		c.handleStartTLS()
 	default:
-		c.Write("500", fmt.Sprintf("Syntax error, %v command unrecognized", cmd))
+		c.WriteResponse(500, fmt.Sprintf("Syntax error, %v command unrecognized", cmd))
 
 		c.nbrErrors++
 		if c.nbrErrors > 3 {
-			c.Write("500", "Too many unrecognized commands")
+			c.WriteResponse(500, "Too many unrecognized commands")
 			c.Close()
 		}
 	}
@@ -125,16 +131,16 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 	if !enhanced {
 		domain, err := parseHelloArgument(arg)
 		if err != nil {
-			c.Write("501", "Domain/address argument required for HELO")
+			c.WriteResponse(501, "Domain/address argument required for HELO")
 			return
 		}
 		c.helo = domain
 
-		c.Write("250", fmt.Sprintf("Hello %s", domain))
+		c.WriteResponse(250, fmt.Sprintf("Hello %s", domain))
 	} else {
 		domain, err := parseHelloArgument(arg)
 		if err != nil {
-			c.Write("501", "Domain/address argument required for EHLO")
+			c.WriteResponse(501, "Domain/address argument required for EHLO")
 			return
 		}
 
@@ -159,18 +165,18 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 
 		args := []string{"Hello " + domain}
 		args = append(args, caps...)
-		c.Write("250", args...)
+		c.WriteResponse(250, args...)
 	}
 }
 
 // READY state -> waiting for MAIL
 func (c *Conn) handleMail(arg string) {
 	if c.helo == "" {
-		c.Write("502", "Please introduce yourself first.")
+		c.WriteResponse(502, "Please introduce yourself first.")
 		return
 	}
 	if c.msg == nil {
-		c.Write("502", "Please authenticate first.")
+		c.WriteResponse(502, "Please authenticate first.")
 		return
 	}
 
@@ -179,7 +185,7 @@ func (c *Conn) handleMail(arg string) {
 	re := regexp.MustCompile("(?i)^FROM:\\s*<((?:\\\\>|[^>])+|\"[^\"]+\"@[^>]+)>( [\\w= ]+)?$")
 	m := re.FindStringSubmatch(arg)
 	if m == nil {
-		c.Write("501", "Was expecting MAIL arg syntax of FROM:<address>")
+		c.WriteResponse(501, "Was expecting MAIL arg syntax of FROM:<address>")
 		return
 	}
 
@@ -190,37 +196,37 @@ func (c *Conn) handleMail(arg string) {
 	if m[2] != "" {
 		args, err := parseArgs(m[2])
 		if err != nil {
-			c.Write("501", "Unable to parse MAIL ESMTP parameters")
+			c.WriteResponse(501, "Unable to parse MAIL ESMTP parameters")
 			return
 		}
 
 		if args["SIZE"] != "" {
 			size, err := strconv.ParseInt(args["SIZE"], 10, 32)
 			if err != nil {
-				c.Write("501", "Unable to parse SIZE as an integer")
+				c.WriteResponse(501, "Unable to parse SIZE as an integer")
 				return
 			}
 
 			if c.server.MaxMessageBytes > 0 && int(size) > c.server.MaxMessageBytes {
-				c.Write("552", "Max message size exceeded")
+				c.WriteResponse(552, "Max message size exceeded")
 				return
 			}
 		}
 	}
 
 	c.msg.From = from
-	c.Write("250", fmt.Sprintf("Roger, accepting mail from <%v>", from))
+	c.WriteResponse(250, fmt.Sprintf("Roger, accepting mail from <%v>", from))
 }
 
 // MAIL state -> waiting for RCPTs followed by DATA
 func (c *Conn) handleRcpt(arg string) {
 	if c.msg == nil || c.msg.From == "" {
-		c.Write("502", "Missing MAIL FROM command.")
+		c.WriteResponse(502, "Missing MAIL FROM command.")
 		return
 	}
 
 	if (len(arg) < 4) || (strings.ToUpper(arg[0:3]) != "TO:") {
-		c.Write("501", "Was expecting RCPT arg syntax of TO:<address>")
+		c.WriteResponse(501, "Was expecting RCPT arg syntax of TO:<address>")
 		return
 	}
 
@@ -228,22 +234,22 @@ func (c *Conn) handleRcpt(arg string) {
 	recipient := strings.Trim(arg[3:], "<> ")
 
 	if c.server.MaxRecipients > 0 && len(c.msg.To) >= c.server.MaxRecipients {
-		c.Write("552", fmt.Sprintf("Maximum limit of %v recipients reached", c.server.MaxRecipients))
+		c.WriteResponse(552, fmt.Sprintf("Maximum limit of %v recipients reached", c.server.MaxRecipients))
 		return
 	}
 
 	c.msg.To = append(c.msg.To, recipient)
-	c.Write("250", fmt.Sprintf("I'll make sure <%v> gets this", recipient))
+	c.WriteResponse(250, fmt.Sprintf("I'll make sure <%v> gets this", recipient))
 }
 
 func (c *Conn) handleAuth(arg string) {
 	if c.helo == "" {
-		c.Write("502", "Please introduce yourself first.")
+		c.WriteResponse(502, "Please introduce yourself first.")
 		return
 	}
 
 	if arg == "" {
-		c.Write("502", "Missing parameter")
+		c.WriteResponse(502, "Missing parameter")
 		return
 	}
 
@@ -262,18 +268,17 @@ func (c *Conn) handleAuth(arg string) {
 
 	newSasl, ok := c.server.auths[mechanism]
 	if !ok {
-		c.Write("504", "Unsupported authentication mechanism")
+		c.WriteResponse(504, "Unsupported authentication mechanism")
 		return
 	}
 
 	sasl := newSasl(c)
-	scanner := bufio.NewScanner(c.reader)
 
 	response := ir
 	for {
 		challenge, done, err := sasl.Next(response)
 		if err != nil {
-			c.Write("454", err.Error())
+			c.WriteResponse(454, err.Error())
 			return
 		}
 
@@ -285,24 +290,22 @@ func (c *Conn) handleAuth(arg string) {
 		if len(challenge) > 0 {
 			encoded = base64.StdEncoding.EncodeToString(challenge)
 		}
-		c.Write("334", encoded)
+		c.WriteResponse(334, encoded)
 
-		if !scanner.Scan() {
-			return
+		encoded, err = c.Text.ReadLine()
+		if err != nil {
+			return // TODO: error handling
 		}
 
-		encoded = scanner.Text()
-		if encoded != "" {
-			response, err = base64.StdEncoding.DecodeString(encoded)
-			if err != nil {
-				c.Write("454", "Invalid base64 data")
-				return
-			}
+		response, err = base64.StdEncoding.DecodeString(encoded)
+		if err != nil {
+			c.WriteResponse(454, "Invalid base64 data")
+			return
 		}
 	}
 
 	if c.User != nil {
-		c.Write("235", "Authentication succeeded")
+		c.WriteResponse(235, "Authentication succeeded")
 
 		c.msg = &message{}
 	}
@@ -310,23 +313,23 @@ func (c *Conn) handleAuth(arg string) {
 
 func (c *Conn) handleStartTLS() {
 	if c.IsTLS() {
-		c.Write("502", "Already running in TLS")
+		c.WriteResponse(502, "Already running in TLS")
 		return
 	}
 
 	if c.server.TLSConfig == nil {
-		c.Write("502", "TLS not supported")
+		c.WriteResponse(502, "TLS not supported")
 		return
 	}
 
-	c.Write("220", "Ready to start TLS")
+	c.WriteResponse(220, "Ready to start TLS")
 
 	// Upgrade to TLS
 	var tlsConn *tls.Conn
 	tlsConn = tls.Server(c.conn, c.server.TLSConfig)
 
 	if err := tlsConn.Handshake(); err != nil {
-		c.Write("550", "Handshake error")
+		c.WriteResponse(550, "Handshake error")
 	}
 
 	c.conn = tlsConn
@@ -339,39 +342,39 @@ func (c *Conn) handleStartTLS() {
 // DATA
 func (c *Conn) handleData(arg string) {
 	if arg != "" {
-		c.Write("501", "DATA command should not have any arguments")
+		c.WriteResponse(501, "DATA command should not have any arguments")
 		return
 	}
 
 	if c.msg == nil || c.msg.From == "" || len(c.msg.To) == 0 {
-		c.Write("502", "Missing RCPT TO command.")
+		c.WriteResponse(502, "Missing RCPT TO command.")
 		return
 	}
 
 	// We have recipients, go to accept data
-	c.Write("354", "Go ahead. End your data with <CR><LF>.<CR><LF>")
+	c.WriteResponse(354, "Go ahead. End your data with <CR><LF>.<CR><LF>")
 
 	c.msg.Reader = newDataReader(c)
 	if err := c.User.Send(c.msg.From, c.msg.To, c.msg.Reader); err != nil {
 		if err, ok := err.(*smtpError); ok {
-			c.Write(err.Code, err.Message)
+			c.WriteResponse(err.Code, err.Message)
 		} else {
-			c.Write("554", "Error: transaction failed, blame it on the weather: "+err.Error())
+			c.WriteResponse(554, "Error: transaction failed, blame it on the weather: "+err.Error())
 		}
 	} else {
-		c.Write("250", "Ok: queued")
+		c.WriteResponse(250, "Ok: queued")
 	}
 
 	c.reset()
 }
 
 func (c *Conn) Reject() {
-	c.Write("421", "Too busy. Try again later.")
+	c.WriteResponse(421, "Too busy. Try again later.")
 	c.Close()
 }
 
 func (c *Conn) greet() {
-	c.Write("220", fmt.Sprintf("%v ESMTP Service Ready", c.server.Domain))
+	c.WriteResponse(220, fmt.Sprintf("%v ESMTP Service Ready", c.server.Domain))
 }
 
 // Calculate the next read or write deadline based on MaxIdleSeconds.
@@ -383,30 +386,24 @@ func (c *Conn) nextDeadline() time.Time {
 	return time.Now().Add(time.Duration(c.server.MaxIdleSeconds) * time.Second)
 }
 
-func (c *Conn) Write(code string, text ...string) {
+func (c *Conn) WriteResponse(code int, text ...string) {
 	// TODO: error handling
 
 	c.conn.SetDeadline(c.nextDeadline())
 
 	for i := 0; i < len(text)-1; i++ {
-		c.writer.Write([]byte(code + "-" + text[i] + "\r\n"))
+		c.Text.PrintfLine("%v-%v", code, text[i])
 	}
-	c.writer.Write([]byte(code + " " + text[len(text)-1] + "\r\n"))
-	c.writer.Flush()
+	c.Text.PrintfLine("%v %v", code, text[len(text)-1])
 }
 
 // Reads a line of input
-func (c *Conn) readLine() (line string, err error) {
-	if err = c.conn.SetReadDeadline(c.nextDeadline()); err != nil {
+func (c *Conn) ReadLine() (string, error) {
+	if err := c.conn.SetReadDeadline(c.nextDeadline()); err != nil {
 		return "", err
 	}
 
-	line, err = c.reader.ReadString('\n')
-	if err != nil {
-		return "", err
-	}
-
-	return line, nil
+	return c.Text.ReadLine()
 }
 
 func (c *Conn) reset() {

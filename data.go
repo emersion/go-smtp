@@ -2,11 +2,10 @@ package smtp
 
 import (
 	"io"
-	"net/textproto"
 )
 
 type smtpError struct {
-	Code string
+	Code int
 	Message string
 }
 
@@ -15,12 +14,11 @@ func (err *smtpError) Error() string {
 }
 
 var ErrDataTooLarge = &smtpError{
-	Code: "552",
+	Code: 552,
 	Message: "Maximum message size exceeded",
 }
 
 type dataReader struct {
-	c *Conn
 	r io.Reader
 
 	limited bool
@@ -29,8 +27,7 @@ type dataReader struct {
 
 func newDataReader(c *Conn) io.Reader {
 	dr := &dataReader{
-		c: c,
-		r: textproto.NewReader(c.reader).DotReader(),
+		r: c.Text.DotReader(),
 	}
 
 	if c.server.MaxMessageBytes > 0 {
