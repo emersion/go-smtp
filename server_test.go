@@ -50,7 +50,7 @@ func testServer(t *testing.T) (be *backend, s *smtpserver.Server, c net.Conn, sc
 
 	be = &backend{}
 
-	s = smtpserver.New(be)
+	s = smtpserver.NewServer(be)
 	s.Domain = "localhost"
 	s.AllowInsecureAuth = true
 

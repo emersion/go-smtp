@@ -36,9 +36,9 @@ type Server struct {
 }
 
 // New creates a new SMTP server.
-func New(bkd Backend) *Server {
+func NewServer(be Backend) *Server {
 	return &Server{
-		Backend: bkd,
+		Backend: be,
 		caps:    []string{"PIPELINING", "8BITMIME"},
 		auths: map[string]SaslServerFactory{
 			sasl.Plain: func(conn *Conn) sasl.Server {
@@ -47,7 +47,7 @@ func New(bkd Backend) *Server {
 						return errors.New("Identities not supported")
 					}
 
-					user, err := bkd.Login(username, password)
+					user, err := be.Login(username, password)
 					if err != nil {
 						return err
 					}
