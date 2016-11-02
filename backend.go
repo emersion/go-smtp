@@ -6,12 +6,13 @@ import (
 
 // A SMTP message.
 type Message struct {
+	// The message contents.
+	io.Reader
+
 	// The sender e-mail address.
 	From string
 	// The recipients e-mail addresses.
 	To []string
-	// The message data.
-	Data io.Reader
 }
 
 // A SMTP server backend.

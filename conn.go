@@ -340,7 +340,7 @@ func (c *Conn) handleData(arg string) {
 	// We have recipients, go to accept data
 	c.Write("354", "Go ahead. End your data with <CR><LF>.<CR><LF>")
 
-	c.msg.Data = newDataReader(c)
+	c.msg.Reader = newDataReader(c)
 	if err := c.User.Send(c.msg); err != nil {
 		if err, ok := err.(*smtpError); ok {
 			c.Write(err.Code, err.Message)
