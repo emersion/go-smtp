@@ -2,6 +2,7 @@
 
 [![GoDoc](https://godoc.org/github.com/emersion/go-smtp?status.svg)](https://godoc.org/github.com/emersion/go-smtp)
 [![Build Status](https://travis-ci.org/emersion/go-smtp.svg?branch=master)](https://travis-ci.org/emersion/go-smtp)
+[![codecov](https://codecov.io/gh/emersion/go-smtp/branch/master/graph/badge.svg)](https://codecov.io/gh/emersion/go-smtp)
 [![stability-unstable](https://img.shields.io/badge/stability-unstable-yellow.svg)](https://github.com/emersion/stability-badges#unstable)
 [![Go Report Card](https://goreportcard.com/badge/github.com/emersion/go-smtp)](https://goreportcard.com/report/github.com/emersion/go-smtp)
 
