@@ -204,8 +204,11 @@ func (c *Client) Auth(a sasl.Client) error {
 			err = &textproto.Error{Code: code, Msg: msg64}
 		}
 		if err == nil {
-			// TODO: server expects a response only if code == 334
-			resp, err = a.Next(msg)
+			if code == 334 {
+				resp, err = a.Next(msg)
+			} else {
+				resp = nil
+			}
 		}
 		if err != nil {
 			// abort the AUTH
