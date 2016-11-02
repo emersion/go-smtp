@@ -19,83 +19,6 @@ import (
 	"github.com/emersion/go-sasl"
 )
 
-type authTest struct {
-	auth       sasl.Client
-	challenges []string
-	name       string
-	responses  []string
-}
-
-var authTests = []authTest{
-	{PlainAuth("", "user", "pass", "testserver"), []string{}, "PLAIN", []string{"\x00user\x00pass"}},
-	{PlainAuth("foo", "bar", "baz", "testserver"), []string{}, "PLAIN", []string{"foo\x00bar\x00baz"}},
-	{CRAMMD5Auth("user", "pass"), []string{"<123456.1322876914@testserver>"}, "CRAM-MD5", []string{"", "user 287eb355114cf5c471c26a875f1ca4ae"}},
-}
-
-func TestAuth(t *testing.T) {
-testLoop:
-	for i, test := range authTests {
-		name, resp, err := test.auth.Start(&ServerInfo{"testserver", true, nil})
-		if name != test.name {
-			t.Errorf("#%d got name %s, expected %s", i, name, test.name)
-		}
-		if !bytes.Equal(resp, []byte(test.responses[0])) {
-			t.Errorf("#%d got response %s, expected %s", i, resp, test.responses[0])
-		}
-		if err != nil {
-			t.Errorf("#%d error: %s", i, err)
-		}
-		for j := range test.challenges {
-			challenge := []byte(test.challenges[j])
-			expected := []byte(test.responses[j+1])
-			resp, err := test.auth.Next(challenge, true)
-			if err != nil {
-				t.Errorf("#%d error: %s", i, err)
-				continue testLoop
-			}
-			if !bytes.Equal(resp, expected) {
-				t.Errorf("#%d got %s, expected %s", i, resp, expected)
-				continue testLoop
-			}
-		}
-	}
-}
-
-func TestAuthPlain(t *testing.T) {
-	auth := PlainAuth("foo", "bar", "baz", "servername")
-
-	tests := []struct {
-		server *ServerInfo
-		err    string
-	}{
-		{
-			server: &ServerInfo{Name: "servername", TLS: true},
-		},
-		{
-			// Okay; explicitly advertised by server.
-			server: &ServerInfo{Name: "servername", Auth: []string{"PLAIN"}},
-		},
-		{
-			server: &ServerInfo{Name: "servername", Auth: []string{"CRAM-MD5"}},
-			err:    "unencrypted connection",
-		},
-		{
-			server: &ServerInfo{Name: "attacker", TLS: true},
-			err:    "wrong host name",
-		},
-	}
-	for i, tt := range tests {
-		_, _, err := auth.Start(tt.server)
-		got := ""
-		if err != nil {
-			got = err.Error()
-		}
-		if got != tt.err {
-			t.Errorf("%d. got error = %q; want %q", i, got, tt.err)
-		}
-	}
-}
-
 type faker struct {
 	io.ReadWriter
 }
@@ -149,7 +72,7 @@ func TestBasic(t *testing.T) {
 	// fake TLS so authentication won't complain
 	c.tls = true
 	c.serverName = "smtp.google.com"
-	if err := c.Auth(PlainAuth("", "user", "pass", "smtp.google.com")); err != nil {
+	if err := c.Auth(sasl.NewPlainClient("", "user", "pass")); err != nil {
 		t.Fatalf("AUTH failed: %s", err)
 	}
 
@@ -346,7 +269,7 @@ func TestHello(t *testing.T) {
 		case 3:
 			c.tls = true
 			c.serverName = "smtp.google.com"
-			err = c.Auth(PlainAuth("", "user", "pass", "smtp.google.com"))
+			err = c.Auth(sasl.NewPlainClient("", "user", "pass"))
 		case 4:
 			err = c.Mail("test@example.com")
 		case 5:
@@ -524,7 +447,7 @@ func TestAuthFailed(t *testing.T) {
 
 	c.tls = true
 	c.serverName = "smtp.google.com"
-	err = c.Auth(PlainAuth("", "user", "pass", "smtp.google.com"))
+	err = c.Auth(sasl.NewPlainClient("", "user", "pass"))
 
 	if err == nil {
 		t.Error("Auth: expected error; got none")
@@ -701,11 +624,7 @@ func init() {
 }
 
 func sendMail(hostPort string) error {
-	host, _, err := net.SplitHostPort(hostPort)
-	if err != nil {
-		return err
-	}
-	auth := PlainAuth("", "", "", host)
+	auth := sasl.NewPlainClient("", "", "")
 	from := "joe1@example.com"
 	to := []string{"joe2@example.com"}
 	return SendMail(hostPort, auth, from, to, []byte("Subject: test\n\nhowdy!"))
