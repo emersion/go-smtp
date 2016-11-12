@@ -353,8 +353,8 @@ func (c *Conn) handleData(arg string) {
 
 	c.msg.Reader = newDataReader(c)
 	if err := c.User.Send(c.msg.From, c.msg.To, c.msg.Reader); err != nil {
-		if err, ok := err.(*smtpError); ok {
-			c.WriteResponse(err.Code, err.Message)
+		if smtperr, ok := err.(*smtpError); ok {
+			c.WriteResponse(smtperr.Code, smtperr.Message)
 		} else {
 			c.WriteResponse(554, "Error: transaction failed, blame it on the weather: "+err.Error())
 		}
