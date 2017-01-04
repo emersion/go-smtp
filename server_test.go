@@ -56,8 +56,7 @@ func testServer(t *testing.T) (be *backend, s *smtp.Server, c net.Conn, scanner 
 		t.Fatal(err)
 	}
 
-	be = &backend{}
-
+	be = new(backend)
 	s = smtp.NewServer(be)
 	s.Domain = "localhost"
 	s.AllowInsecureAuth = true
@@ -180,5 +179,28 @@ func TestServer(t *testing.T) {
 	}
 	if string(msg.Data) != "Hey <3\n" {
 		t.Fatal("Invalid mail data:", string(msg.Data))
+	}
+}
+
+func TestServer_tooLongMessage(t *testing.T) {
+	_, s, c, scanner := testServerAuthenticated(t)
+	defer s.Close()
+
+	s.MaxMessageBytes = 50
+
+	io.WriteString(c, "MAIL FROM:<root@nsa.gov>\r\n")
+	scanner.Scan()
+	io.WriteString(c, "RCPT TO:<root@gchq.gov.uk>\r\n")
+	scanner.Scan()
+	io.WriteString(c, "DATA\r\n")
+	scanner.Scan()
+
+	io.WriteString(c, "This is a very long message.\r\n")
+	io.WriteString(c, "Much longer than you can possibly imagine.\r\n")
+	io.WriteString(c, "And much longer than the server's MaxMessageBytes.\r\n")
+	io.WriteString(c, ".\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "552 ") {
+		t.Fatal("Invalid DATA response, expected an error but got:", scanner.Text())
 	}
 }
