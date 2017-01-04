@@ -119,6 +119,18 @@ func testServerEhlo(t *testing.T) (be *backend, s *smtp.Server, c net.Conn, scan
 	return
 }
 
+func TestServer_helo(t *testing.T) {
+	_, s, c, scanner := testServerGreeted(t)
+	defer s.Close()
+
+	io.WriteString(c, "HELO localhost\r\n")
+
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid HELO response:", scanner.Text())
+	}
+}
+
 func testServerAuthenticated(t *testing.T) (be *backend, s *smtp.Server, c net.Conn, scanner *bufio.Scanner) {
 	be, s, c, scanner = testServerEhlo(t)
 
@@ -140,6 +152,7 @@ func testServerAuthenticated(t *testing.T) (be *backend, s *smtp.Server, c net.C
 func TestServer(t *testing.T) {
 	be, s, c, scanner := testServerAuthenticated(t)
 	defer s.Close()
+	defer c.Close()
 
 	io.WriteString(c, "MAIL FROM:<root@nsa.gov>\r\n")
 	scanner.Scan()
@@ -210,16 +223,29 @@ func TestServer_otherCommands(t *testing.T) {
 		t.Fatal("Invalid RSET response:", scanner.Text())
 	}
 
-	io.WriteString(c, "XXXX\r\n") // Non-existing command
-	scanner.Scan()
-	if !strings.HasPrefix(scanner.Text(), "500 ") {
-		t.Fatal("Invalid invalid command response:", scanner.Text())
-	}
-
 	io.WriteString(c, "QUIT\r\n")
 	scanner.Scan()
 	if !strings.HasPrefix(scanner.Text(), "221 ") {
 		t.Fatal("Invalid QUIT response:", scanner.Text())
+	}
+}
+
+func TestServer_tooManyInvalidCommands(t *testing.T) {
+	_, s, c, scanner := testServerAuthenticated(t)
+	defer s.Close()
+
+	// Let's assume XXXX is a non-existing command
+	for i := 0; i < 4; i++ {
+		io.WriteString(c, "XXXX\r\n")
+		scanner.Scan()
+		if !strings.HasPrefix(scanner.Text(), "500 ") {
+			t.Fatal("Invalid invalid command response:", scanner.Text())
+		}
+	}
+
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "500 ") {
+		t.Fatal("Invalid invalid command response:", scanner.Text())
 	}
 }
 
