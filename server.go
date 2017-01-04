@@ -1,4 +1,3 @@
-// An ESMTP server library.
 package smtp
 
 import (
