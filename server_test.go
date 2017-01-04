@@ -182,6 +182,47 @@ func TestServer(t *testing.T) {
 	}
 }
 
+func TestServer_otherCommands(t *testing.T) {
+	_, s, c, scanner := testServerAuthenticated(t)
+	defer s.Close()
+
+	io.WriteString(c, "HELP\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "502 ") {
+		t.Fatal("Invalid HELP response:", scanner.Text())
+	}
+
+	io.WriteString(c, "VRFY\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "252 ") {
+		t.Fatal("Invalid VRFY response:", scanner.Text())
+	}
+
+	io.WriteString(c, "NOOP\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid NOOP response:", scanner.Text())
+	}
+
+	io.WriteString(c, "RSET\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid RSET response:", scanner.Text())
+	}
+
+	io.WriteString(c, "XXXX\r\n") // Non-existing command
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "500 ") {
+		t.Fatal("Invalid invalid command response:", scanner.Text())
+	}
+
+	io.WriteString(c, "QUIT\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "221 ") {
+		t.Fatal("Invalid QUIT response:", scanner.Text())
+	}
+}
+
 func TestServer_tooLongMessage(t *testing.T) {
 	_, s, c, scanner := testServerAuthenticated(t)
 	defer s.Close()
