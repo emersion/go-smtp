@@ -176,3 +176,12 @@ func (s *Server) Close() {
 func (s *Server) EnableAuth(name string, f SaslServerFactory) {
 	s.auths[name] = f
 }
+
+// ForEachConn iterates through all opened connections.
+func (s *Server) ForEachConn(f func(*Conn)) {
+	s.locker.Lock()
+	defer s.locker.Unlock()
+	for conn := range s.conns {
+		f(conn)
+	}
+}
