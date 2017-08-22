@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"sync"
 
 	"github.com/emersion/go-sasl"
 )
@@ -32,6 +33,9 @@ type Server struct {
 	listener net.Listener
 	caps     []string
 	auths    map[string]SaslServerFactory
+
+	locker sync.Mutex
+	conns  map[*Conn]struct{}
 }
 
 // New creates a new SMTP server.
@@ -51,11 +55,12 @@ func NewServer(be Backend) *Server {
 						return err
 					}
 
-					conn.User = user
+					conn.SetUser(user)
 					return nil
 				})
 			},
 		},
+		conns: make(map[*Conn]struct{}),
 	}
 }
 
@@ -75,7 +80,18 @@ func (s *Server) Serve(l net.Listener) error {
 }
 
 func (s *Server) handleConn(c *Conn) error {
-	defer c.Close()
+	s.locker.Lock()
+	s.conns[c] = struct{}{}
+	s.locker.Unlock()
+
+	defer func() {
+		c.Close()
+
+		s.locker.Lock()
+		delete(s.conns, c)
+		s.locker.Unlock()
+	}()
+
 	c.greet()
 
 	for {
@@ -143,15 +159,20 @@ func (s *Server) ListenAndServeTLS() error {
 
 // Close stops the server.
 func (s *Server) Close() {
-	// TODO: say bye to all clients
-
 	s.listener.Close()
+
+	s.locker.Lock()
+	defer s.locker.Unlock()
+
+	for conn := range s.conns {
+		conn.Close()
+	}
 }
 
 // EnableAuth enables an authentication mechanism on this server.
 //
 // This function should not be called directly, it must only be used by
-// libraries implementing extensions of the IMAP protocol.
+// libraries implementing extensions of the SMTP protocol.
 func (s *Server) EnableAuth(name string, f SaslServerFactory) {
 	s.auths[name] = f
 }

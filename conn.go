@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -29,9 +30,10 @@ type Conn struct {
 	text      *textproto.Conn
 	server    *Server
 	helo      string
-	User      User
 	msg       *message
 	nbrErrors int
+	user      User
+	locker    sync.Mutex
 }
 
 func newConn(c net.Conn, s *Server) *Conn {
@@ -109,9 +111,21 @@ func (c *Conn) Server() *Server {
 	return c.server
 }
 
+func (c *Conn) User() User {
+	c.locker.Lock()
+	defer c.locker.Unlock()
+	return c.user
+}
+
+func (c *Conn) SetUser(user User) {
+	c.locker.Lock()
+	defer c.locker.Unlock()
+	c.user = user
+}
+
 func (c *Conn) Close() error {
-	if c.User != nil {
-		c.User.Logout()
+	if user := c.User(); user != nil {
+		user.Logout()
 	}
 
 	return c.conn.Close()
@@ -352,7 +366,7 @@ func (c *Conn) handleData(arg string) {
 	c.WriteResponse(354, "Go ahead. End your data with <CR><LF>.<CR><LF>")
 
 	c.msg.Reader = newDataReader(c)
-	if err := c.User.Send(c.msg.From, c.msg.To, c.msg.Reader); err != nil {
+	if err := c.User().Send(c.msg.From, c.msg.To, c.msg.Reader); err != nil {
 		if smtperr, ok := err.(*smtpError); ok {
 			c.WriteResponse(smtperr.Code, smtperr.Message)
 		} else {
@@ -404,11 +418,13 @@ func (c *Conn) ReadLine() (string, error) {
 }
 
 func (c *Conn) reset() {
-	if c.User != nil {
-		c.User.Logout()
+	if user := c.User(); user != nil {
+		user.Logout()
 	}
 
+	c.locker.Lock()
 	c.helo = ""
-	c.User = nil
+	c.user = nil
 	c.msg = nil
+	c.locker.Unlock()
 }
