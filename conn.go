@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
 	"net/textproto"
 	"regexp"
@@ -366,7 +367,9 @@ func (c *Conn) handleData(arg string) {
 	c.WriteResponse(354, "Go ahead. End your data with <CR><LF>.<CR><LF>")
 
 	c.msg.Reader = newDataReader(c)
-	if err := c.User().Send(c.msg.From, c.msg.To, c.msg.Reader); err != nil {
+	err := c.User().Send(c.msg.From, c.msg.To, c.msg.Reader)
+	io.Copy(ioutil.Discard, c.msg.Reader) // Make sure all the data has been consumed
+	if err != nil {
 		if smtperr, ok := err.(*smtpError); ok {
 			c.WriteResponse(smtperr.Code, smtperr.Message)
 		} else {
