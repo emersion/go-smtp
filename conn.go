@@ -426,7 +426,6 @@ func (c *Conn) reset() {
 	}
 
 	c.locker.Lock()
-	c.helo = ""
 	c.user = nil
 	c.msg = nil
 	c.locker.Unlock()
