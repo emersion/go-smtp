@@ -45,7 +45,7 @@ func parseArgs(arg string) (args map[string]string, err error) {
 	re := regexp.MustCompile(" (\\w+)=(\\w+)")
 	pm := re.FindAllStringSubmatch(arg, -1)
 	if pm == nil {
-		return nil, fmt.Errorf("Failed to parse arg string: %q")
+		return nil, fmt.Errorf("Failed to parse arg string: %q", arg)
 	}
 
 	for _, m := range pm {
