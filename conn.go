@@ -316,7 +316,7 @@ func (c *Conn) handleAuth(arg string) {
 		}
 	}
 
-	if c.User != nil {
+	if c.User() != nil {
 		c.WriteResponse(235, "Authentication succeeded")
 
 		c.msg = &message{}
