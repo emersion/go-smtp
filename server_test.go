@@ -20,28 +20,50 @@ type message struct {
 
 type backend struct {
 	messages []*message
+	anonmsgs []*message
+
+	userErr error
 }
 
 func (be *backend) Login(username, password string) (smtp.User, error) {
+	if be.userErr != nil {
+		return &user{}, be.userErr
+	}
+
 	if username != "username" || password != "password" {
 		return nil, errors.New("Invalid username or password")
 	}
-	return &user{be}, nil
+	return &user{backend: be}, nil
+}
+
+func (be *backend) AnonymousLogin() (smtp.User, error) {
+	if be.userErr != nil {
+		return &user{}, be.userErr
+	}
+
+	return &user{backend: be, anonymous: true}, nil
 }
 
 type user struct {
-	backend *backend
+	backend   *backend
+	anonymous bool
 }
 
 func (u *user) Send(from string, to []string, r io.Reader) error {
 	if b, err := ioutil.ReadAll(r); err != nil {
 		return err
 	} else {
-		u.backend.messages = append(u.backend.messages, &message{
+		msg := &message{
 			From: from,
 			To:   to,
 			Data: b,
-		})
+		}
+
+		if u.anonymous {
+			u.backend.anonmsgs = append(u.backend.anonmsgs, msg)
+		} else {
+			u.backend.messages = append(u.backend.messages, msg)
+		}
 	}
 	return nil
 }
@@ -194,8 +216,8 @@ func TestServer(t *testing.T) {
 		t.Fatal("Invalid DATA response:", scanner.Text())
 	}
 
-	if len(be.messages) != 1 {
-		t.Fatal("Invalid number of sent messages:", be.messages)
+	if len(be.messages) != 1 || len(be.anonmsgs) != 0 {
+		t.Fatal("Invalid number of sent messages:", be.messages, be.anonmsgs)
 	}
 
 	msg := be.messages[0]
@@ -300,5 +322,43 @@ func TestServer_tooLongMessage(t *testing.T) {
 	scanner.Scan()
 	if !strings.HasPrefix(scanner.Text(), "552 ") {
 		t.Fatal("Invalid DATA response, expected an error but got:", scanner.Text())
+	}
+}
+
+func TestServer_anonymousUserError(t *testing.T) {
+	be, s, c, scanner, _ := testServerEhlo(t)
+	defer s.Close()
+	defer c.Close()
+
+	be.userErr = smtp.ErrAuthRequired
+
+	io.WriteString(c, "MAIL FROM:<root@nsa.gov>\r\n")
+	scanner.Scan()
+	if scanner.Text() != "502 Please authenticate first." {
+		t.Fatal("Backend refused anonymous mail but client was permitted:", scanner.Text())
+	}
+}
+
+func TestServer_anonymousUserOK(t *testing.T) {
+	be, s, c, scanner, _ := testServerEhlo(t)
+	defer s.Close()
+	defer c.Close()
+
+	io.WriteString(c, "MAIL FROM:<root@nsa.gov>\r\n")
+	scanner.Scan()
+	io.WriteString(c, "RCPT TO:<root@gchq.gov.uk>\r\n")
+	scanner.Scan()
+	io.WriteString(c, "DATA\r\n")
+	scanner.Scan()
+	io.WriteString(c, "Hey <3\r\n")
+	io.WriteString(c, ".\r\n")
+	scanner.Scan()
+
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid DATA response:", scanner.Text())
+	}
+
+	if len(be.messages) != 0 || len(be.anonmsgs) != 1 {
+		t.Fatal("Invalid number of sent messages:", be.messages, be.anonmsgs)
 	}
 }

@@ -8,6 +8,10 @@ import (
 type Backend interface {
 	// Authenticate a user.
 	Login(username, password string) (User, error)
+
+	// Called if the client attempts to send mail without logging in first.
+	// Respond with smtp.ErrAuthRequired if you don't want to support this.
+	AnonymousLogin() (User, error)
 }
 
 // An authenticated user.
