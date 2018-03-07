@@ -50,7 +50,15 @@ func (u *user) Logout() error {
 	return nil
 }
 
-func testServer(t *testing.T) (be *backend, s *smtp.Server, c net.Conn, scanner *bufio.Scanner) {
+type serverConfigureFunc func(*smtp.Server)
+
+var (
+	authDisabled = func(s *smtp.Server) {
+		s.AuthDisabled = true
+	}
+)
+
+func testServer(t *testing.T, fn ...serverConfigureFunc) (be *backend, s *smtp.Server, c net.Conn, scanner *bufio.Scanner) {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -60,6 +68,9 @@ func testServer(t *testing.T) (be *backend, s *smtp.Server, c net.Conn, scanner 
 	s = smtp.NewServer(be)
 	s.Domain = "localhost"
 	s.AllowInsecureAuth = true
+	for _, f := range fn {
+		f(s)
+	}
 
 	go s.Serve(l)
 
@@ -72,8 +83,8 @@ func testServer(t *testing.T) (be *backend, s *smtp.Server, c net.Conn, scanner 
 	return
 }
 
-func testServerGreeted(t *testing.T) (be *backend, s *smtp.Server, c net.Conn, scanner *bufio.Scanner) {
-	be, s, c, scanner = testServer(t)
+func testServerGreeted(t *testing.T, fn ...serverConfigureFunc) (be *backend, s *smtp.Server, c net.Conn, scanner *bufio.Scanner) {
+	be, s, c, scanner = testServer(t, fn...)
 
 	scanner.Scan()
 	if scanner.Text() != "220 localhost ESMTP Service Ready" {
@@ -83,8 +94,8 @@ func testServerGreeted(t *testing.T) (be *backend, s *smtp.Server, c net.Conn, s
 	return
 }
 
-func testServerEhlo(t *testing.T) (be *backend, s *smtp.Server, c net.Conn, scanner *bufio.Scanner) {
-	be, s, c, scanner = testServerGreeted(t)
+func testServerEhlo(t *testing.T, fn ...serverConfigureFunc) (be *backend, s *smtp.Server, c net.Conn, scanner *bufio.Scanner, caps map[string]bool) {
+	be, s, c, scanner = testServerGreeted(t, fn...)
 
 	io.WriteString(c, "EHLO localhost\r\n")
 
@@ -93,8 +104,8 @@ func testServerEhlo(t *testing.T) (be *backend, s *smtp.Server, c net.Conn, scan
 		t.Fatal("Invalid EHLO response:", scanner.Text())
 	}
 
-	expectedCaps := []string{"PIPELINING", "8BITMIME", "AUTH PLAIN"}
-	caps := map[string]bool{}
+	expectedCaps := []string{"PIPELINING", "8BITMIME"}
+	caps = make(map[string]bool)
 
 	for scanner.Scan() {
 		s := scanner.Text()
@@ -132,7 +143,11 @@ func TestServer_helo(t *testing.T) {
 }
 
 func testServerAuthenticated(t *testing.T) (be *backend, s *smtp.Server, c net.Conn, scanner *bufio.Scanner) {
-	be, s, c, scanner = testServerEhlo(t)
+	be, s, c, scanner, caps := testServerEhlo(t)
+
+	if _, ok := caps["AUTH PLAIN"]; !ok {
+		t.Fatal("AUTH PLAIN capability is missing when auth is enabled")
+	}
 
 	io.WriteString(c, "AUTH PLAIN\r\n")
 	scanner.Scan()
@@ -192,6 +207,22 @@ func TestServer(t *testing.T) {
 	}
 	if string(msg.Data) != "Hey <3\n" {
 		t.Fatal("Invalid mail data:", string(msg.Data))
+	}
+}
+
+func TestServer_authDisabled(t *testing.T) {
+	_, s, c, scanner, caps := testServerEhlo(t, authDisabled)
+	defer s.Close()
+	defer c.Close()
+
+	if _, ok := caps["AUTH PLAIN"]; ok {
+		t.Fatal("AUTH PLAIN capability is present when auth is disabled")
+	}
+
+	io.WriteString(c, "AUTH PLAIN\r\n")
+	scanner.Scan()
+	if scanner.Text() != "500 Syntax error, AUTH command unrecognized" {
+		t.Fatal("Invalid AUTH response with auth disabled:", scanner.Text())
 	}
 }
 

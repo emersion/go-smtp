@@ -64,6 +64,16 @@ func (c *Conn) init() {
 	c.text = textproto.NewConn(rwc)
 }
 
+func (c *Conn) unrecognizedCommand(cmd string) {
+	c.WriteResponse(500, fmt.Sprintf("Syntax error, %v command unrecognized", cmd))
+
+	c.nbrErrors++
+	if c.nbrErrors > 3 {
+		c.WriteResponse(500, "Too many unrecognized commands")
+		c.Close()
+	}
+}
+
 // Commands are dispatched to the appropriate handler functions.
 func (c *Conn) handle(cmd string, arg string) {
 	if cmd == "" {
@@ -94,17 +104,15 @@ func (c *Conn) handle(cmd string, arg string) {
 		c.WriteResponse(221, "Goodnight and good luck")
 		c.Close()
 	case "AUTH":
-		c.handleAuth(arg)
+		if c.server.AuthDisabled {
+			c.unrecognizedCommand(cmd)
+		} else {
+			c.handleAuth(arg)
+		}
 	case "STARTTLS":
 		c.handleStartTLS()
 	default:
-		c.WriteResponse(500, fmt.Sprintf("Syntax error, %v command unrecognized", cmd))
-
-		c.nbrErrors++
-		if c.nbrErrors > 3 {
-			c.WriteResponse(500, "Too many unrecognized commands")
-			c.Close()
-		}
+		c.unrecognizedCommand(cmd)
 	}
 }
 
@@ -138,6 +146,11 @@ func (c *Conn) IsTLS() bool {
 	return ok
 }
 
+func (c *Conn) authAllowed() bool {
+	return !c.server.AuthDisabled &&
+		(c.IsTLS() || c.server.AllowInsecureAuth)
+}
+
 // GREET state -> waiting for HELO
 func (c *Conn) handleGreet(enhanced bool, arg string) {
 	if !enhanced {
@@ -163,7 +176,7 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 		if c.server.TLSConfig != nil && !c.IsTLS() {
 			caps = append(caps, "STARTTLS")
 		}
-		if c.IsTLS() || c.server.AllowInsecureAuth {
+		if c.authAllowed() {
 			authCap := "AUTH"
 			for name, _ := range c.server.auths {
 				authCap += " " + name
