@@ -71,6 +71,11 @@ func (bkd *Backend) Login(username, password string) (smtp.User, error) {
 	return &User{}, nil
 }
 
+// Require clients to authenticate using SMTP AUTH before sending emails
+func (bkd *Backend) AnonymousLogin() (smtp.User, error) {
+	return nil, smtp.ErrAuthRequired
+}
+
 type User struct{}
 
 func (u *User) Send(from string, to []string, r io.Reader) error {

@@ -20,28 +20,50 @@ type message struct {
 
 type backend struct {
 	messages []*message
+	anonmsgs []*message
+
+	userErr error
 }
 
 func (be *backend) Login(username, password string) (smtp.User, error) {
+	if be.userErr != nil {
+		return &user{}, be.userErr
+	}
+
 	if username != "username" || password != "password" {
 		return nil, errors.New("Invalid username or password")
 	}
-	return &user{be}, nil
+	return &user{backend: be}, nil
+}
+
+func (be *backend) AnonymousLogin() (smtp.User, error) {
+	if be.userErr != nil {
+		return &user{}, be.userErr
+	}
+
+	return &user{backend: be, anonymous: true}, nil
 }
 
 type user struct {
-	backend *backend
+	backend   *backend
+	anonymous bool
 }
 
 func (u *user) Send(from string, to []string, r io.Reader) error {
 	if b, err := ioutil.ReadAll(r); err != nil {
 		return err
 	} else {
-		u.backend.messages = append(u.backend.messages, &message{
+		msg := &message{
 			From: from,
 			To:   to,
 			Data: b,
-		})
+		}
+
+		if u.anonymous {
+			u.backend.anonmsgs = append(u.backend.anonmsgs, msg)
+		} else {
+			u.backend.messages = append(u.backend.messages, msg)
+		}
 	}
 	return nil
 }
@@ -50,7 +72,15 @@ func (u *user) Logout() error {
 	return nil
 }
 
-func testServer(t *testing.T) (be *backend, s *smtp.Server, c net.Conn, scanner *bufio.Scanner) {
+type serverConfigureFunc func(*smtp.Server)
+
+var (
+	authDisabled = func(s *smtp.Server) {
+		s.AuthDisabled = true
+	}
+)
+
+func testServer(t *testing.T, fn ...serverConfigureFunc) (be *backend, s *smtp.Server, c net.Conn, scanner *bufio.Scanner) {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -60,6 +90,9 @@ func testServer(t *testing.T) (be *backend, s *smtp.Server, c net.Conn, scanner 
 	s = smtp.NewServer(be)
 	s.Domain = "localhost"
 	s.AllowInsecureAuth = true
+	for _, f := range fn {
+		f(s)
+	}
 
 	go s.Serve(l)
 
@@ -72,8 +105,8 @@ func testServer(t *testing.T) (be *backend, s *smtp.Server, c net.Conn, scanner 
 	return
 }
 
-func testServerGreeted(t *testing.T) (be *backend, s *smtp.Server, c net.Conn, scanner *bufio.Scanner) {
-	be, s, c, scanner = testServer(t)
+func testServerGreeted(t *testing.T, fn ...serverConfigureFunc) (be *backend, s *smtp.Server, c net.Conn, scanner *bufio.Scanner) {
+	be, s, c, scanner = testServer(t, fn...)
 
 	scanner.Scan()
 	if scanner.Text() != "220 localhost ESMTP Service Ready" {
@@ -83,8 +116,8 @@ func testServerGreeted(t *testing.T) (be *backend, s *smtp.Server, c net.Conn, s
 	return
 }
 
-func testServerEhlo(t *testing.T) (be *backend, s *smtp.Server, c net.Conn, scanner *bufio.Scanner) {
-	be, s, c, scanner = testServerGreeted(t)
+func testServerEhlo(t *testing.T, fn ...serverConfigureFunc) (be *backend, s *smtp.Server, c net.Conn, scanner *bufio.Scanner, caps map[string]bool) {
+	be, s, c, scanner = testServerGreeted(t, fn...)
 
 	io.WriteString(c, "EHLO localhost\r\n")
 
@@ -93,8 +126,8 @@ func testServerEhlo(t *testing.T) (be *backend, s *smtp.Server, c net.Conn, scan
 		t.Fatal("Invalid EHLO response:", scanner.Text())
 	}
 
-	expectedCaps := []string{"PIPELINING", "8BITMIME", "AUTH PLAIN"}
-	caps := map[string]bool{}
+	expectedCaps := []string{"PIPELINING", "8BITMIME"}
+	caps = make(map[string]bool)
 
 	for scanner.Scan() {
 		s := scanner.Text()
@@ -132,7 +165,11 @@ func TestServer_helo(t *testing.T) {
 }
 
 func testServerAuthenticated(t *testing.T) (be *backend, s *smtp.Server, c net.Conn, scanner *bufio.Scanner) {
-	be, s, c, scanner = testServerEhlo(t)
+	be, s, c, scanner, caps := testServerEhlo(t)
+
+	if _, ok := caps["AUTH PLAIN"]; !ok {
+		t.Fatal("AUTH PLAIN capability is missing when auth is enabled")
+	}
 
 	io.WriteString(c, "AUTH PLAIN\r\n")
 	scanner.Scan()
@@ -179,8 +216,8 @@ func TestServer(t *testing.T) {
 		t.Fatal("Invalid DATA response:", scanner.Text())
 	}
 
-	if len(be.messages) != 1 {
-		t.Fatal("Invalid number of sent messages:", be.messages)
+	if len(be.messages) != 1 || len(be.anonmsgs) != 0 {
+		t.Fatal("Invalid number of sent messages:", be.messages, be.anonmsgs)
 	}
 
 	msg := be.messages[0]
@@ -192,6 +229,22 @@ func TestServer(t *testing.T) {
 	}
 	if string(msg.Data) != "Hey <3\n" {
 		t.Fatal("Invalid mail data:", string(msg.Data))
+	}
+}
+
+func TestServer_authDisabled(t *testing.T) {
+	_, s, c, scanner, caps := testServerEhlo(t, authDisabled)
+	defer s.Close()
+	defer c.Close()
+
+	if _, ok := caps["AUTH PLAIN"]; ok {
+		t.Fatal("AUTH PLAIN capability is present when auth is disabled")
+	}
+
+	io.WriteString(c, "AUTH PLAIN\r\n")
+	scanner.Scan()
+	if scanner.Text() != "500 Syntax error, AUTH command unrecognized" {
+		t.Fatal("Invalid AUTH response with auth disabled:", scanner.Text())
 	}
 }
 
@@ -269,5 +322,43 @@ func TestServer_tooLongMessage(t *testing.T) {
 	scanner.Scan()
 	if !strings.HasPrefix(scanner.Text(), "552 ") {
 		t.Fatal("Invalid DATA response, expected an error but got:", scanner.Text())
+	}
+}
+
+func TestServer_anonymousUserError(t *testing.T) {
+	be, s, c, scanner, _ := testServerEhlo(t)
+	defer s.Close()
+	defer c.Close()
+
+	be.userErr = smtp.ErrAuthRequired
+
+	io.WriteString(c, "MAIL FROM:<root@nsa.gov>\r\n")
+	scanner.Scan()
+	if scanner.Text() != "502 Please authenticate first." {
+		t.Fatal("Backend refused anonymous mail but client was permitted:", scanner.Text())
+	}
+}
+
+func TestServer_anonymousUserOK(t *testing.T) {
+	be, s, c, scanner, _ := testServerEhlo(t)
+	defer s.Close()
+	defer c.Close()
+
+	io.WriteString(c, "MAIL FROM:<root@nsa.gov>\r\n")
+	scanner.Scan()
+	io.WriteString(c, "RCPT TO:<root@gchq.gov.uk>\r\n")
+	scanner.Scan()
+	io.WriteString(c, "DATA\r\n")
+	scanner.Scan()
+	io.WriteString(c, "Hey <3\r\n")
+	io.WriteString(c, ".\r\n")
+	scanner.Scan()
+
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid DATA response:", scanner.Text())
+	}
+
+	if len(be.messages) != 0 || len(be.anonmsgs) != 1 {
+		t.Fatal("Invalid number of sent messages:", be.messages, be.anonmsgs)
 	}
 }

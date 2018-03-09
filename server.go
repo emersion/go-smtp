@@ -27,6 +27,10 @@ type Server struct {
 	AllowInsecureAuth bool
 	Debug             io.Writer
 
+	// If set, the AUTH command will not be advertised and authentication
+	// attempts will be rejected. This setting overrides AllowInsecureAuth.
+	AuthDisabled bool
+
 	// The server backend.
 	Backend Backend
 

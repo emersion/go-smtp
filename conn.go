@@ -37,6 +37,10 @@ type Conn struct {
 	locker    sync.Mutex
 }
 
+var (
+	ErrAuthRequired = fmt.Errorf("Please authenticate first.")
+)
+
 func newConn(c net.Conn, s *Server) *Conn {
 	sc := &Conn{
 		server: s,
@@ -62,6 +66,16 @@ func (c *Conn) init() {
 	}
 
 	c.text = textproto.NewConn(rwc)
+}
+
+func (c *Conn) unrecognizedCommand(cmd string) {
+	c.WriteResponse(500, fmt.Sprintf("Syntax error, %v command unrecognized", cmd))
+
+	c.nbrErrors++
+	if c.nbrErrors > 3 {
+		c.WriteResponse(500, "Too many unrecognized commands")
+		c.Close()
+	}
 }
 
 // Commands are dispatched to the appropriate handler functions.
@@ -94,17 +108,15 @@ func (c *Conn) handle(cmd string, arg string) {
 		c.WriteResponse(221, "Goodnight and good luck")
 		c.Close()
 	case "AUTH":
-		c.handleAuth(arg)
+		if c.server.AuthDisabled {
+			c.unrecognizedCommand(cmd)
+		} else {
+			c.handleAuth(arg)
+		}
 	case "STARTTLS":
 		c.handleStartTLS()
 	default:
-		c.WriteResponse(500, fmt.Sprintf("Syntax error, %v command unrecognized", cmd))
-
-		c.nbrErrors++
-		if c.nbrErrors > 3 {
-			c.WriteResponse(500, "Too many unrecognized commands")
-			c.Close()
-		}
+		c.unrecognizedCommand(cmd)
 	}
 }
 
@@ -118,10 +130,12 @@ func (c *Conn) User() User {
 	return c.user
 }
 
+// Setting the user resets any message beng generated
 func (c *Conn) SetUser(user User) {
 	c.locker.Lock()
 	defer c.locker.Unlock()
 	c.user = user
+	c.msg = &message{}
 }
 
 func (c *Conn) Close() error {
@@ -136,6 +150,11 @@ func (c *Conn) Close() error {
 func (c *Conn) IsTLS() bool {
 	_, ok := c.conn.(*tls.Conn)
 	return ok
+}
+
+func (c *Conn) authAllowed() bool {
+	return !c.server.AuthDisabled &&
+		(c.IsTLS() || c.server.AllowInsecureAuth)
 }
 
 // GREET state -> waiting for HELO
@@ -163,7 +182,7 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 		if c.server.TLSConfig != nil && !c.IsTLS() {
 			caps = append(caps, "STARTTLS")
 		}
-		if c.IsTLS() || c.server.AllowInsecureAuth {
+		if c.authAllowed() {
 			authCap := "AUTH"
 			for name, _ := range c.server.auths {
 				authCap += " " + name
@@ -187,9 +206,15 @@ func (c *Conn) handleMail(arg string) {
 		c.WriteResponse(502, "Please introduce yourself first.")
 		return
 	}
-	if c.msg == nil {
-		c.WriteResponse(502, "Please authenticate first.")
-		return
+
+	if c.User() == nil {
+		user, err := c.server.Backend.AnonymousLogin()
+		if err != nil {
+			c.WriteResponse(502, err.Error())
+			return
+		}
+
+		c.SetUser(user)
 	}
 
 	// Match FROM, while accepting '>' as quoted pair and in double quoted strings
@@ -318,8 +343,6 @@ func (c *Conn) handleAuth(arg string) {
 
 	if c.User() != nil {
 		c.WriteResponse(235, "Authentication succeeded")
-
-		c.msg = &message{}
 	}
 }
 
@@ -421,12 +444,13 @@ func (c *Conn) ReadLine() (string, error) {
 }
 
 func (c *Conn) reset() {
-	if user := c.User(); user != nil {
-		user.Logout()
+	c.locker.Lock()
+	defer c.locker.Unlock()
+
+	if c.user != nil {
+		c.user.Logout()
 	}
 
-	c.locker.Lock()
 	c.user = nil
 	c.msg = nil
-	c.locker.Unlock()
 }
