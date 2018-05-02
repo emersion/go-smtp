@@ -25,7 +25,7 @@ type Server struct {
 	MaxIdleSeconds    int
 	MaxMessageBytes   int
 	AllowInsecureAuth bool
-	LenientSMTP       bool
+	StrictSMTP        bool
 	Debug             io.Writer
 
 	// If set, the AUTH command will not be advertised and authentication

@@ -2,7 +2,6 @@ package smtp
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 )
 
@@ -40,18 +39,19 @@ func parseCmd(line string) (cmd string, arg string, err error) {
 // string:
 //		" BODY=8BITMIME SIZE=1024"
 // The leading space is mandatory.
-func parseArgs(arg string) (args map[string]string, err error) {
-	args = map[string]string{}
-	re := regexp.MustCompile(" (\\w+)=(\\w+)")
-	pm := re.FindAllStringSubmatch(arg, -1)
-	if pm == nil {
-		return nil, fmt.Errorf("Failed to parse arg string: %q", arg)
+func parseArgs(args []string) (map[string]string, error) {
+	argMap := map[string]string{}
+	for _, arg := range args {
+		if arg == "" {
+			continue
+		}
+		m := strings.SplitN(arg, "=", 2)
+		if m == nil {
+			return nil, fmt.Errorf("Failed to parse arg string: %q", arg)
+		}
+		argMap[strings.ToUpper(m[0])] = m[1]
 	}
-
-	for _, m := range pm {
-		args[strings.ToUpper(m[1])] = m[2]
-	}
-	return args, nil
+	return argMap, nil
 }
 
 func parseHelloArgument(arg string) (string, error) {

@@ -8,7 +8,6 @@ import (
 	"io/ioutil"
 	"net"
 	"net/textproto"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -217,24 +216,27 @@ func (c *Conn) handleMail(arg string) {
 		c.SetUser(user)
 	}
 
-	mailFromRE := "(?i)^FROM:\\s*<((?:\\\\>|[^>])+|\"[^\"]+\"@[^>]+)>  ( [\\w= ]+)?$"
-	if c.server.LenientSMTP {
-		mailFromRE = "(?i)^FROM:[ <]*([^ >]*)[ >]*( [\\w=   ]+)?$"
-	}
-	// Match FROM, while accepting '>' as quoted pair and in double quoted strings
-	// (?i) makes the regex case insensitive, (?:) is non-grouping sub-match
-	re := regexp.MustCompile(mailFromRE)
-	m := re.FindStringSubmatch(arg)
-	if m == nil {
+	if (len(arg) < 6) || (strings.ToUpper(arg[0:5]) != "FROM:") {
 		c.WriteResponse(501, "Was expecting MAIL arg syntax of FROM:<address>")
 		return
 	}
-	from := m[1]
+	fromArgs := strings.Split(strings.Trim(arg[5:], " "), " ")
+	if c.server.StrictSMTP {
+		if !strings.HasPrefix(fromArgs[0], "<") || !strings.HasSuffix(fromArgs[0], ">") {
+			c.WriteResponse(501, "Was expecting MAIL arg syntax of FROM:<address>")
+			return
+		}
+	}
+	from := strings.Trim(fromArgs[0], "<> ")
+	if from == "" {
+		c.WriteResponse(501, "Was expecting MAIL arg syntax of FROM:<address>")
+		return
+	}
 
 	// This is where the Conn may put BODY=8BITMIME, but we already
 	// read the DATA as bytes, so it does not effect our processing.
-	if m[2] != "" {
-		args, err := parseArgs(m[2])
+	if len(fromArgs) > 1 {
+		args, err := parseArgs(fromArgs[1:])
 		if err != nil {
 			c.WriteResponse(501, "Unable to parse MAIL ESMTP parameters")
 			return
