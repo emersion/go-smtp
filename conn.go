@@ -217,15 +217,18 @@ func (c *Conn) handleMail(arg string) {
 		c.SetUser(user)
 	}
 
+	mailFromRE := "(?i)^FROM:\\s*<((?:\\\\>|[^>])+|\"[^\"]+\"@[^>]+)>  ( [\\w= ]+)?$"
+	if c.server.LenientSMTP {
+		mailFromRE = "(?i)^FROM:[ <]*([^ >]*)[ >]*( [\\w=   ]+)?$"
+	}
 	// Match FROM, while accepting '>' as quoted pair and in double quoted strings
 	// (?i) makes the regex case insensitive, (?:) is non-grouping sub-match
-	re := regexp.MustCompile("(?i)^FROM:\\s*<((?:\\\\>|[^>])+|\"[^\"]+\"@[^>]+)>( [\\w= ]+)?$")
+	re := regexp.MustCompile(mailFromRE)
 	m := re.FindStringSubmatch(arg)
 	if m == nil {
 		c.WriteResponse(501, "Was expecting MAIL arg syntax of FROM:<address>")
 		return
 	}
-
 	from := m[1]
 
 	// This is where the Conn may put BODY=8BITMIME, but we already
