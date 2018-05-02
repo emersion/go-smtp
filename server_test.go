@@ -344,7 +344,7 @@ func TestServer_anonymousUserOK(t *testing.T) {
 	defer s.Close()
 	defer c.Close()
 
-	io.WriteString(c, "MAIL FROM:<root@nsa.gov>\r\n")
+	io.WriteString(c, "MAIL FROM: root@nsa.gov\r\n")
 	scanner.Scan()
 	io.WriteString(c, "RCPT TO:<root@gchq.gov.uk>\r\n")
 	scanner.Scan()
@@ -361,4 +361,91 @@ func TestServer_anonymousUserOK(t *testing.T) {
 	if len(be.messages) != 0 || len(be.anonmsgs) != 1 {
 		t.Fatal("Invalid number of sent messages:", be.messages, be.anonmsgs)
 	}
+}
+
+func testStrictServer(t *testing.T) (s *smtp.Server, c net.Conn, scanner *bufio.Scanner) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s = smtp.NewServer(new(backend))
+	s.Domain = "localhost"
+	s.AllowInsecureAuth = true
+	s.AuthDisabled = true
+	s.StrictSMTP = true
+
+	go s.Serve(l)
+
+	c, err = net.Dial("tcp", l.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	scanner = bufio.NewScanner(c)
+
+	scanner.Scan()
+	if scanner.Text() != "220 localhost ESMTP Service Ready" {
+		t.Fatal("Invalid greeting:", scanner.Text())
+	}
+
+	io.WriteString(c, "EHLO localhost\r\n")
+
+	scanner.Scan()
+	if scanner.Text() != "250-Hello localhost" {
+		t.Fatal("Invalid EHLO response:", scanner.Text())
+	}
+
+	expectedCaps := []string{"PIPELINING", "8BITMIME"}
+	caps := make(map[string]bool)
+
+	for scanner.Scan() {
+		s := scanner.Text()
+
+		if strings.HasPrefix(s, "250 ") {
+			caps[strings.TrimPrefix(s, "250 ")] = true
+			break
+		} else {
+			if !strings.HasPrefix(s, "250-") {
+				t.Fatal("Invalid capability response:", s)
+			}
+			caps[strings.TrimPrefix(s, "250-")] = true
+		}
+	}
+
+	for _, cap := range expectedCaps {
+		if !caps[cap] {
+			t.Fatal("Missing capability:", cap)
+		}
+	}
+
+	return
+}
+
+func TestStrictServerGood(t *testing.T) {
+	s, c, scanner := testStrictServer(t)
+	defer s.Close()
+	defer c.Close()
+
+	io.WriteString(c, "MAIL FROM:<root@nsa.gov>\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid MAIL response:", scanner.Text())
+	}
+
+	return
+}
+
+func TestStrictServerBad(t *testing.T) {
+	s, c, scanner := testStrictServer(t)
+	defer s.Close()
+	defer c.Close()
+
+	io.WriteString(c, "MAIL FROM: root@nsa.gov\r\n")
+	scanner.Scan()
+	if strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid MAIL response:", scanner.Text())
+	}
+
+	return
 }
