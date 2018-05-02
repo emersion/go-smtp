@@ -214,6 +214,20 @@ func TestServerEmptyFrom2(t *testing.T) {
 	return
 }
 
+func TestServerBadESMTPVar(t *testing.T) {
+	_, s, c, scanner := testServerAuthenticated(t)
+	defer s.Close()
+	defer c.Close()
+
+	io.WriteString(c, "MAIL FROM:<alice@wonderland.book> RABBIT\r\n")
+	scanner.Scan()
+	if strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid MAIL response:", scanner.Text())
+	}
+
+	return
+}
+
 func TestServerBadSize(t *testing.T) {
 	_, s, c, scanner := testServerAuthenticated(t)
 	defer s.Close()
