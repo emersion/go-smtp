@@ -216,12 +216,12 @@ func (c *Conn) handleMail(arg string) {
 		c.SetUser(user)
 	}
 
-	if (len(arg) < 6) || (strings.ToUpper(arg[0:5]) != "FROM:") {
+	if len(arg) < 6 || strings.ToUpper(arg[0:5]) != "FROM:" {
 		c.WriteResponse(501, "Was expecting MAIL arg syntax of FROM:<address>")
 		return
 	}
 	fromArgs := strings.Split(strings.Trim(arg[5:], " "), " ")
-	if c.server.StrictSMTP {
+	if c.server.Strict {
 		if !strings.HasPrefix(fromArgs[0], "<") || !strings.HasSuffix(fromArgs[0], ">") {
 			c.WriteResponse(501, "Was expecting MAIL arg syntax of FROM:<address>")
 			return

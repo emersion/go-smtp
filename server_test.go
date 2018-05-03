@@ -463,7 +463,7 @@ func testStrictServer(t *testing.T) (s *smtp.Server, c net.Conn, scanner *bufio.
 	s.Domain = "localhost"
 	s.AllowInsecureAuth = true
 	s.AuthDisabled = true
-	s.StrictSMTP = true
+	s.Strict = true
 
 	go s.Serve(l)
 
