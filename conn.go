@@ -36,10 +36,6 @@ type Conn struct {
 	locker    sync.Mutex
 }
 
-var (
-	ErrAuthRequired = fmt.Errorf("Please authenticate first.")
-)
-
 func newConn(c net.Conn, s *Server) *Conn {
 	sc := &Conn{
 		server: s,
@@ -88,8 +84,16 @@ func (c *Conn) handle(cmd string, arg string) {
 	case "SEND", "SOML", "SAML", "EXPN", "HELP", "TURN":
 		// These commands are not implemented in any state
 		c.WriteResponse(502, fmt.Sprintf("%v command not implemented", cmd))
-	case "HELO", "EHLO":
-		c.handleGreet((cmd == "EHLO"), arg)
+	case "HELO", "EHLO", "LHLO":
+		lmtp := cmd == "LHLO"
+		enhanced := lmtp || cmd == "EHLO"
+		if c.server.LMTP && !lmtp {
+			c.WriteResponse(500, "This is a LMTP server, use LHLO")
+		}
+		if !c.server.LMTP && lmtp {
+			c.WriteResponse(500, "This is not a LMTP server")
+		}
+		c.handleGreet(enhanced, arg)
 	case "MAIL":
 		c.handleMail(arg)
 	case "RCPT":
@@ -394,17 +398,33 @@ func (c *Conn) handleData(arg string) {
 	// We have recipients, go to accept data
 	c.WriteResponse(354, "Go ahead. End your data with <CR><LF>.<CR><LF>")
 
+	var (
+		code int
+		msg string
+	)
 	c.msg.Reader = newDataReader(c)
 	err := c.User().Send(c.msg.From, c.msg.To, c.msg.Reader)
 	io.Copy(ioutil.Discard, c.msg.Reader) // Make sure all the data has been consumed
 	if err != nil {
 		if smtperr, ok := err.(*smtpError); ok {
-			c.WriteResponse(smtperr.Code, smtperr.Message)
+			code = smtperr.Code
+			msg = smtperr.Message
 		} else {
-			c.WriteResponse(554, "Error: transaction failed, blame it on the weather: "+err.Error())
+			code = 554
+			msg = "Error: transaction failed, blame it on the weather: " + err.Error()
 		}
 	} else {
-		c.WriteResponse(250, "Ok: queued")
+		code = 250
+		msg = "OK: queued"
+	}
+
+	if c.server.LMTP {
+		// TODO: support per-recipient responses
+		for _, rcpt := range c.msg.To {
+			c.WriteResponse(code, "<" + rcpt + "> " + msg)
+		}
+	} else {
+		c.WriteResponse(code, msg)
 	}
 
 	c.reset()

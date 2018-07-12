@@ -10,6 +10,8 @@ import (
 	"github.com/emersion/go-sasl"
 )
 
+var errTCPAndLMTP = errors.New("smtp: cannot start LMTP server listening on a TCP socket")
+
 // A function that creates SASL servers.
 type SaslServerFactory func(conn *Conn) sasl.Server
 
@@ -19,6 +21,9 @@ type Server struct {
 	Addr string
 	// The server TLS configuration.
 	TLSConfig *tls.Config
+	// Enable LMTP mode, as defined in RFC 2033. LMTP mode cannot be used with a
+	// TCP listener.
+	LMTP bool
 
 	Domain            string
 	MaxRecipients     int
@@ -131,6 +136,10 @@ func (s *Server) handleConn(c *Conn) error {
 //
 // If s.Addr is blank, ":smtp" is used.
 func (s *Server) ListenAndServe() error {
+	if s.LMTP {
+		return errTCPAndLMTP
+	}
+
 	addr := s.Addr
 	if addr == "" {
 		addr = ":smtp"
@@ -149,12 +158,27 @@ func (s *Server) ListenAndServe() error {
 //
 // If s.Addr is blank, ":smtps" is used.
 func (s *Server) ListenAndServeTLS() error {
+	if s.LMTP {
+		return errTCPAndLMTP
+	}
+
 	addr := s.Addr
 	if addr == "" {
 		addr = ":smtps"
 	}
 
 	l, err := tls.Listen("tcp", addr, s.TLSConfig)
+	if err != nil {
+		return err
+	}
+
+	return s.Serve(l)
+}
+
+// ListenAndServeUnix listens on a Unix address and then calls Serve to handle
+// requests on incoming connections.
+func (s *Server) ListenAndServeUnix(addr *net.UnixAddr) error {
+	l, err := net.ListenUnix("unix", addr)
 	if err != nil {
 		return err
 	}

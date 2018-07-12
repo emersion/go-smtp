@@ -1,16 +1,23 @@
 package smtp
 
 import (
+	"errors"
 	"io"
+)
+
+var (
+	ErrAuthRequired = errors.New("Please authenticate first")
+	ErrAuthUnsupported = errors.New("Authentication not supported")
 )
 
 // A SMTP server backend.
 type Backend interface {
-	// Authenticate a user.
+	// Authenticate a user. Return smtp.ErrAuthUnsupported if you don't want to
+	// support this.
 	Login(username, password string) (User, error)
 
 	// Called if the client attempts to send mail without logging in first.
-	// Respond with smtp.ErrAuthRequired if you don't want to support this.
+	// Return smtp.ErrAuthRequired if you don't want to support this.
 	AnonymousLogin() (User, error)
 }
 

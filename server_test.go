@@ -424,7 +424,7 @@ func TestServer_anonymousUserError(t *testing.T) {
 
 	io.WriteString(c, "MAIL FROM:<root@nsa.gov>\r\n")
 	scanner.Scan()
-	if scanner.Text() != "502 Please authenticate first." {
+	if scanner.Text() != "502 Please authenticate first" {
 		t.Fatal("Backend refused anonymous mail but client was permitted:", scanner.Text())
 	}
 }
@@ -522,8 +522,6 @@ func TestStrictServerGood(t *testing.T) {
 	if !strings.HasPrefix(scanner.Text(), "250 ") {
 		t.Fatal("Invalid MAIL response:", scanner.Text())
 	}
-
-	return
 }
 
 func TestStrictServerBad(t *testing.T) {
@@ -536,6 +534,52 @@ func TestStrictServerBad(t *testing.T) {
 	if strings.HasPrefix(scanner.Text(), "250 ") {
 		t.Fatal("Invalid MAIL response:", scanner.Text())
 	}
+}
 
-	return
+func TestServer_lmtpOK(t *testing.T) {
+	be, s, c, scanner := testServerGreeted(t, func(s *smtp.Server) {
+		s.LMTP = true
+	})
+	defer s.Close()
+	defer c.Close()
+
+	io.WriteString(c, "LHLO localhost\r\n")
+
+	scanner.Scan()
+	if scanner.Text() != "250-Hello localhost" {
+		t.Fatal("Invalid LHLO response:", scanner.Text())
+	}
+
+	for scanner.Scan() {
+		s := scanner.Text()
+
+		if strings.HasPrefix(s, "250 ") {
+			break
+		} else if !strings.HasPrefix(s, "250-") {
+			t.Fatal("Invalid capability response:", s)
+		}
+	}
+
+	io.WriteString(c, "MAIL FROM:<root@nsa.gov>\r\n")
+	scanner.Scan()
+	io.WriteString(c, "RCPT TO:<root@gchq.gov.uk>\r\n")
+	scanner.Scan()
+	io.WriteString(c, "RCPT TO:<root@bnd.bund.de>\r\n")
+	scanner.Scan()
+	io.WriteString(c, "DATA\r\n")
+	scanner.Scan()
+	io.WriteString(c, "Hey <3\r\n")
+	io.WriteString(c, ".\r\n")
+	scanner.Scan()
+
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid DATA first response:", scanner.Text())
+	}
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid DATA second response:", scanner.Text())
+	}
+
+	if len(be.messages) != 0 || len(be.anonmsgs) != 1 {
+		t.Fatal("Invalid number of sent messages:", be.messages, be.anonmsgs)
+	}
 }
