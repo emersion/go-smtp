@@ -80,7 +80,7 @@ func (c *Conn) handle(cmd string, arg string) {
 		return
 	}
 
-	switch cmd {
+	switch strings.ToUpper(cmd) {
 	case "SEND", "SOML", "SAML", "EXPN", "HELP", "TURN":
 		// These commands are not implemented in any state
 		c.WriteResponse(502, fmt.Sprintf("%v command not implemented", cmd))
