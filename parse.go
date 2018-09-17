@@ -10,7 +10,7 @@ func parseCmd(line string) (cmd string, arg string, err error) {
 
 	l := len(line)
 	switch {
-	case strings.HasPrefix(line, "STARTTLS"):
+	case strings.HasPrefix(strings.ToUpper(line), "STARTTLS"):
 		return "STARTTLS", "", nil
 	case l == 0:
 		return "", "", nil
