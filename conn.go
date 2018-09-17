@@ -5,9 +5,9 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
 	"net/textproto"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -63,6 +63,16 @@ func (c *Conn) init() {
 	c.text = textproto.NewConn(rwc)
 }
 
+func (c *Conn) unrecognizedCommand(cmd string) {
+	c.WriteResponse(500, fmt.Sprintf("Syntax error, %v command unrecognized", cmd))
+
+	c.nbrErrors++
+	if c.nbrErrors > 3 {
+		c.WriteResponse(500, "Too many unrecognized commands")
+		c.Close()
+	}
+}
+
 // Commands are dispatched to the appropriate handler functions.
 func (c *Conn) handle(cmd string, arg string) {
 	if cmd == "" {
@@ -74,8 +84,16 @@ func (c *Conn) handle(cmd string, arg string) {
 	case "SEND", "SOML", "SAML", "EXPN", "HELP", "TURN":
 		// These commands are not implemented in any state
 		c.WriteResponse(502, fmt.Sprintf("%v command not implemented", cmd))
-	case "HELO", "EHLO":
-		c.handleGreet((cmd == "EHLO"), arg)
+	case "HELO", "EHLO", "LHLO":
+		lmtp := cmd == "LHLO"
+		enhanced := lmtp || cmd == "EHLO"
+		if c.server.LMTP && !lmtp {
+			c.WriteResponse(500, "This is a LMTP server, use LHLO")
+		}
+		if !c.server.LMTP && lmtp {
+			c.WriteResponse(500, "This is not a LMTP server")
+		}
+		c.handleGreet(enhanced, arg)
 	case "MAIL":
 		c.handleMail(arg)
 	case "RCPT":
@@ -93,17 +111,15 @@ func (c *Conn) handle(cmd string, arg string) {
 		c.WriteResponse(221, "Goodnight and good luck")
 		c.Close()
 	case "AUTH":
-		c.handleAuth(arg)
+		if c.server.AuthDisabled {
+			c.unrecognizedCommand(cmd)
+		} else {
+			c.handleAuth(arg)
+		}
 	case "STARTTLS":
 		c.handleStartTLS()
 	default:
-		c.WriteResponse(500, fmt.Sprintf("Syntax error, %v command unrecognized", cmd))
-
-		c.nbrErrors++
-		if c.nbrErrors > 3 {
-			c.WriteResponse(500, "Too many unrecognized commands")
-			c.Close()
-		}
+		c.unrecognizedCommand(cmd)
 	}
 }
 
@@ -117,10 +133,12 @@ func (c *Conn) User() User {
 	return c.user
 }
 
+// Setting the user resets any message beng generated
 func (c *Conn) SetUser(user User) {
 	c.locker.Lock()
 	defer c.locker.Unlock()
 	c.user = user
+	c.msg = &message{}
 }
 
 func (c *Conn) Close() error {
@@ -135,6 +153,11 @@ func (c *Conn) Close() error {
 func (c *Conn) IsTLS() bool {
 	_, ok := c.conn.(*tls.Conn)
 	return ok
+}
+
+func (c *Conn) authAllowed() bool {
+	return !c.server.AuthDisabled &&
+		(c.IsTLS() || c.server.AllowInsecureAuth)
 }
 
 // GREET state -> waiting for HELO
@@ -162,7 +185,7 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 		if c.server.TLSConfig != nil && !c.IsTLS() {
 			caps = append(caps, "STARTTLS")
 		}
-		if c.IsTLS() || c.server.AllowInsecureAuth {
+		if c.authAllowed() {
 			authCap := "AUTH"
 			for name, _ := range c.server.auths {
 				authCap += " " + name
@@ -186,26 +209,38 @@ func (c *Conn) handleMail(arg string) {
 		c.WriteResponse(502, "Please introduce yourself first.")
 		return
 	}
-	if c.msg == nil {
-		c.WriteResponse(502, "Please authenticate first.")
-		return
+
+	if c.User() == nil {
+		user, err := c.server.Backend.AnonymousLogin()
+		if err != nil {
+			c.WriteResponse(502, err.Error())
+			return
+		}
+
+		c.SetUser(user)
 	}
 
-	// Match FROM, while accepting '>' as quoted pair and in double quoted strings
-	// (?i) makes the regex case insensitive, (?:) is non-grouping sub-match
-	re := regexp.MustCompile("(?i)^FROM:\\s*<((?:\\\\>|[^>])+|\"[^\"]+\"@[^>]+)>( [\\w= ]+)?$")
-	m := re.FindStringSubmatch(arg)
-	if m == nil {
+	if len(arg) < 6 || strings.ToUpper(arg[0:5]) != "FROM:" {
+		c.WriteResponse(501, "Was expecting MAIL arg syntax of FROM:<address>")
+		return
+	}
+	fromArgs := strings.Split(strings.Trim(arg[5:], " "), " ")
+	if c.server.Strict {
+		if !strings.HasPrefix(fromArgs[0], "<") || !strings.HasSuffix(fromArgs[0], ">") {
+			c.WriteResponse(501, "Was expecting MAIL arg syntax of FROM:<address>")
+			return
+		}
+	}
+	from := strings.Trim(fromArgs[0], "<> ")
+	if from == "" {
 		c.WriteResponse(501, "Was expecting MAIL arg syntax of FROM:<address>")
 		return
 	}
 
-	from := m[1]
-
 	// This is where the Conn may put BODY=8BITMIME, but we already
 	// read the DATA as bytes, so it does not effect our processing.
-	if m[2] != "" {
-		args, err := parseArgs(m[2])
+	if len(fromArgs) > 1 {
+		args, err := parseArgs(fromArgs[1:])
 		if err != nil {
 			c.WriteResponse(501, "Unable to parse MAIL ESMTP parameters")
 			return
@@ -315,10 +350,8 @@ func (c *Conn) handleAuth(arg string) {
 		}
 	}
 
-	if c.User != nil {
+	if c.User() != nil {
 		c.WriteResponse(235, "Authentication succeeded")
-
-		c.msg = &message{}
 	}
 }
 
@@ -365,15 +398,33 @@ func (c *Conn) handleData(arg string) {
 	// We have recipients, go to accept data
 	c.WriteResponse(354, "Go ahead. End your data with <CR><LF>.<CR><LF>")
 
+	var (
+		code int
+		msg string
+	)
 	c.msg.Reader = newDataReader(c)
-	if err := c.User().Send(c.msg.From, c.msg.To, c.msg.Reader); err != nil {
+	err := c.User().Send(c.msg.From, c.msg.To, c.msg.Reader)
+	io.Copy(ioutil.Discard, c.msg.Reader) // Make sure all the data has been consumed
+	if err != nil {
 		if smtperr, ok := err.(*smtpError); ok {
-			c.WriteResponse(smtperr.Code, smtperr.Message)
+			code = smtperr.Code
+			msg = smtperr.Message
 		} else {
-			c.WriteResponse(554, "Error: transaction failed, blame it on the weather: "+err.Error())
+			code = 554
+			msg = "Error: transaction failed, blame it on the weather: " + err.Error()
 		}
 	} else {
-		c.WriteResponse(250, "Ok: queued")
+		code = 250
+		msg = "OK: queued"
+	}
+
+	if c.server.LMTP {
+		// TODO: support per-recipient responses
+		for _, rcpt := range c.msg.To {
+			c.WriteResponse(code, "<" + rcpt + "> " + msg)
+		}
+	} else {
+		c.WriteResponse(code, msg)
 	}
 
 	c.reset()
@@ -418,13 +469,13 @@ func (c *Conn) ReadLine() (string, error) {
 }
 
 func (c *Conn) reset() {
-	if user := c.User(); user != nil {
-		user.Logout()
+	c.locker.Lock()
+	defer c.locker.Unlock()
+
+	if c.user != nil {
+		c.user.Logout()
 	}
 
-	c.locker.Lock()
-	c.helo = ""
 	c.user = nil
 	c.msg = nil
-	c.locker.Unlock()
 }
