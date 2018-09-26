@@ -79,7 +79,7 @@ func (c *Conn) handle(cmd string, arg string) {
 		c.WriteResponse(500, "Speak up")
 		return
 	}
-
+	cmd = strings.ToUpper(cmd) 
 	switch cmd {
 	case "SEND", "SOML", "SAML", "EXPN", "HELP", "TURN":
 		// These commands are not implemented in any state
