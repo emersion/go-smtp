@@ -47,6 +47,22 @@ func Dial(addr string) (*Client, error) {
 	return NewClient(conn, host)
 }
 
+// DialTLS returns a new Client connected to an SMTP server via TLS at addr.
+// The addr must include a port, as in "mail.example.com:smtps".
+func DialTLS(addr string, tlsConfig *tls.Config) (*Client, error) {
+	conn, err := tls.Dial("tcp", addr, tlsConfig)
+	if err != nil {
+		return nil, err
+	}
+	host, _, _ := net.SplitHostPort(addr)
+	c, err := NewClient(conn, host)
+	if err != nil {
+		return nil, err
+	}
+	c.tls = true
+	return c, nil
+}
+
 // NewClient returns a new Client using an existing connection and host as a
 // server name to be used when authenticating.
 func NewClient(conn net.Conn, host string) (*Client, error) {
