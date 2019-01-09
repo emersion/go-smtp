@@ -27,13 +27,15 @@ type Client struct {
 	// whether the Client is using TLS
 	tls        bool
 	serverName string
+	lmtp       bool
 	// map of supported extensions
 	ext map[string]string
 	// supported auth mechanisms
-	auth       []string
-	localName  string // the name to use in HELO/EHLO
-	didHello   bool   // whether we've said HELO/EHLO
-	helloError error  // the error from the hello
+	auth        []string
+	localName   string // the name to use in HELO/EHLO/LHLO
+	didHello    bool   // whether we've said HELO/EHLO/LHLO
+	helloError  error  // the error from the hello
+	rcptToCount int    // number of recipients
 }
 
 // Dial returns a new Client connected to an SMTP server at addr.
@@ -55,12 +57,7 @@ func DialTLS(addr string, tlsConfig *tls.Config) (*Client, error) {
 		return nil, err
 	}
 	host, _, _ := net.SplitHostPort(addr)
-	c, err := NewClient(conn, host)
-	if err != nil {
-		return nil, err
-	}
-	c.tls = true
-	return c, nil
+	return NewClient(conn, host)
 }
 
 // NewClient returns a new Client using an existing connection and host as a
@@ -72,7 +69,19 @@ func NewClient(conn net.Conn, host string) (*Client, error) {
 		text.Close()
 		return nil, err
 	}
-	c := &Client{Text: text, conn: conn, serverName: host, localName: "localhost"}
+	_, isTLS := conn.(*tls.Conn)
+	c := &Client{Text: text, conn: conn, serverName: host, localName: "localhost", tls: isTLS}
+	return c, nil
+}
+
+// NewClientLMTP returns a new LMTP Client (as defined in RFC 2033) using an
+// existing connector and host as a server name to be used when authenticating.
+func NewClientLMTP(conn net.Conn, host string) (*Client, error) {
+	c, err := NewClient(conn, host)
+	if err != nil {
+		return nil, err
+	}
+	c.lmtp = true
 	return c, nil
 }
 
@@ -129,7 +138,11 @@ func (c *Client) helo() error {
 // ehlo sends the EHLO (extended hello) greeting to the server. It
 // should be the preferred greeting for servers that support it.
 func (c *Client) ehlo() error {
-	_, msg, err := c.cmd(250, "EHLO %s", c.localName)
+	cmd := "EHLO"
+	if c.lmtp {
+		cmd = "LHLO"
+	}
+	_, msg, err := c.cmd(250, "%s %s", cmd, c.localName)
 	if err != nil {
 		return err
 	}
@@ -264,8 +277,11 @@ func (c *Client) Mail(from string) error {
 // A call to Rcpt must be preceded by a call to Mail and may be followed by
 // a Data call or another Rcpt call.
 func (c *Client) Rcpt(to string) error {
-	_, _, err := c.cmd(25, "RCPT TO:<%s>", to)
-	return err
+	if _, _, err := c.cmd(25, "RCPT TO:<%s>", to); err != nil {
+		return err
+	}
+	c.rcptToCount++
+	return nil
 }
 
 type dataCloser struct {
@@ -275,8 +291,18 @@ type dataCloser struct {
 
 func (d *dataCloser) Close() error {
 	d.WriteCloser.Close()
-	_, _, err := d.c.Text.ReadResponse(250)
-	return err
+	if d.c.lmtp {
+		for d.c.rcptToCount > 0 {
+			if _, _, err := d.c.Text.ReadResponse(250); err != nil {
+				return err
+			}
+			d.c.rcptToCount--
+		}
+		return nil
+	} else {
+		_, _, err := d.c.Text.ReadResponse(250)
+		return err
+	}
 }
 
 // Data issues a DATA command to the server and returns a writer that
@@ -383,8 +409,11 @@ func (c *Client) Reset() error {
 	if err := c.hello(); err != nil {
 		return err
 	}
-	_, _, err := c.cmd(250, "RSET")
-	return err
+	if _, _, err := c.cmd(250, "RSET"); err != nil {
+		return err
+	}
+	c.rcptToCount = 0
+	return nil
 }
 
 // Quit sends the QUIT command and closes the connection to the server.

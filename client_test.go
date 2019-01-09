@@ -658,3 +658,78 @@ UQIhAO6PEI55K3SpNIdc2k5f0xz+9rodJCYzu51EwWX7r8ufAiEA3C9EkLiU2NuK
 sHtB5EYF9Dwm9QIhAJuCquuH4mDzVjUntXjXOQPdj7sRqVGCNWdrJwOukat7AiAy
 LXLEwb77DIPoI5ZuaXQC+MnyyJj1ExC9RFcGz+bexA==
 -----END RSA PRIVATE KEY-----`)
+
+func TestLMTP(t *testing.T) {
+	server := strings.Join(strings.Split(lmtpServer, "\n"), "\r\n")
+	client := strings.Join(strings.Split(lmtpClient, "\n"), "\r\n")
+
+	var cmdbuf bytes.Buffer
+	bcmdbuf := bufio.NewWriter(&cmdbuf)
+	var fake faker
+	fake.ReadWriter = bufio.NewReadWriter(bufio.NewReader(strings.NewReader(server)), bcmdbuf)
+	c := &Client{Text: textproto.NewConn(fake), lmtp: true}
+
+	if err := c.Hello("localhost"); err != nil {
+		t.Fatalf("LHLO failed: %s", err)
+	}
+	c.didHello = true
+
+	if err := c.Mail("user@gmail.com"); err != nil {
+		t.Fatalf("MAIL failed: %s", err)
+	}
+	if err := c.Rcpt("golang-nuts@googlegroups.com"); err != nil {
+		t.Fatalf("RCPT failed: %s", err)
+	}
+	msg := `From: user@gmail.com
+To: golang-nuts@googlegroups.com
+Subject: Hooray for Go
+
+Line 1
+.Leading dot line .
+Goodbye.`
+	w, err := c.Data()
+	if err != nil {
+		t.Fatalf("DATA failed: %s", err)
+	}
+	if _, err := w.Write([]byte(msg)); err != nil {
+		t.Fatalf("Data write failed: %s", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("Bad data response: %s", err)
+	}
+
+	if err := c.Quit(); err != nil {
+		t.Fatalf("QUIT failed: %s", err)
+	}
+
+	bcmdbuf.Flush()
+	actualcmds := cmdbuf.String()
+	if client != actualcmds {
+		t.Fatalf("Got:\n%s\nExpected:\n%s", actualcmds, client)
+	}
+}
+
+var lmtpServer = `250-localhost at your service
+250-SIZE 35651584
+250 8BITMIME
+250 Sender OK
+250 Receiver OK
+354 Go ahead
+250 Data OK
+221 OK
+`
+
+var lmtpClient = `LHLO localhost
+MAIL FROM:<user@gmail.com> BODY=8BITMIME
+RCPT TO:<golang-nuts@googlegroups.com>
+DATA
+From: user@gmail.com
+To: golang-nuts@googlegroups.com
+Subject: Hooray for Go
+
+Line 1
+..Leading dot line .
+Goodbye.
+.
+QUIT
+`
