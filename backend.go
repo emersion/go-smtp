@@ -6,7 +6,7 @@ import (
 )
 
 var (
-	ErrAuthRequired = errors.New("Please authenticate first")
+	ErrAuthRequired    = errors.New("Please authenticate first")
 	ErrAuthUnsupported = errors.New("Authentication not supported")
 )
 

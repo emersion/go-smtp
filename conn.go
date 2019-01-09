@@ -401,7 +401,7 @@ func (c *Conn) handleData(arg string) {
 
 	var (
 		code int
-		msg string
+		msg  string
 	)
 	c.msg.Reader = newDataReader(c)
 	err := c.User().Send(c.msg.From, c.msg.To, c.msg.Reader)
@@ -422,7 +422,7 @@ func (c *Conn) handleData(arg string) {
 	if c.server.LMTP {
 		// TODO: support per-recipient responses
 		for _, rcpt := range c.msg.To {
-			c.WriteResponse(code, "<" + rcpt + "> " + msg)
+			c.WriteResponse(code, "<"+rcpt+"> "+msg)
 		}
 	} else {
 		c.WriteResponse(code, msg)
