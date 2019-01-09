@@ -156,6 +156,16 @@ func (c *Conn) IsTLS() bool {
 	return ok
 }
 
+// TLSConnectionState returns the connection's TLS connection state.
+// Zero values are returned if the connection doesn't use TLS.
+func (c *Conn) TLSConnectionState() (state tls.ConnectionState, ok bool) {
+	tc, ok := c.conn.(*tls.Conn)
+	if !ok {
+		return
+	}
+	return tc.ConnectionState(), true
+}
+
 func (c *Conn) authAllowed() bool {
 	return !c.server.AuthDisabled &&
 		(c.IsTLS() || c.server.AllowInsecureAuth)
