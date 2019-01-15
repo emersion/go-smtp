@@ -438,7 +438,7 @@ func (c *Conn) handleData(arg string) {
 		c.WriteResponse(code, msg)
 	}
 
-	c.reset()
+	c.resetMessage()
 }
 
 func (c *Conn) Reject() {
@@ -489,4 +489,11 @@ func (c *Conn) reset() {
 
 	c.user = nil
 	c.msg = nil
+}
+
+func (c *Conn) resetMessage() {
+	c.locker.Lock()
+	defer c.locker.Unlock()
+
+	c.msg = &message{}
 }
