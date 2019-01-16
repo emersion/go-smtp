@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/textproto"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -376,7 +377,7 @@ var helloServer = []string{
 	"250 Reset ok\n",
 	"221 Goodbye\n",
 	"250 Sender ok\n",
-	"250 ok\n"
+	"250 ok\n",
 }
 
 var baseHelloClient = `EHLO customhost
@@ -497,6 +498,49 @@ SendMail is working for me.
 .
 QUIT
 `
+
+func TestSendMailWithAuth(t *testing.T) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Unable to to create listener: %v", err)
+	}
+	defer l.Close()
+	wg := sync.WaitGroup{}
+	var done = make(chan struct{})
+	go func() {
+		defer wg.Done()
+		conn, err := l.Accept()
+		if err != nil {
+			t.Errorf("Accept error: %v", err)
+			return
+		}
+		defer conn.Close()
+
+		tc := textproto.NewConn(conn)
+		tc.PrintfLine("220 hello world")
+		msg, err := tc.ReadLine()
+		if msg == "EHLO localhost" {
+			tc.PrintfLine("250 mx.google.com at your service")
+		}
+		// for this test case, there should have no more traffic
+		<-done
+	}()
+	wg.Add(1)
+
+	err = SendMail(l.Addr().String(), sasl.NewPlainClient("", "user", "pass"), "test@example.com", []string{"other@example.com"}, strings.NewReader(strings.Replace(`From: test@example.com
+To: other@example.com
+Subject: SendMail test
+SendMail is working for me.
+`, "\n", "\r\n", -1)))
+	if err == nil {
+		t.Error("SendMail: Server doesn't support AUTH, expected to get an error, but got none ")
+	}
+	if err.Error() != "smtp: server doesn't support AUTH" {
+		t.Errorf("Expected: smtp: server doesn't support AUTH, got: %s", err)
+	}
+	close(done)
+	wg.Wait()
+}
 
 func TestAuthFailed(t *testing.T) {
 	server := strings.Join(strings.Split(authFailedServer, "\n"), "\r\n")
@@ -690,10 +734,9 @@ func init() {
 }
 
 func sendMail(hostPort string) error {
-	auth := sasl.NewPlainClient("", "", "")
 	from := "joe1@example.com"
 	to := []string{"joe2@example.com"}
-	return SendMail(hostPort, auth, from, to, strings.NewReader("Subject: test\n\nhowdy!"))
+	return SendMail(hostPort, nil, from, to, strings.NewReader("Subject: test\n\nhowdy!"))
 }
 
 // (copied from net/http/httptest)
