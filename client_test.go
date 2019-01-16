@@ -404,7 +404,7 @@ func TestSendMail(t *testing.T) {
 	bcmdbuf := bufio.NewWriter(&cmdbuf)
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		t.Fatalf("Unable to to create listener: %v", err)
+		t.Fatalf("Unable to create listener: %v", err)
 	}
 	defer l.Close()
 
@@ -502,7 +502,7 @@ QUIT
 func TestSendMailWithAuth(t *testing.T) {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		t.Fatalf("Unable to to create listener: %v", err)
+		t.Fatalf("Unable to create listener: %v", err)
 	}
 	defer l.Close()
 	wg := sync.WaitGroup{}
