@@ -150,12 +150,6 @@ func (c *Conn) Close() error {
 	return c.conn.Close()
 }
 
-// Check if this connection is encrypted.
-func (c *Conn) IsTLS() bool {
-	_, ok := c.conn.(*tls.Conn)
-	return ok
-}
-
 // TLSConnectionState returns the connection's TLS connection state.
 // Zero values are returned if the connection doesn't use TLS.
 func (c *Conn) TLSConnectionState() (state tls.ConnectionState, ok bool) {
@@ -167,8 +161,8 @@ func (c *Conn) TLSConnectionState() (state tls.ConnectionState, ok bool) {
 }
 
 func (c *Conn) authAllowed() bool {
-	return !c.server.AuthDisabled &&
-		(c.IsTLS() || c.server.AllowInsecureAuth)
+	_, isTLS := c.TLSConnectionState()
+	return !c.server.AuthDisabled && (isTLS || c.server.AllowInsecureAuth)
 }
 
 // GREET state -> waiting for HELO
@@ -193,7 +187,7 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 
 		caps := []string{}
 		caps = append(caps, c.server.caps...)
-		if c.server.TLSConfig != nil && !c.IsTLS() {
+		if _, isTLS := c.TLSConnectionState(); c.server.TLSConfig != nil && !isTLS {
 			caps = append(caps, "STARTTLS")
 		}
 		if c.authAllowed() {
@@ -367,7 +361,7 @@ func (c *Conn) handleAuth(arg string) {
 }
 
 func (c *Conn) handleStartTLS() {
-	if c.IsTLS() {
+	if _, isTLS := c.TLSConnectionState(); isTLS {
 		c.WriteResponse(502, "Already running in TLS")
 		return
 	}
