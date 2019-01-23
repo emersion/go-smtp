@@ -61,11 +61,13 @@ import (
 	"io/ioutil"
 	"log"
 
-	"github.com/emersion/go-smtp"
+	smtp "github.com/emersion/go-smtp"
 )
 
+// The Backend implements SMTP server methods.
 type Backend struct{}
 
+// Login handles a login command with username and password.
 func (bkd *Backend) Login(username, password string) (smtp.User, error) {
 	if username != "username" || password != "password" {
 		return nil, errors.New("Invalid username or password")
@@ -73,13 +75,15 @@ func (bkd *Backend) Login(username, password string) (smtp.User, error) {
 	return &User{}, nil
 }
 
-// Require clients to authenticate using SMTP AUTH before sending emails
+// AnonymousLogin requires clients to authenticate using SMTP AUTH before sending emails
 func (bkd *Backend) AnonymousLogin() (smtp.User, error) {
 	return nil, smtp.ErrAuthRequired
 }
 
+// A User is returned after successful login.
 type User struct{}
 
+// Send handles an email.
 func (u *User) Send(from string, to []string, r io.Reader) error {
 	log.Println("Sending message:", from, to)
 
@@ -91,6 +95,7 @@ func (u *User) Send(from string, to []string, r io.Reader) error {
 	return nil
 }
 
+// Logout handles logout.
 func (u *User) Logout() error {
 	return nil
 }
