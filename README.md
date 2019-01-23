@@ -61,7 +61,7 @@ import (
 	"io/ioutil"
 	"log"
 
-	smtp "github.com/emersion/go-smtp"
+	"github.com/emersion/go-smtp"
 )
 
 // The Backend implements SMTP server methods.
