@@ -411,7 +411,7 @@ func (c *Conn) handleData(arg string) {
 	err := c.User().Send(c.msg.From, c.msg.To, c.msg.Reader)
 	io.Copy(ioutil.Discard, c.msg.Reader) // Make sure all the data has been consumed
 	if err != nil {
-		if smtperr, ok := err.(*smtpError); ok {
+		if smtperr, ok := err.(*SMTPError); ok {
 			code = smtperr.Code
 			msg = smtperr.Message
 		} else {

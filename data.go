@@ -4,16 +4,17 @@ import (
 	"io"
 )
 
-type smtpError struct {
+// SMTPError specifies the error code and message that needs to be returned to the client
+type SMTPError struct {
 	Code    int
 	Message string
 }
 
-func (err *smtpError) Error() string {
+func (err *SMTPError) Error() string {
 	return err.Message
 }
 
-var ErrDataTooLarge = &smtpError{
+var ErrDataTooLarge = &SMTPError{
 	Code:    552,
 	Message: "Maximum message size exceeded",
 }
