@@ -25,7 +25,7 @@ type backend struct {
 	userErr error
 }
 
-func (be *backend) Login(username, password string) (smtp.User, error) {
+func (be *backend) Login(_ *smtp.ConnectionState, username, password string) (smtp.User, error) {
 	if be.userErr != nil {
 		return &user{}, be.userErr
 	}
@@ -36,7 +36,7 @@ func (be *backend) Login(username, password string) (smtp.User, error) {
 	return &user{backend: be}, nil
 }
 
-func (be *backend) AnonymousLogin() (smtp.User, error) {
+func (be *backend) AnonymousLogin(_ *smtp.ConnectionState) (smtp.User, error) {
 	if be.userErr != nil {
 		return &user{}, be.userErr
 	}

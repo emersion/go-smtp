@@ -60,7 +60,8 @@ func NewServer(be Backend) *Server {
 						return errors.New("Identities not supported")
 					}
 
-					user, err := be.Login(username, password)
+					state := conn.State()
+					user, err := be.Login(&state, username, password)
 					if err != nil {
 						return err
 					}

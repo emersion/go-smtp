@@ -25,6 +25,12 @@ type message struct {
 	To []string
 }
 
+type ConnectionState struct {
+	Hostname   string
+	RemoteAddr net.Addr
+	TLS        tls.ConnectionState
+}
+
 type Conn struct {
 	conn      net.Conn
 	text      *textproto.Conn
@@ -160,6 +166,19 @@ func (c *Conn) TLSConnectionState() (state tls.ConnectionState, ok bool) {
 	return tc.ConnectionState(), true
 }
 
+func (c *Conn) State() ConnectionState {
+	state := ConnectionState{}
+	tlsState, ok := c.TLSConnectionState()
+	if ok {
+		state.TLS = tlsState
+	}
+
+	state.Hostname = c.helo
+	state.RemoteAddr = c.conn.RemoteAddr()
+
+	return state
+}
+
 func (c *Conn) authAllowed() bool {
 	_, isTLS := c.TLSConnectionState()
 	return !c.server.AuthDisabled && (isTLS || c.server.AllowInsecureAuth)
@@ -216,7 +235,8 @@ func (c *Conn) handleMail(arg string) {
 	}
 
 	if c.User() == nil {
-		user, err := c.server.Backend.AnonymousLogin()
+		state := c.State()
+		user, err := c.server.Backend.AnonymousLogin(&state)
 		if err != nil {
 			c.WriteResponse(502, err.Error())
 			return
