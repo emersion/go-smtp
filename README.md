@@ -68,7 +68,7 @@ import (
 type Backend struct{}
 
 // Login handles a login command with username and password.
-func (bkd *Backend) Login(username, password string) (smtp.User, error) {
+func (bkd *Backend) Login(state *smtp.ConnectionState, username, password string) (smtp.User, error) {
 	if username != "username" || password != "password" {
 		return nil, errors.New("Invalid username or password")
 	}
@@ -76,7 +76,7 @@ func (bkd *Backend) Login(username, password string) (smtp.User, error) {
 }
 
 // AnonymousLogin requires clients to authenticate using SMTP AUTH before sending emails
-func (bkd *Backend) AnonymousLogin() (smtp.User, error) {
+func (bkd *Backend) AnonymousLogin(state *smtp.ConnectionState) (smtp.User, error) {
 	return nil, smtp.ErrAuthRequired
 }
 
