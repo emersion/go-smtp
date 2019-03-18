@@ -8,21 +8,21 @@ import (
 
 // TransformBackend is a backend that transforms messages.
 type TransformBackend struct {
-	Backend smtp.Backend
+	Backend   smtp.Backend
 	Transform func(from string, to []string, r io.Reader) (string, []string, io.Reader, error)
 }
 
 // Login implements the smtp.Backend interface.
-func (be *TransformBackend) Login(username, password string) (smtp.User, error) {
-	u, err := be.Backend.Login(username, password)
+func (be *TransformBackend) Login(state *smtp.ConnectionState, username, password string) (smtp.User, error) {
+	u, err := be.Backend.Login(state, username, password)
 	if err != nil {
 		return nil, err
 	}
 	return &transformUser{u, be}, nil
 }
 
-func (be *TransformBackend) AnonymousLogin() (smtp.User, error) {
-	u, err := be.Backend.AnonymousLogin()
+func (be *TransformBackend) AnonymousLogin(state *smtp.ConnectionState) (smtp.User, error) {
+	u, err := be.Backend.AnonymousLogin(state)
 	if err != nil {
 		return nil, err
 	}

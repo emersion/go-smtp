@@ -14,11 +14,11 @@ var (
 type Backend interface {
 	// Authenticate a user. Return smtp.ErrAuthUnsupported if you don't want to
 	// support this.
-	Login(username, password string) (User, error)
+	Login(state *ConnectionState, username, password string) (User, error)
 
 	// Called if the client attempts to send mail without logging in first.
 	// Return smtp.ErrAuthRequired if you don't want to support this.
-	AnonymousLogin() (User, error)
+	AnonymousLogin(state *ConnectionState) (User, error)
 }
 
 // An authenticated user.
