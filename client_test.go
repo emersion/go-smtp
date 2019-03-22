@@ -344,7 +344,7 @@ func TestHello(t *testing.T) {
 				}
 			}
 		case 9:
-			 			err = c.Noop()
+			err = c.Noop()
 		default:
 			t.Fatalf("Unhandled command")
 		}

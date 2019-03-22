@@ -14,17 +14,6 @@ import (
 	"time"
 )
 
-// A SMTP message.
-type message struct {
-	// The message contents.
-	io.Reader
-
-	// The sender e-mail address.
-	From string
-	// The recipients e-mail addresses.
-	To []string
-}
-
 type ConnectionState struct {
 	Hostname   string
 	RemoteAddr net.Addr
@@ -36,10 +25,12 @@ type Conn struct {
 	text      *textproto.Conn
 	server    *Server
 	helo      string
-	msg       *message
 	nbrErrors int
-	user      User
+	session   Session
 	locker    sync.Mutex
+
+	fromReceived bool
+	recipients   []string
 }
 
 func newConn(c net.Conn, s *Server) *Conn {
@@ -134,23 +125,22 @@ func (c *Conn) Server() *Server {
 	return c.server
 }
 
-func (c *Conn) User() User {
+func (c *Conn) Session() Session {
 	c.locker.Lock()
 	defer c.locker.Unlock()
-	return c.user
+	return c.session
 }
 
 // Setting the user resets any message beng generated
-func (c *Conn) SetUser(user User) {
+func (c *Conn) SetSession(session Session) {
 	c.locker.Lock()
 	defer c.locker.Unlock()
-	c.user = user
-	c.msg = &message{}
+	c.session = session
 }
 
 func (c *Conn) Close() error {
-	if user := c.User(); user != nil {
-		user.Logout()
+	if session := c.Session(); session != nil {
+		session.Logout()
 	}
 
 	return c.conn.Close()
@@ -234,15 +224,15 @@ func (c *Conn) handleMail(arg string) {
 		return
 	}
 
-	if c.User() == nil {
+	if c.Session() == nil {
 		state := c.State()
-		user, err := c.server.Backend.AnonymousLogin(&state)
+		session, err := c.server.Backend.AnonymousLogin(&state)
 		if err != nil {
 			c.WriteResponse(502, err.Error())
 			return
 		}
 
-		c.SetUser(user)
+		c.SetSession(session)
 	}
 
 	if len(arg) < 6 || strings.ToUpper(arg[0:5]) != "FROM:" {
@@ -285,13 +275,22 @@ func (c *Conn) handleMail(arg string) {
 		}
 	}
 
-	c.msg.From = from
+	if err := c.Session().Mail(from); err != nil {
+		if smtpErr, ok := err.(*SMTPError); ok {
+			c.WriteResponse(smtpErr.Code, smtpErr.Message)
+			return
+		}
+		c.WriteResponse(451, err.Error())
+		return
+	}
+
 	c.WriteResponse(250, fmt.Sprintf("Roger, accepting mail from <%v>", from))
+	c.fromReceived = true
 }
 
 // MAIL state -> waiting for RCPTs followed by DATA
 func (c *Conn) handleRcpt(arg string) {
-	if c.msg == nil || c.msg.From == "" {
+	if !c.fromReceived {
 		c.WriteResponse(502, "Missing MAIL FROM command.")
 		return
 	}
@@ -304,12 +303,20 @@ func (c *Conn) handleRcpt(arg string) {
 	// TODO: This trim is probably too forgiving
 	recipient := strings.Trim(arg[3:], "<> ")
 
-	if c.server.MaxRecipients > 0 && len(c.msg.To) >= c.server.MaxRecipients {
+	if c.server.MaxRecipients > 0 && len(c.recipients) >= c.server.MaxRecipients {
 		c.WriteResponse(552, fmt.Sprintf("Maximum limit of %v recipients reached", c.server.MaxRecipients))
 		return
 	}
 
-	c.msg.To = append(c.msg.To, recipient)
+	if err := c.Session().Rcpt(recipient); err != nil {
+		if smtpErr, ok := err.(*SMTPError); ok {
+			c.WriteResponse(smtpErr.Code, smtpErr.Message)
+			return
+		}
+		c.WriteResponse(451, err.Error())
+		return
+	}
+	c.recipients = append(c.recipients, recipient)
 	c.WriteResponse(250, fmt.Sprintf("I'll make sure <%v> gets this", recipient))
 }
 
@@ -375,7 +382,7 @@ func (c *Conn) handleAuth(arg string) {
 		}
 	}
 
-	if c.User() != nil {
+	if c.Session() != nil {
 		c.WriteResponse(235, "Authentication succeeded")
 	}
 }
@@ -415,7 +422,7 @@ func (c *Conn) handleData(arg string) {
 		return
 	}
 
-	if c.msg == nil || c.msg.From == "" || len(c.msg.To) == 0 {
+	if !c.fromReceived || len(c.recipients) == 0 {
 		c.WriteResponse(502, "Missing RCPT TO command.")
 		return
 	}
@@ -427,9 +434,9 @@ func (c *Conn) handleData(arg string) {
 		code int
 		msg  string
 	)
-	c.msg.Reader = newDataReader(c)
-	err := c.User().Send(c.msg.From, c.msg.To, c.msg.Reader)
-	io.Copy(ioutil.Discard, c.msg.Reader) // Make sure all the data has been consumed
+	r := newDataReader(c)
+	err := c.Session().Data(r)
+	io.Copy(ioutil.Discard, r) // Make sure all the data has been consumed
 	if err != nil {
 		if smtperr, ok := err.(*SMTPError); ok {
 			code = smtperr.Code
@@ -445,7 +452,7 @@ func (c *Conn) handleData(arg string) {
 
 	if c.server.LMTP {
 		// TODO: support per-recipient responses
-		for _, rcpt := range c.msg.To {
+		for _, rcpt := range c.recipients {
 			c.WriteResponse(code, "<"+rcpt+"> "+msg)
 		}
 	} else {
@@ -497,17 +504,22 @@ func (c *Conn) reset() {
 	c.locker.Lock()
 	defer c.locker.Unlock()
 
-	if c.user != nil {
-		c.user.Logout()
+	if c.session != nil {
+		c.session.Logout()
 	}
 
-	c.user = nil
-	c.msg = nil
+	c.session = nil
+	c.fromReceived = false
+	c.recipients = nil
 }
 
 func (c *Conn) resetMessage() {
 	c.locker.Lock()
 	defer c.locker.Unlock()
 
-	c.msg = &message{}
+	if c.session != nil {
+		c.session.Reset()
+	}
+	c.fromReceived = false
+	c.recipients = nil
 }
