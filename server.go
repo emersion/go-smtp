@@ -61,12 +61,12 @@ func NewServer(be Backend) *Server {
 					}
 
 					state := conn.State()
-					user, err := be.Login(&state, username, password)
+					session, err := be.Login(&state, username, password)
 					if err != nil {
 						return err
 					}
 
-					conn.SetUser(user)
+					conn.SetSession(session)
 					return nil
 				})
 			},
