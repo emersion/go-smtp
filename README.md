@@ -68,25 +68,32 @@ import (
 type Backend struct{}
 
 // Login handles a login command with username and password.
-func (bkd *Backend) Login(state *smtp.ConnectionState, username, password string) (smtp.User, error) {
+func (bkd *Backend) Login(state *smtp.ConnectionState, username, password string) (smtp.Session, error) {
 	if username != "username" || password != "password" {
 		return nil, errors.New("Invalid username or password")
 	}
-	return &User{}, nil
+	return &Session{}, nil
 }
 
 // AnonymousLogin requires clients to authenticate using SMTP AUTH before sending emails
-func (bkd *Backend) AnonymousLogin(state *smtp.ConnectionState) (smtp.User, error) {
+func (bkd *Backend) AnonymousLogin(state *smtp.ConnectionState) (smtp.Session, error) {
 	return nil, smtp.ErrAuthRequired
 }
 
-// A User is returned after successful login.
-type User struct{}
+// A Session is returned after successful login.
+type Session struct{}
 
-// Send handles an email.
-func (u *User) Send(from string, to []string, r io.Reader) error {
-	log.Println("Sending message:", from, to)
+func (s *Session) Mail(from string) error {
+	log.Println("Mail from:", from)
+	return nil
+}
 
+func (s *Session) Rcpt(to string) error {
+	log.Println("Rcpt to:", from)
+	return nil
+}
+
+func (s *Session) Data(r io.Reader) error {
 	if b, err := ioutil.ReadAll(r); err != nil {
 		return err
 	} else {
@@ -95,8 +102,9 @@ func (u *User) Send(from string, to []string, r io.Reader) error {
 	return nil
 }
 
-// Logout handles logout.
-func (u *User) Logout() error {
+func (s *Session) Reset() {}
+
+func (s *Session) Logout() error {
 	return nil
 }
 
