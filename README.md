@@ -60,7 +60,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
-  "time"
+	"time"
 
 	"github.com/emersion/go-smtp"
 )
