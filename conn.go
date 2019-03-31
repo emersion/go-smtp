@@ -468,7 +468,6 @@ func (c *Conn) Reject() {
 }
 
 func (c *Conn) greet() {
-	c.conn.SetWriteDeadline(time.Now().Add(c.server.WriteTimeout))
 	c.WriteResponse(220, fmt.Sprintf("%v ESMTP Service Ready", c.server.Domain))
 }
 
@@ -485,7 +484,7 @@ func (c *Conn) WriteResponse(code int, text ...string) {
 
 // Reads a line of input
 func (c *Conn) ReadLine() (string, error) {
-	if err := c.conn.SetReadDeadline(time.Now().Add(c.server.ReadTimeout)); err != nil {
+	if err := c.conn.SetReadDeadline(c.server.ReadTimeout}); err != nil {
 		return "", err
 	}
 
