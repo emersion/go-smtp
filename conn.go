@@ -473,8 +473,9 @@ func (c *Conn) greet() {
 
 func (c *Conn) WriteResponse(code int, text ...string) {
 	// TODO: error handling
-
-	c.conn.SetWriteDeadline(time.Now().Add(c.server.WriteTimeout))
+	if c.server.WriteTimeout != 0 {
+		c.conn.SetWriteDeadline(time.Now().Add(c.server.WriteTimeout))
+	}
 
 	for i := 0; i < len(text)-1; i++ {
 		c.text.PrintfLine("%v-%v", code, text[i])
@@ -484,8 +485,10 @@ func (c *Conn) WriteResponse(code int, text ...string) {
 
 // Reads a line of input
 func (c *Conn) ReadLine() (string, error) {
-	if err := c.conn.SetReadDeadline(time.Now().Add(c.server.ReadTimeout)); err != nil {
-		return "", err
+	if c.server.ReadTimeout != 0 {
+		if err := c.conn.SetReadDeadline(time.Now().Add(c.server.ReadTimeout)); err != nil {
+			return "", err
+		}
 	}
 
 	return c.text.ReadLine()
