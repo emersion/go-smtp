@@ -11,7 +11,7 @@ import (
 	"io/ioutil"
 	"log"
 	"strings"
-  "time"
+	"time"
 
 	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
@@ -140,7 +140,7 @@ func ExampleNewServer() {
 
 	s.Addr = ":1025"
 	s.Domain = "localhost"
-	s.WriteTimeout = 10 * time.Second 
+	s.WriteTimeout = 10 * time.Second
 	s.ReadTimeout = 10 * time.Second
 	s.MaxMessageBytes = 1024 * 1024
 	s.MaxRecipients = 50
