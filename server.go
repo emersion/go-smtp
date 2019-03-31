@@ -32,7 +32,6 @@ type Server struct {
 	AllowInsecureAuth bool
 	Strict            bool
 	Debug             io.Writer
-	IdleTimeout       time.Duration
 	ReadTimeout       time.Duration
 	WriteTimeout      time.Duration
 
