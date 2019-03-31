@@ -484,7 +484,7 @@ func (c *Conn) WriteResponse(code int, text ...string) {
 
 // Reads a line of input
 func (c *Conn) ReadLine() (string, error) {
-	if err := c.conn.SetReadDeadline(c.server.ReadTimeout}); err != nil {
+	if err := c.conn.SetReadDeadline(time.Now().Add(c.server.ReadTimeout)); err != nil {
 		return "", err
 	}
 
