@@ -60,6 +60,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"time"
 
 	"github.com/emersion/go-smtp"
 )
@@ -115,7 +116,8 @@ func main() {
 
 	s.Addr = ":1025"
 	s.Domain = "localhost"
-	s.MaxIdleSeconds = 300
+	s.ReadTimeout = 10 * time.Second
+	s.WriteTimeout = 10 * time.Second
 	s.MaxMessageBytes = 1024 * 1024
 	s.MaxRecipients = 50
 	s.AllowInsecureAuth = true

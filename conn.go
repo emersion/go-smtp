@@ -201,7 +201,7 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 		}
 		if c.authAllowed() {
 			authCap := "AUTH"
-			for name, _ := range c.server.auths {
+			for name := range c.server.auths {
 				authCap += " " + name
 			}
 
@@ -471,19 +471,11 @@ func (c *Conn) greet() {
 	c.WriteResponse(220, fmt.Sprintf("%v ESMTP Service Ready", c.server.Domain))
 }
 
-// Calculate the next read or write deadline based on MaxIdleSeconds.
-func (c *Conn) nextDeadline() time.Time {
-	if c.server.MaxIdleSeconds == 0 {
-		return time.Time{} // No deadline
-	}
-
-	return time.Now().Add(time.Duration(c.server.MaxIdleSeconds) * time.Second)
-}
-
 func (c *Conn) WriteResponse(code int, text ...string) {
 	// TODO: error handling
-
-	c.conn.SetDeadline(c.nextDeadline())
+	if c.server.WriteTimeout != 0 {
+		c.conn.SetWriteDeadline(time.Now().Add(c.server.WriteTimeout))
+	}
 
 	for i := 0; i < len(text)-1; i++ {
 		c.text.PrintfLine("%v-%v", code, text[i])
@@ -493,8 +485,10 @@ func (c *Conn) WriteResponse(code int, text ...string) {
 
 // Reads a line of input
 func (c *Conn) ReadLine() (string, error) {
-	if err := c.conn.SetReadDeadline(c.nextDeadline()); err != nil {
-		return "", err
+	if c.server.ReadTimeout != 0 {
+		if err := c.conn.SetReadDeadline(time.Now().Add(c.server.ReadTimeout)); err != nil {
+			return "", err
+		}
 	}
 
 	return c.text.ReadLine()
