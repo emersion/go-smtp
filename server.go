@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/emersion/go-sasl"
 )
@@ -27,11 +28,13 @@ type Server struct {
 
 	Domain            string
 	MaxRecipients     int
-	MaxIdleSeconds    int
 	MaxMessageBytes   int
 	AllowInsecureAuth bool
 	Strict            bool
 	Debug             io.Writer
+	IdleTimeout       time.Duration
+	ReadTimeout       time.Duration
+	WriteTimeout      time.Duration
 
 	// If set, the AUTH command will not be advertised and authentication
 	// attempts will be rejected. This setting overrides AllowInsecureAuth.
