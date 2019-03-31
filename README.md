@@ -115,7 +115,8 @@ func main() {
 
 	s.Addr = ":1025"
 	s.Domain = "localhost"
-	s.MaxIdleSeconds = 300
+	s.ReadTimeout = 300
+  s.WriteTimeout = 300
 	s.MaxMessageBytes = 1024 * 1024
 	s.MaxRecipients = 50
 	s.AllowInsecureAuth = true
