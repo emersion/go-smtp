@@ -90,7 +90,7 @@ func (s *Session) Mail(from string) error {
 }
 
 func (s *Session) Rcpt(to string) error {
-	log.Println("Rcpt to:", from)
+	log.Println("Rcpt to:", to)
 	return nil
 }
 
