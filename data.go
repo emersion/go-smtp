@@ -6,17 +6,21 @@ import (
 
 // SMTPError specifies the error code and message that needs to be returned to the client
 type SMTPError struct {
-	Code    int
-	Message string
+	Code         int
+	EnhancedCode [3]int
+	Message      string
 }
+
+var NoEnhancedCode = [3]int{0, 0, 0}
 
 func (err *SMTPError) Error() string {
 	return err.Message
 }
 
 var ErrDataTooLarge = &SMTPError{
-	Code:    552,
-	Message: "Maximum message size exceeded",
+	Code:         552,
+	EnhancedCode: [3]int{5, 3, 4},
+	Message:      "Maximum message size exceeded",
 }
 
 type dataReader struct {
