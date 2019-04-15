@@ -345,7 +345,7 @@ func TestServer_authDisabled(t *testing.T) {
 
 	io.WriteString(c, "AUTH PLAIN\r\n")
 	scanner.Scan()
-	if scanner.Text() != "500 Syntax error, AUTH command unrecognized" {
+	if scanner.Text() != "500 5.5.2 Syntax error, AUTH command unrecognized" {
 		t.Fatal("Invalid AUTH response with auth disabled:", scanner.Text())
 	}
 }
@@ -436,7 +436,7 @@ func TestServer_anonymousUserError(t *testing.T) {
 
 	io.WriteString(c, "MAIL FROM:<root@nsa.gov>\r\n")
 	scanner.Scan()
-	if scanner.Text() != "502 Please authenticate first" {
+	if scanner.Text() != "502 5.7.0 Please authenticate first" {
 		t.Fatal("Backend refused anonymous mail but client was permitted:", scanner.Text())
 	}
 }
