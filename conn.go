@@ -479,7 +479,7 @@ func (c *Conn) greet() {
 	c.WriteResponse(220, NoEnhancedCode, fmt.Sprintf("%v ESMTP Service Ready", c.server.Domain))
 }
 
-func (c *Conn) WriteResponse(code int, enchCode [3]int, text ...string) {
+func (c *Conn) WriteResponse(code int, enhCode [3]int, text ...string) {
 	// TODO: error handling
 	if c.server.WriteTimeout != 0 {
 		c.conn.SetWriteDeadline(time.Now().Add(c.server.WriteTimeout))
@@ -488,10 +488,10 @@ func (c *Conn) WriteResponse(code int, enchCode [3]int, text ...string) {
 	for i := 0; i < len(text)-1; i++ {
 		c.text.PrintfLine("%v-%v", code, text[i])
 	}
-	if enchCode == NoEnhancedCode {
+	if enhCode == NoEnhancedCode {
 		c.text.PrintfLine("%v %v", code, text[len(text)-1])
 	} else {
-		c.text.PrintfLine("%v %v.%v.%v %v", code, enchCode[0], enchCode[1], enchCode[2], text[len(text)-1])
+		c.text.PrintfLine("%v %v.%v.%v %v", code, enhCode[0], enhCode[1], enhCode[2], text[len(text)-1])
 	}
 }
 
