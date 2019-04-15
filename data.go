@@ -11,7 +11,14 @@ type SMTPError struct {
 	Message      string
 }
 
-var NoEnhancedCode = [3]int{0, 0, 0}
+// NoEnhancedCode is used to indicate that enhanced error code should not be
+// included in response.
+var NoEnhancedCode = [3]int{-1, -1, -1}
+
+// EnhancedCodeNotSet is a nil value of EnhancedCode field in SMTPError, used
+// to indicate that backend failed to provide enhanced status code. X.0.0 will
+// be used (X is derived from error code).
+var EnhancedCodeNotSet = [3]int{0, 0, 0}
 
 func (err *SMTPError) Error() string {
 	return err.Message

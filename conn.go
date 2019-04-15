@@ -485,6 +485,16 @@ func (c *Conn) WriteResponse(code int, enhCode [3]int, text ...string) {
 		c.conn.SetWriteDeadline(time.Now().Add(c.server.WriteTimeout))
 	}
 
+	// All responses must include an enhanced code, if it is missing - use
+	// a generic code X.0.0.
+	if enhCode == EnhancedCodeNotSet {
+		cat := code / 100
+		switch cat {
+		case 2, 4, 5:
+			enhCode = [3]int{cat, 0, 0}
+		}
+	}
+
 	for i := 0; i < len(text)-1; i++ {
 		c.text.PrintfLine("%v-%v", code, text[i])
 	}
