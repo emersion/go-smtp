@@ -2,9 +2,10 @@
 //
 // It also implements the following extensions:
 //
-//	8BITMIME  RFC 1652
-//	AUTH      RFC 2554
-//	STARTTLS  RFC 3207
+//	8BITMIME		RFC 1652
+//	AUTH      		RFC 2554
+//	STARTTLS  		RFC 3207
+//	ENHANCEDSTATUSCODES	RFC 2034
 //
 // LMTP (RFC 2033) is also supported.
 //
