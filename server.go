@@ -113,7 +113,7 @@ func (s *Server) handleConn(c *Conn) error {
 			cmd, arg, err := parseCmd(line)
 			if err != nil {
 				c.nbrErrors++
-				c.WriteResponse(501, [3]int{5, 5, 2}, "Bad command")
+				c.WriteResponse(501, EnhancedCode{5, 5, 2}, "Bad command")
 				continue
 			}
 
@@ -124,11 +124,11 @@ func (s *Server) handleConn(c *Conn) error {
 			}
 
 			if neterr, ok := err.(net.Error); ok && neterr.Timeout() {
-				c.WriteResponse(221, [3]int{2, 4, 2}, "Idle timeout, bye bye")
+				c.WriteResponse(221, EnhancedCode{2, 4, 2}, "Idle timeout, bye bye")
 				return nil
 			}
 
-			c.WriteResponse(221, [3]int{2, 4, 0}, "Connection error, sorry")
+			c.WriteResponse(221, EnhancedCode{2, 4, 0}, "Connection error, sorry")
 			return err
 		}
 	}

@@ -4,21 +4,23 @@ import (
 	"io"
 )
 
+type EnhancedCode [3]int
+
 // SMTPError specifies the error code and message that needs to be returned to the client
 type SMTPError struct {
 	Code         int
-	EnhancedCode [3]int
+	EnhancedCode EnhancedCode
 	Message      string
 }
 
 // NoEnhancedCode is used to indicate that enhanced error code should not be
 // included in response.
-var NoEnhancedCode = [3]int{-1, -1, -1}
+var NoEnhancedCode = EnhancedCode{-1, -1, -1}
 
 // EnhancedCodeNotSet is a nil value of EnhancedCode field in SMTPError, used
 // to indicate that backend failed to provide enhanced status code. X.0.0 will
 // be used (X is derived from error code).
-var EnhancedCodeNotSet = [3]int{0, 0, 0}
+var EnhancedCodeNotSet = EnhancedCode{0, 0, 0}
 
 func (err *SMTPError) Error() string {
 	return err.Message
@@ -26,7 +28,7 @@ func (err *SMTPError) Error() string {
 
 var ErrDataTooLarge = &SMTPError{
 	Code:         552,
-	EnhancedCode: [3]int{5, 3, 4},
+	EnhancedCode: EnhancedCode{5, 3, 4},
 	Message:      "Maximum message size exceeded",
 }
 
