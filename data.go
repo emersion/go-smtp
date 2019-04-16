@@ -15,6 +15,10 @@ type SMTPError struct {
 
 // NoEnhancedCode is used to indicate that enhanced error code should not be
 // included in response.
+//
+// Note that RFC 2034 requires an enhanced code to be included in all 2xx, 4xx
+// and 5xx responses. This constant is exported for use by extensions, you
+// should probably use EnhancedCodeNotSet instead.
 var NoEnhancedCode = EnhancedCode{-1, -1, -1}
 
 // EnhancedCodeNotSet is a nil value of EnhancedCode field in SMTPError, used
