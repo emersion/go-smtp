@@ -492,6 +492,8 @@ func (c *Conn) WriteResponse(code int, enhCode EnhancedCode, text ...string) {
 		switch cat {
 		case 2, 4, 5:
 			enhCode = EnhancedCode{cat, 0, 0}
+		default:
+			enhCode = NoEnhancedCode
 		}
 	}
 
