@@ -360,6 +360,10 @@ func (c *Conn) handleAuth(arg string) {
 	for {
 		challenge, done, err := sasl.Next(response)
 		if err != nil {
+			if smtpErr, ok := err.(*SMTPError); ok {
+				c.WriteResponse(smtpErr.Code, smtpErr.EnhancedCode, smtpErr.Message)
+				return
+			}
 			c.WriteResponse(454, EnhancedCode{4, 7, 0}, err.Error())
 			return
 		}
