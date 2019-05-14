@@ -72,6 +72,18 @@ func NewServer(be Backend) *Server {
 					return nil
 				})
 			},
+			sasl.Login: func(conn *Conn) sasl.Server {
+				return sasl.NewLoginServer(func(username, password string) error {
+					state := conn.State()
+					session, err := be.Login(&state, username, password)
+					if err != nil {
+						return err
+					}
+
+					conn.SetSession(session)
+					return nil
+				})
+			},
 		},
 		conns: make(map[*Conn]struct{}),
 	}
