@@ -131,7 +131,7 @@ func (c *Conn) Session() Session {
 	return c.session
 }
 
-// Setting the user resets any message beng generated
+// Setting the user resets any message being generated
 func (c *Conn) SetSession(session Session) {
 	c.locker.Lock()
 	defer c.locker.Unlock()
@@ -471,7 +471,7 @@ func (c *Conn) handleData(arg string) {
 		c.WriteResponse(code, enhancedCode, msg)
 	}
 
-	c.resetMessage()
+	c.reset()
 }
 
 func (c *Conn) Reject() {
@@ -523,19 +523,6 @@ func (c *Conn) ReadLine() (string, error) {
 }
 
 func (c *Conn) reset() {
-	c.locker.Lock()
-	defer c.locker.Unlock()
-
-	if c.session != nil {
-		c.session.Logout()
-	}
-
-	c.session = nil
-	c.fromReceived = false
-	c.recipients = nil
-}
-
-func (c *Conn) resetMessage() {
 	c.locker.Lock()
 	defer c.locker.Unlock()
 
