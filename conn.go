@@ -330,12 +330,12 @@ func (c *Conn) handleAuth(arg string) {
 		return
 	}
 
-	if arg == "" {
+	parts := strings.Fields(arg)
+	if len(parts) == 0 {
 		c.WriteResponse(502, EnhancedCode{5, 5, 4}, "Missing parameter")
 		return
 	}
 
-	parts := strings.Fields(arg)
 	mechanism := strings.ToUpper(parts[0])
 
 	// Parse client initial response if there is one
