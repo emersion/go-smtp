@@ -180,6 +180,17 @@ func (c *Client) StartTLS(config *tls.Config) error {
 	if err != nil {
 		return err
 	}
+	if config == nil {
+		config = &tls.Config{}
+	}
+	if config.ServerName == "" {
+		// Make a copy to avoid polluting argument
+		config = config.Clone()
+		config.ServerName = c.serverName
+	}
+	if testHookStartTLS != nil {
+		testHookStartTLS(config)
+	}
 	c.conn = tls.Client(c.conn, config)
 	c.Text = textproto.NewConn(c.conn)
 	c.tls = true
@@ -370,11 +381,7 @@ func SendMail(addr string, a sasl.Client, from string, to []string, r io.Reader)
 		return err
 	}
 	if ok, _ := c.Extension("STARTTLS"); ok {
-		config := &tls.Config{ServerName: c.serverName}
-		if testHookStartTLS != nil {
-			testHookStartTLS(config)
-		}
-		if err = c.StartTLS(config); err != nil {
+		if err = c.StartTLS(nil); err != nil {
 			return err
 		}
 	}
