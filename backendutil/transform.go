@@ -49,35 +49,48 @@ type transformSession struct {
 }
 
 func (s *transformSession) Reset() {
-	s.trans.TransformReset()
+	if s.trans != nil && s.trans.TransformReset != nil {
+		s.trans.TransformReset()
+	}
 	s.Session.Reset()
 }
 
 func (s *transformSession) Mail(from string) error {
-	from, err := s.trans.TransformMail(from)
-	if err != nil {
-		return err
+	if s.trans != nil && s.trans.TransformMail != nil {
+		var err error
+		from, err = s.trans.TransformMail(from)
+		if err != nil {
+			return err
+		}
 	}
 	return s.Session.Mail(from)
 }
 
 func (s *transformSession) Rcpt(to string) error {
-	to, err := s.trans.TransformRcpt(to)
-	if err != nil {
-		return err
+	if s.trans != nil && s.trans.TransformRcpt != nil {
+		var err error
+		to, err = s.trans.TransformRcpt(to)
+		if err != nil {
+			return err
+		}
 	}
 	return s.Session.Rcpt(to)
 }
 
 func (s *transformSession) Data(r io.Reader) error {
-	r, err := s.trans.TransformData(r)
-	if err != nil {
-		return err
+	if s.trans != nil && s.trans.TransformData != nil {
+		var err error
+		r, err = s.trans.TransformData(r)
+		if err != nil {
+			return err
+		}
 	}
 	return s.Session.Data(r)
 }
 
 func (s *transformSession) Logout() error {
-	s.trans.TransformReset()
+	if s.trans != nil && s.trans.TransformReset != nil {
+		s.trans.TransformReset()
+	}
 	return s.Session.Logout()
 }
