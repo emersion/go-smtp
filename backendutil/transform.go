@@ -10,8 +10,8 @@ import (
 type TransformBackend struct {
 	Backend smtp.Backend
 
-	Transform          func(username string) TransformHandler
-	AnonymousTransform func() TransformHandler
+	Transform          func(session *smtp.Session, username string) TransformHandler
+	AnonymousTransform func(session *smtp.Session) TransformHandler
 }
 
 // TransformHandler is a container for transforming funcs.
@@ -28,7 +28,7 @@ func (be *TransformBackend) Login(state *smtp.ConnectionState, username, passwor
 	if err != nil {
 		return nil, err
 	}
-	trans := be.Transform(username)
+	trans := be.Transform(&s, username)
 	return &transformSession{s, trans}, nil
 }
 
@@ -38,7 +38,7 @@ func (be *TransformBackend) AnonymousLogin(state *smtp.ConnectionState) (smtp.Se
 	if err != nil {
 		return nil, err
 	}
-	trans := be.AnonymousTransform()
+	trans := be.AnonymousTransform(&s)
 	return &transformSession{s, trans}, nil
 }
 
