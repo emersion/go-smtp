@@ -10,16 +10,9 @@ import (
 type TransformBackend struct {
 	Backend smtp.Backend
 
-	Transform          func(session *smtp.Session, username string) TransformHandler
-	AnonymousTransform func(session *smtp.Session) TransformHandler
-}
-
-// TransformHandler is a container for transforming funcs.
-type TransformHandler interface {
-	TransformReset()
-	TransformMail(from string) (string, error)
-	TransformRcpt(to string) (string, error)
-	TransformData(r io.Reader) (io.Reader, error)
+	TransformMail func(from string) (string, error)
+	TransformRcpt func(to string) (string, error)
+	TransformData func(r io.Reader) (io.Reader, error)
 }
 
 // Login implements the smtp.Backend interface.
@@ -28,8 +21,7 @@ func (be *TransformBackend) Login(state *smtp.ConnectionState, username, passwor
 	if err != nil {
 		return nil, err
 	}
-	trans := be.Transform(&s, username)
-	return &transformSession{s, trans}, nil
+	return &transformSession{s, be}, nil
 }
 
 // AnonymousLogin implements the smtp.Backend interface.
@@ -38,27 +30,23 @@ func (be *TransformBackend) AnonymousLogin(state *smtp.ConnectionState) (smtp.Se
 	if err != nil {
 		return nil, err
 	}
-	trans := be.AnonymousTransform(&s)
-	return &transformSession{s, trans}, nil
+	return &transformSession{s, be}, nil
 }
 
 type transformSession struct {
 	Session smtp.Session
 
-	trans TransformHandler
+	be *TransformBackend
 }
 
 func (s *transformSession) Reset() {
-	if s.trans != nil && s.trans.TransformReset != nil {
-		s.trans.TransformReset()
-	}
 	s.Session.Reset()
 }
 
 func (s *transformSession) Mail(from string) error {
-	if s.trans != nil && s.trans.TransformMail != nil {
+	if s.be.TransformMail != nil {
 		var err error
-		from, err = s.trans.TransformMail(from)
+		from, err = s.be.TransformMail(from)
 		if err != nil {
 			return err
 		}
@@ -67,9 +55,9 @@ func (s *transformSession) Mail(from string) error {
 }
 
 func (s *transformSession) Rcpt(to string) error {
-	if s.trans != nil && s.trans.TransformRcpt != nil {
+	if s.be.TransformRcpt != nil {
 		var err error
-		to, err = s.trans.TransformRcpt(to)
+		to, err = s.be.TransformRcpt(to)
 		if err != nil {
 			return err
 		}
@@ -78,9 +66,9 @@ func (s *transformSession) Rcpt(to string) error {
 }
 
 func (s *transformSession) Data(r io.Reader) error {
-	if s.trans != nil && s.trans.TransformData != nil {
+	if s.be.TransformData != nil {
 		var err error
-		r, err = s.trans.TransformData(r)
+		r, err = s.be.TransformData(r)
 		if err != nil {
 			return err
 		}
@@ -89,8 +77,5 @@ func (s *transformSession) Data(r io.Reader) error {
 }
 
 func (s *transformSession) Logout() error {
-	if s.trans != nil && s.trans.TransformReset != nil {
-		s.trans.TransformReset()
-	}
 	return s.Session.Logout()
 }
