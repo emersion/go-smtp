@@ -405,7 +405,7 @@ func TestServer_tooManyInvalidCommands(t *testing.T) {
 }
 
 func TestServer_tooLongMessage(t *testing.T) {
-	_, s, c, scanner := testServerAuthenticated(t)
+	be, s, c, scanner := testServerAuthenticated(t)
 	defer s.Close()
 
 	s.MaxMessageBytes = 50
@@ -424,6 +424,10 @@ func TestServer_tooLongMessage(t *testing.T) {
 	scanner.Scan()
 	if !strings.HasPrefix(scanner.Text(), "552 ") {
 		t.Fatal("Invalid DATA response, expected an error but got:", scanner.Text())
+	}
+
+	if len(be.messages) != 0 || len(be.anonmsgs) != 0 {
+		t.Fatal("Invalid number of sent messages:", be.messages, be.anonmsgs)
 	}
 }
 
