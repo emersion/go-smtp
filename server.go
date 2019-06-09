@@ -4,7 +4,9 @@ import (
 	"crypto/tls"
 	"errors"
 	"io"
+	"log"
 	"net"
+	"os"
 	"sync"
 	"time"
 
@@ -15,6 +17,12 @@ var errTCPAndLMTP = errors.New("smtp: cannot start LMTP server listening on a TC
 
 // A function that creates SASL servers.
 type SaslServerFactory func(conn *Conn) sasl.Server
+
+// Logger interface is used by Server to report unexpected internal errors.
+type Logger interface {
+	Printf(format string, v ...interface{})
+	Println(v ...interface{})
+}
 
 // A SMTP server.
 type Server struct {
@@ -32,6 +40,7 @@ type Server struct {
 	AllowInsecureAuth bool
 	Strict            bool
 	Debug             io.Writer
+	ErrorLog          Logger
 	ReadTimeout       time.Duration
 	WriteTimeout      time.Duration
 
@@ -53,8 +62,9 @@ type Server struct {
 // New creates a new SMTP server.
 func NewServer(be Backend) *Server {
 	return &Server{
-		Backend: be,
-		caps:    []string{"PIPELINING", "8BITMIME", "ENHANCEDSTATUSCODES"},
+		Backend:  be,
+		ErrorLog: log.New(os.Stderr, "smtp/server ", log.LstdFlags),
+		caps:     []string{"PIPELINING", "8BITMIME", "ENHANCEDSTATUSCODES"},
 		auths: map[string]SaslServerFactory{
 			sasl.Plain: func(conn *Conn) sasl.Server {
 				return sasl.NewPlainServer(func(identity, username, password string) error {
