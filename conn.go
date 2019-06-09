@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/textproto"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -72,6 +73,18 @@ func (c *Conn) unrecognizedCommand(cmd string) {
 
 // Commands are dispatched to the appropriate handler functions.
 func (c *Conn) handle(cmd string, arg string) {
+	// If panic happens during command handling - send 421 response
+	// and close connection.
+	defer func() {
+		if err := recover(); err != nil {
+			c.WriteResponse(421, EnhancedCode{4, 0, 0}, "Internal server error")
+			c.Close()
+
+			stack := debug.Stack()
+			c.server.ErrorLog.Printf("panic serving %v: %v\n%s", c.State().RemoteAddr, err, stack)
+		}
+	}()
+
 	if cmd == "" {
 		c.WriteResponse(500, EnhancedCode{5, 5, 2}, "Speak up")
 		return
