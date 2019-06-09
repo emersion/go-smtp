@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"io/ioutil"
+	"log"
 	"net"
 	"strings"
 	"testing"
@@ -22,7 +23,8 @@ type backend struct {
 	messages []*message
 	anonmsgs []*message
 
-	userErr error
+	panicOnMail bool
+	userErr     error
 }
 
 func (be *backend) Login(_ *smtp.ConnectionState, username, password string) (smtp.Session, error) {
@@ -60,6 +62,9 @@ func (s *session) Logout() error {
 }
 
 func (s *session) Mail(from string) error {
+	if s.backend.panicOnMail {
+		panic("Everything is on fire!")
+	}
 	s.Reset()
 	s.msg.From = from
 	return nil
@@ -220,6 +225,24 @@ func TestServerEmptyFrom2(t *testing.T) {
 	io.WriteString(c, "MAIL FROM:<>\r\n")
 	scanner.Scan()
 	if strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid MAIL response:", scanner.Text())
+	}
+
+	return
+}
+
+func TestServerPanicRecover(t *testing.T) {
+	_, s, c, scanner := testServerAuthenticated(t)
+	defer s.Close()
+	defer c.Close()
+
+	s.Backend.(*backend).panicOnMail = true
+	// Don't log panic in tests to not confuse people who run 'go test'.
+	s.ErrorLog = log.New(ioutil.Discard, "", 0)
+
+	io.WriteString(c, "MAIL FROM:<alice@wonderland.book>\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "421 ") {
 		t.Fatal("Invalid MAIL response:", scanner.Text())
 	}
 
