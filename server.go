@@ -13,8 +13,6 @@ import (
 	"github.com/emersion/go-sasl"
 )
 
-var errTCPAndLMTP = errors.New("smtp: cannot start LMTP server listening on a TCP socket")
-
 // A function that creates SASL servers.
 type SaslServerFactory func(conn *Conn) sasl.Server
 
@@ -30,9 +28,10 @@ type Server struct {
 	Addr string
 	// The server TLS configuration.
 	TLSConfig *tls.Config
-	// Enable LMTP mode, as defined in RFC 2033. LMTP mode cannot be used with a
-	// TCP listener.
+	// Enable LMTP mode, as defined in RFC 2033.
 	LMTP bool
+	// Network defines if tcp or unix socket. default tcp
+	Network string
 
 	Domain            string
 	MaxRecipients     int
@@ -147,15 +146,15 @@ func (s *Server) handleConn(c *Conn) error {
 // ListenAndServe listens on the network address s.Addr and then calls Serve
 // to handle requests on incoming connections.
 //
-// If s.Addr is blank and LMTP is disabled, ":smtp" is used.
+// If s.Addr is blank ":smtp" is used.
 func (s *Server) ListenAndServe() error {
 	network := "tcp"
-	if s.LMTP {
+	if s.Network == "unix" {
 		network = "unix"
 	}
 
 	addr := s.Addr
-	if !s.LMTP && addr == "" {
+	if addr == "" {
 		addr = ":smtp"
 	}
 
@@ -172,10 +171,6 @@ func (s *Server) ListenAndServe() error {
 //
 // If s.Addr is blank, ":smtps" is used.
 func (s *Server) ListenAndServeTLS() error {
-	if s.LMTP {
-		return errTCPAndLMTP
-	}
-
 	addr := s.Addr
 	if addr == "" {
 		addr = ":smtps"

@@ -2,6 +2,7 @@ package smtp_test
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"io"
 	"io/ioutil"
@@ -9,6 +10,7 @@ import (
 	"net"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/emersion/go-smtp"
 )
@@ -75,7 +77,7 @@ func (s *session) Rcpt(to string) error {
 	return nil
 }
 
-func (s *session) Data(r io.Reader) error {
+func (s *session) Data(r io.Reader, d smtp.DataContext) error {
 	if b, err := ioutil.ReadAll(r); err != nil {
 		return err
 	} else {
@@ -85,6 +87,20 @@ func (s *session) Data(r io.Reader) error {
 		} else {
 			s.backend.messages = append(s.backend.messages, s.msg)
 		}
+	}
+
+	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)
+	for _, rcpt := range s.msg.To {
+		rcpt := rcpt
+		d.StartDelivery(ctx, rcpt)
+		go func() {
+			// Do some delivery to a backend here
+			d.SetStatus(rcpt, &smtp.SMTPError{
+				Code:         250,
+				EnhancedCode: smtp.EnhancedCode{2, 0, 0},
+				Message:      "Finished",
+			})
+		}()
 	}
 	return nil
 }
@@ -610,12 +626,22 @@ func TestServer_lmtpOK(t *testing.T) {
 	io.WriteString(c, "Hey <3\r\n")
 	io.WriteString(c, ".\r\n")
 	scanner.Scan()
-
-	if !strings.HasPrefix(scanner.Text(), "250 ") {
+	rcpt1 := scanner.Text()
+	scanner.Scan()
+	rcpt2 := scanner.Text()
+	if !strings.HasPrefix(rcpt1, "250 ") {
 		t.Fatal("Invalid DATA first response:", scanner.Text())
 	}
-	if !strings.HasPrefix(scanner.Text(), "250 ") {
+	if !strings.HasPrefix(rcpt1, "250 ") {
 		t.Fatal("Invalid DATA second response:", scanner.Text())
+	}
+
+	if rcpt1 != "250 2.0.0 <root@gchq.gov.uk> Finished" {
+		t.Fatal("Invalid responce:", rcpt1)
+	}
+
+	if rcpt2 != "250 2.0.0 <root@bnd.bund.de> Finished" {
+		t.Fatal("Invalid responce:", rcpt2)
 	}
 
 	if len(be.messages) != 0 || len(be.anonmsgs) != 1 {

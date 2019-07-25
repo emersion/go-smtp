@@ -74,7 +74,7 @@ func (s *session) Rcpt(to string) error {
 	return nil
 }
 
-func (s *session) Data(r io.Reader) error {
+func (s *session) Data(r io.Reader, d smtp.DataContext) error {
 	if b, err := ioutil.ReadAll(r); err != nil {
 		return err
 	} else {

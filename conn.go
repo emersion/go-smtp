@@ -1,6 +1,7 @@
 package smtp
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
@@ -30,14 +31,16 @@ type Conn struct {
 	session   Session
 	locker    sync.Mutex
 
-	fromReceived bool
-	recipients   []string
+	fromReceived  bool
+	recipients    []string
+	recipientsmap map[string]struct{}
 }
 
 func newConn(c net.Conn, s *Server) *Conn {
 	sc := &Conn{
-		server: s,
-		conn:   c,
+		server:        s,
+		conn:          c,
+		recipientsmap: make(map[string]struct{}),
 	}
 
 	sc.init()
@@ -325,6 +328,14 @@ func (c *Conn) handleRcpt(arg string) {
 		return
 	}
 
+	//
+	if c.server.LMTP {
+		if _, ok := c.recipientsmap[strings.ToLower(recipient)]; ok {
+			c.WriteResponse(451, EnhancedCode{4, 0, 0}, fmt.Sprintf("Duplicate RCPT TO:<%s>. Please try again later.", recipient))
+			return
+		}
+	}
+
 	if err := c.Session().Rcpt(recipient); err != nil {
 		if smtpErr, ok := err.(*SMTPError); ok {
 			c.WriteResponse(smtpErr.Code, smtpErr.EnhancedCode, smtpErr.Message)
@@ -333,7 +344,8 @@ func (c *Conn) handleRcpt(arg string) {
 		c.WriteResponse(451, EnhancedCode{4, 0, 0}, err.Error())
 		return
 	}
-	c.recipients = append(c.recipients, recipient)
+	c.recipients = append(c.recipients, strings.ToLower(recipient))
+	c.recipientsmap[strings.ToLower(recipient)] = struct{}{}
 	c.WriteResponse(250, EnhancedCode{2, 0, 0}, fmt.Sprintf("I'll make sure <%v> gets this", recipient))
 }
 
@@ -457,7 +469,8 @@ func (c *Conn) handleData(arg string) {
 		msg          string
 	)
 	r := newDataReader(c)
-	err := c.Session().Data(r)
+	dataContext := newdataContext()
+	err := c.Session().Data(r, dataContext)
 	io.Copy(ioutil.Discard, r) // Make sure all the data has been consumed
 	if err != nil {
 		if smtperr, ok := err.(*SMTPError); ok {
@@ -476,15 +489,55 @@ func (c *Conn) handleData(arg string) {
 	}
 
 	if c.server.LMTP {
-		// TODO: support per-recipient responses
 		for _, rcpt := range c.recipients {
-			c.WriteResponse(code, enhancedCode, "<"+rcpt+"> "+msg)
+			var status *SMTPError
+			rcptStatus := dataContext.rcptStatus[rcpt]
+			select {
+			case <-rcptStatus.ctx.Done():
+				c.Server().ErrorLog.Printf("Context Error: %s - tempfailing", rcptStatus.ctx.Err())
+				status = &SMTPError{
+					Code:         420,
+					EnhancedCode: EnhancedCode{4, 4, 7},
+					Message:      "Error: timeout reached",
+				}
+			case status = <-rcptStatus.ch:
+			}
+			c.WriteResponse(status.Code, status.EnhancedCode, "<"+rcpt+"> "+status.Message)
 		}
+
 	} else {
 		c.WriteResponse(code, enhancedCode, msg)
 	}
 
 	c.reset()
+}
+
+type rcptStatus struct {
+	ctx context.Context
+	ch  chan *SMTPError
+}
+
+type dataContext struct {
+	rcptStatus map[string]*rcptStatus
+}
+
+func newdataContext() *dataContext {
+	return &dataContext{
+		rcptStatus: make(map[string]*rcptStatus),
+	}
+}
+
+func (s *dataContext) SetStatus(rcpt string, status *SMTPError) {
+	rcpt = strings.ToLower(rcpt)
+	s.rcptStatus[rcpt].ch <- status
+}
+
+func (s *dataContext) StartDelivery(ctx context.Context, rcpt string) {
+	rcpt = strings.ToLower(rcpt)
+	s.rcptStatus[rcpt] = &rcptStatus{
+		ch:  make(chan *SMTPError),
+		ctx: ctx,
+	}
 }
 
 func (c *Conn) Reject() {
@@ -544,4 +597,5 @@ func (c *Conn) reset() {
 	}
 	c.fromReceived = false
 	c.recipients = nil
+	c.recipientsmap = make(map[string]struct{})
 }

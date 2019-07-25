@@ -49,7 +49,7 @@ func main() {
 
 If you need more control, you can use `Client` instead.
 
-### Server
+### SMTP Server
 
 ```go
 package main
@@ -93,7 +93,7 @@ func (s *Session) Rcpt(to string) error {
 	return nil
 }
 
-func (s *Session) Data(r io.Reader) error {
+func (s *Session) Data(r io.Reader, d smtp.DataContext) error {
 	if b, err := ioutil.ReadAll(r); err != nil {
 		return err
 	} else {
@@ -140,6 +140,131 @@ DATA
 Hey <3
 .
 ```
+
+### LMTP Server
+
+```go
+package main
+
+import (
+	"context"
+	"io"
+	"io/ioutil"
+	"log"
+	"time"
+	"fmt"
+
+	"github.com/emersion/go-smtp"
+)
+
+// The Backend implements LMTP server methods.
+type Backend struct{}
+
+// Login handles a login command with username and password.
+func (be *Backend) Login(state *smtp.ConnectionState, username, password string) (smtp.Session, error) {
+	return nil, smtp.ErrAuthUnsupported
+}
+
+// AnonymousLogin requires clients to authenticate using SMTP AUTH before sending emails
+func (be *Backend) AnonymousLogin(state *smtp.ConnectionState) (smtp.Session, error) {
+	return &Session{}, nil
+}
+
+// Session is returned for every connection
+type Session struct{
+	RcptTos     []string
+}
+
+func (s *Session) Mail(from string) error {
+	log.Println("Mail from:", from)
+	return nil
+}
+
+func (s *Session) Rcpt(to string) error {
+	log.Println("Rcpt to:", to)
+	s.RcptTos = append(s.RcptTos, to)
+	return nil
+}
+
+func (s *Session) Data(r io.Reader, dataContext smtp.DataContext) error {
+	mailBytes, err := ioutil.ReadAll(r)
+	if err != nil {
+		return err
+	} 
+	
+	globalCtx := context.Background()
+
+	for i, rcpt := range s.RcptTos {
+		rcptCtx, _ := context.WithTimeout(globalCtx, 2*time.Second)
+		// we have to assing i and rcpt new to access them in the go() routine
+		rcpt := rcpt
+		i := i
+
+		dataContext.StartDelivery(rcptCtx, rcpt)
+		go func() {
+			// normaly we would deliver the mailBytes to our Maildir/HTTP backend
+			// in this case we just do a sleep 
+			time.Sleep(time.Duration(2+i) * time.Second)
+			fmt.Println(string(mailBytes))
+            // Lets finish with OK (if the request wasn't canceled because of the ctx timeout)
+			dataContext.SetStatus(rcpt, &smtp.SMTPError{
+				Code: 250,
+				EnhancedCode:  smtp.EnhancedCode{2, 0, 0},
+				Message: "Finished",
+			})
+		}()
+
+	}
+	// we always return nil in LMTP because every rcpt return code was set with dataContext.SetStatus()
+	return nil
+}
+
+func (s *Session) Reset() {
+	// we need to reset our rcptTo's slice:
+	s.RcptTos = []string{}
+}
+
+func (s *Session) Logout() error {
+	return nil
+}
+
+func main() {
+	be := &Backend{}
+
+	s := smtp.NewServer(be)
+
+	s.LMTP = true
+	s.Addr = ":1025"
+	s.Domain = "localhost"
+	s.ReadTimeout = 10 * time.Second
+	s.WriteTimeout = 10 * time.Second
+	s.MaxMessageBytes = 1024 * 1024
+	s.MaxRecipients = 50
+	s.AllowInsecureAuth = true
+
+	log.Println("Starting LMTP Server at", s.Addr)
+	if err := s.ListenAndServe(); err != nil {
+		log.Fatal(err)
+	}
+}
+```
+
+You can use the server manually with `telnet`:
+```
+$ telnet localhost 1025
+LHLO localhost
+MAIL FROM:<from@example.com>
+RCPT TO:<rcpt1@example.com>
+RCPT TO:<rcpt2@example.com>
+RCPT TO:<rcpt3@example.com>
+DATA
+Hey <3
+.
+250 2.0.0 <rcpt1@example.com> Finished
+420 4.4.7 <rcpt2@example.com> Error: timeout reached
+420 4.4.7 <rcpt3@example.com> Error: timeout reached
+```
+
 
 ## Licence
 

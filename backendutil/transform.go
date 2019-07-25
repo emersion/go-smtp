@@ -65,7 +65,7 @@ func (s *transformSession) Rcpt(to string) error {
 	return s.Session.Rcpt(to)
 }
 
-func (s *transformSession) Data(r io.Reader) error {
+func (s *transformSession) Data(r io.Reader, d smtp.DataContext) error {
 	if s.be.TransformData != nil {
 		var err error
 		r, err = s.be.TransformData(r)
@@ -73,7 +73,7 @@ func (s *transformSession) Data(r io.Reader) error {
 			return err
 		}
 	}
-	return s.Session.Data(r)
+	return s.Session.Data(r, d)
 }
 
 func (s *transformSession) Logout() error {

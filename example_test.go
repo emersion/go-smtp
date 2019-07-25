@@ -118,7 +118,7 @@ func (s *Session) Rcpt(to string) error {
 	return nil
 }
 
-func (s *Session) Data(r io.Reader) error {
+func (s *Session) Data(r io.Reader, sc smtp.DataContext) error {
 	if b, err := ioutil.ReadAll(r); err != nil {
 		return err
 	} else {
@@ -144,6 +144,7 @@ func ExampleNewServer() {
 	s.ReadTimeout = 10 * time.Second
 	s.MaxMessageBytes = 1024 * 1024
 	s.MaxRecipients = 50
+	s.Network = "tcp" // Or unix
 	s.AllowInsecureAuth = true
 
 	log.Println("Starting server at", s.Addr)

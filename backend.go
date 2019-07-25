@@ -1,6 +1,7 @@
 package smtp
 
 import (
+	"context"
 	"errors"
 	"io"
 )
@@ -33,5 +34,10 @@ type Session interface {
 	// Add recipient for currently processed message.
 	Rcpt(to string) error
 	// Set currently processed message contents and send it.
-	Data(r io.Reader) error
+	Data(r io.Reader, d DataContext) error
+}
+
+type DataContext interface {
+	SetStatus(rcpt string, status *SMTPError)
+	StartDelivery(ctx context.Context, rcpt string)
 }
