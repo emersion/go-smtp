@@ -263,11 +263,12 @@ func (c *Conn) handleMail(arg string) {
 			return
 		}
 	}
-	from := strings.Trim(fromArgs[0], "<> ")
+	from := strings.Trim(fromArgs[0], " ")
 	if from == "" {
 		c.WriteResponse(501, EnhancedCode{5, 5, 2}, "Was expecting MAIL arg syntax of FROM:<address>")
 		return
 	}
+	from = strings.Trim(fromArgs[0], "<>")
 
 	// This is where the Conn may put BODY=8BITMIME, but we already
 	// read the DATA as bytes, so it does not effect our processing.
