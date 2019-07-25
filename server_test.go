@@ -224,7 +224,7 @@ func TestServerEmptyFrom2(t *testing.T) {
 
 	io.WriteString(c, "MAIL FROM:<>\r\n")
 	scanner.Scan()
-	if strings.HasPrefix(scanner.Text(), "250 ") {
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
 		t.Fatal("Invalid MAIL response:", scanner.Text())
 	}
 
