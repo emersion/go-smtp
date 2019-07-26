@@ -263,7 +263,7 @@ func (c *Conn) handleMail(arg string) {
 			return
 		}
 	}
-	from := strings.Trim(fromArgs[0], " ")
+	from := fromArgs[0]
 	if from == "" {
 		c.WriteResponse(501, EnhancedCode{5, 5, 2}, "Was expecting MAIL arg syntax of FROM:<address>")
 		return
