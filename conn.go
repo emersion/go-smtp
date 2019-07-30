@@ -535,7 +535,7 @@ func (s *dataContext) SetStatus(rcpt string, status *SMTPError) {
 func (s *dataContext) StartDelivery(ctx context.Context, rcpt string) {
 	rcpt = strings.ToLower(rcpt)
 	s.rcptStatus[rcpt] = &rcptStatus{
-		ch:  make(chan *SMTPError),
+		ch:  make(chan *SMTPError, 1),
 		ctx: ctx,
 	}
 }
