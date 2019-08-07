@@ -55,6 +55,7 @@ type Server struct {
 	listener net.Listener
 	caps     []string
 	auths    map[string]SaslServerFactory
+	done     chan struct{}
 
 	locker sync.Mutex
 	conns  map[*Conn]struct{}
@@ -67,6 +68,7 @@ func NewServer(be Backend) *Server {
 		MaxLineLength: 2000,
 
 		Backend:  be,
+		done:     make(chan struct{}, 1),
 		ErrorLog: log.New(os.Stderr, "smtp/server ", log.LstdFlags),
 		caps:     []string{"PIPELINING", "8BITMIME", "ENHANCEDSTATUSCODES"},
 		auths: map[string]SaslServerFactory{
@@ -99,7 +101,13 @@ func (s *Server) Serve(l net.Listener) error {
 	for {
 		c, err := l.Accept()
 		if err != nil {
-			return err
+			select {
+			case <-s.done:
+				// we called Close()
+				return nil
+			default:
+				return err
+			}
 		}
 
 		go s.handleConn(newConn(c, s))
@@ -199,6 +207,7 @@ func (s *Server) ListenAndServeTLS() error {
 
 // Close stops the server.
 func (s *Server) Close() {
+	s.done <- struct{}{}
 	s.listener.Close()
 
 	s.locker.Lock()
