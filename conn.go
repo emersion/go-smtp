@@ -17,6 +17,7 @@ import (
 
 type ConnectionState struct {
 	Hostname   string
+	LocalAddr  net.Addr
 	RemoteAddr net.Addr
 	TLS        tls.ConnectionState
 }
@@ -177,6 +178,7 @@ func (c *Conn) State() ConnectionState {
 	}
 
 	state.Hostname = c.helo
+	state.LocalAddr = c.conn.LocalAddr()
 	state.RemoteAddr = c.conn.RemoteAddr()
 
 	return state
