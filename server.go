@@ -37,6 +37,7 @@ type Server struct {
 	Domain            string
 	MaxRecipients     int
 	MaxMessageBytes   int
+	MaxLineLength     int
 	AllowInsecureAuth bool
 	Strict            bool
 	Debug             io.Writer
@@ -62,6 +63,9 @@ type Server struct {
 // New creates a new SMTP server.
 func NewServer(be Backend) *Server {
 	return &Server{
+		// Doubled maximum line length per RFC 5321 (Section 4.5.3.1.6)
+		MaxLineLength: 2000,
+
 		Backend:  be,
 		ErrorLog: log.New(os.Stderr, "smtp/server ", log.LstdFlags),
 		caps:     []string{"PIPELINING", "8BITMIME", "ENHANCEDSTATUSCODES"},
@@ -130,6 +134,10 @@ func (s *Server) handleConn(c *Conn) error {
 			c.handle(cmd, arg)
 		} else {
 			if err == io.EOF {
+				return nil
+			}
+			if err == ErrTooLongLine {
+				c.WriteResponse(500, EnhancedCode{5, 4, 0}, "Too long line, closing connection")
 				return nil
 			}
 

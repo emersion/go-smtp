@@ -46,16 +46,28 @@ func newConn(c net.Conn, s *Server) *Conn {
 }
 
 func (c *Conn) init() {
-	var rwc io.ReadWriteCloser = c.conn
+	rwc := struct {
+		io.Reader
+		io.Writer
+		io.Closer
+	}{
+		Reader: lineLimitReader{
+			R:         c.conn,
+			LineLimit: c.server.MaxLineLength,
+		},
+		Writer: c.conn,
+		Closer: c.conn,
+	}
+
 	if c.server.Debug != nil {
 		rwc = struct {
 			io.Reader
 			io.Writer
 			io.Closer
 		}{
-			io.TeeReader(c.conn, c.server.Debug),
-			io.MultiWriter(c.conn, c.server.Debug),
-			c.conn,
+			io.TeeReader(rwc.Reader, c.server.Debug),
+			io.MultiWriter(rwc.Writer, c.server.Debug),
+			rwc.Closer,
 		}
 	}
 
