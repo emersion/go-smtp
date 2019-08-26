@@ -454,6 +454,17 @@ func TestServer_tooLongMessage(t *testing.T) {
 	}
 }
 
+func TestServer_tooLongLine(t *testing.T) {
+	_, s, c, scanner := testServerAuthenticated(t)
+	defer s.Close()
+
+	io.WriteString(c, "MAIL FROM:<root@nsa.gov> "+strings.Repeat("A", 2000))
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "500 ") {
+		t.Fatal("Invalid response, expected an error but got:", scanner.Text())
+	}
+}
+
 func TestServer_anonymousUserError(t *testing.T) {
 	be, s, c, scanner, _ := testServerEhlo(t)
 	defer s.Close()
