@@ -161,6 +161,66 @@ Goodbye.`
 	}
 }
 
+func TestBasic_SMTPError(t *testing.T) {
+	faultyServer := `220 mx.google.com at your service
+250-mx.google.com at your service
+250 ENHANCEDSTATUSCODES
+500 5.0.0 Failing with enhanced code
+500 Failing without enhanced code`
+	// RFC 2034 says that enhanced codes *SHOULD* be included in errors,
+	// this means it can be violated hence we need to handle last
+	// case properly.
+
+	faultyServer = strings.Join(strings.Split(faultyServer, "\n"), "\r\n")
+
+	var wrote bytes.Buffer
+	var fake faker
+	fake.ReadWriter = struct {
+		io.Reader
+		io.Writer
+	}{
+		strings.NewReader(faultyServer),
+		&wrote,
+	}
+	c, err := NewClient(fake, "fake.host")
+	if err != nil {
+		t.Fatalf("NewClient failed: %v", err)
+	}
+
+	err = c.Mail("whatever")
+	if err == nil {
+		t.Fatal("MAIL succeded")
+	}
+	smtpErr, ok := err.(*SMTPError)
+	if !ok {
+		t.Fatal("Returned error is not SMTPError")
+	}
+	if smtpErr.Code != 500 {
+		t.Fatalf("Wrong status code, got %d, want %d", smtpErr.Code, 500)
+	}
+	if smtpErr.EnhancedCode != (EnhancedCode{5, 0, 0}) {
+		t.Fatalf("Wrong enhanced code, got %v, want %v", smtpErr.EnhancedCode, EnhancedCode{5, 0, 0})
+	}
+	if smtpErr.Message != "Failing with enhanced code" {
+		t.Fatalf("Wrong message, got %s, want %s", smtpErr.Message, "Failing with enhanced code")
+	}
+
+	err = c.Mail("whatever")
+	if err == nil {
+		t.Fatal("MAIL succeded")
+	}
+	smtpErr, ok = err.(*SMTPError)
+	if !ok {
+		t.Fatal("Returned error is not SMTPError")
+	}
+	if smtpErr.Code != 500 {
+		t.Fatalf("Wrong status code, got %d, want %d", smtpErr.Code, 500)
+	}
+	if smtpErr.Message != "Failing without enhanced code" {
+		t.Fatalf("Wrong message, got %s, want %s", smtpErr.Message, "Failing without enhanced code")
+	}
+}
+
 var basicServer = `250 mx.google.com at your service
 502 Unrecognized command.
 250-mx.google.com at your service
@@ -315,7 +375,7 @@ func TestHello(t *testing.T) {
 			err = c.Hello("customhost")
 		case 1:
 			err = c.StartTLS(nil)
-			if err.Error() == "502 Not implemented" {
+			if err.Error() == "Not implemented" {
 				err = nil
 			}
 		case 2:
@@ -561,8 +621,8 @@ func TestAuthFailed(t *testing.T) {
 
 	if err == nil {
 		t.Error("Auth: expected error; got none")
-	} else if err.Error() != "535 Invalid credentials\nplease see www.example.com" {
-		t.Errorf("Auth: got error: %v, want: %s", err, "535 Invalid credentials\nplease see www.example.com")
+	} else if err.Error() != "Invalid credentials\nplease see www.example.com" {
+		t.Errorf("Auth: got error: %v, want: %s", err, "Invalid credentials\nplease see www.example.com")
 	}
 
 	bcmdbuf.Flush()
