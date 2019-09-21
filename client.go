@@ -12,6 +12,7 @@ import (
 	"io"
 	"net"
 	"net/textproto"
+	"strconv"
 	"strings"
 
 	"github.com/emersion/go-sasl"
@@ -68,6 +69,9 @@ func NewClient(conn net.Conn, host string) (*Client, error) {
 	_, _, err := text.ReadResponse(220)
 	if err != nil {
 		text.Close()
+		if protoErr, ok := err.(*textproto.Error); ok {
+			return nil, toSMTPErr(protoErr)
+		}
 		return nil, err
 	}
 	_, isTLS := conn.(*tls.Conn)
@@ -108,6 +112,8 @@ func (c *Client) hello() error {
 // over the host name used. The client will introduce itself as "localhost"
 // automatically otherwise. If Hello is called, it must be called before
 // any of the other methods.
+//
+// If server returns an error, it will be of type *SMTPError.
 func (c *Client) Hello(localName string) error {
 	if err := validateLine(localName); err != nil {
 		return err
@@ -120,6 +126,7 @@ func (c *Client) Hello(localName string) error {
 }
 
 // cmd is a convenience function that sends a command and returns the response
+// textproto.Error returned by c.Text.ReadResponse is converted into SMTPError.
 func (c *Client) cmd(expectCode int, format string, args ...interface{}) (int, string, error) {
 	id, err := c.Text.Cmd(format, args...)
 	if err != nil {
@@ -128,7 +135,14 @@ func (c *Client) cmd(expectCode int, format string, args ...interface{}) (int, s
 	c.Text.StartResponse(id)
 	defer c.Text.EndResponse(id)
 	code, msg, err := c.Text.ReadResponse(expectCode)
-	return code, msg, err
+	if err != nil {
+		if protoErr, ok := err.(*textproto.Error); ok {
+			smtpErr := toSMTPErr(protoErr)
+			return code, smtpErr.Message, smtpErr
+		}
+		return code, msg, err
+	}
+	return code, msg, nil
 }
 
 // helo sends the HELO greeting to the server. It should be used only when the
@@ -172,6 +186,8 @@ func (c *Client) ehlo() error {
 
 // StartTLS sends the STARTTLS command and encrypts all further communication.
 // Only servers that advertise the STARTTLS extension support this function.
+//
+// If server returns an error, it will be of type *SMTPError.
 func (c *Client) StartTLS(config *tls.Config) error {
 	if err := c.hello(); err != nil {
 		return err
@@ -212,6 +228,8 @@ func (c *Client) TLSConnectionState() (state tls.ConnectionState, ok bool) {
 // If Verify returns nil, the address is valid. A non-nil return
 // does not necessarily indicate an invalid address. Many servers
 // will not verify addresses for security reasons.
+//
+// If server returns an error, it will be of type *SMTPError.
 func (c *Client) Verify(addr string) error {
 	if err := validateLine(addr); err != nil {
 		return err
@@ -226,6 +244,8 @@ func (c *Client) Verify(addr string) error {
 // Auth authenticates a client using the provided authentication mechanism.
 // A failed authentication closes the connection.
 // Only servers that advertise the AUTH extension support this function.
+//
+// If server returns an error, it will be of type *SMTPError.
 func (c *Client) Auth(a sasl.Client) error {
 	if err := c.hello(); err != nil {
 		return err
@@ -248,7 +268,7 @@ func (c *Client) Auth(a sasl.Client) error {
 			// the last message isn't base64 because it isn't a challenge
 			msg = []byte(msg64)
 		default:
-			err = &textproto.Error{Code: code, Msg: msg64}
+			err = toSMTPErr(&textproto.Error{Code: code, Msg: msg64})
 		}
 		if err == nil {
 			if code == 334 {
@@ -277,6 +297,8 @@ func (c *Client) Auth(a sasl.Client) error {
 // If the server supports the 8BITMIME extension, Mail adds the BODY=8BITMIME
 // parameter.
 // This initiates a mail transaction and is followed by one or more Rcpt calls.
+//
+// If server returns an error, it will be of type *SMTPError.
 func (c *Client) Mail(from string) error {
 	if err := validateLine(from); err != nil {
 		return err
@@ -297,6 +319,8 @@ func (c *Client) Mail(from string) error {
 // Rcpt issues a RCPT command to the server using the provided email address.
 // A call to Rcpt must be preceded by a call to Mail and may be followed by
 // a Data call or another Rcpt call.
+//
+// If server returns an error, it will be of type *SMTPError.
 func (c *Client) Rcpt(to string) error {
 	if err := validateLine(to); err != nil {
 		return err
@@ -318,6 +342,9 @@ func (d *dataCloser) Close() error {
 	if d.c.lmtp {
 		for d.c.rcptToCount > 0 {
 			if _, _, err := d.c.Text.ReadResponse(250); err != nil {
+				if protoErr, ok := err.(*textproto.Error); ok {
+					return toSMTPErr(protoErr)
+				}
 				return err
 			}
 			d.c.rcptToCount--
@@ -325,7 +352,13 @@ func (d *dataCloser) Close() error {
 		return nil
 	} else {
 		_, _, err := d.c.Text.ReadResponse(250)
-		return err
+		if err != nil {
+			if protoErr, ok := err.(*textproto.Error); ok {
+				return toSMTPErr(protoErr)
+			}
+			return err
+		}
+		return nil
 	}
 }
 
@@ -333,6 +366,8 @@ func (d *dataCloser) Close() error {
 // can be used to write the mail headers and body. The caller should
 // close the writer before calling any more methods on c. A call to
 // Data must be preceded by one or more calls to Rcpt.
+//
+// If server returns an error, it will be of type *SMTPError.
 func (c *Client) Data() (io.WriteCloser, error) {
 	_, _, err := c.cmd(354, "DATA")
 	if err != nil {
@@ -465,4 +500,47 @@ func (c *Client) Quit() error {
 		return err
 	}
 	return c.Text.Close()
+}
+
+func parseEnhancedCode(s string) (EnhancedCode, error) {
+	parts := strings.Split(s, ".")
+	if len(parts) != 3 {
+		return EnhancedCode{}, fmt.Errorf("wrong amount of enhanced code parts")
+	}
+
+	code := EnhancedCode{}
+	for i, part := range parts {
+		num, err := strconv.Atoi(part)
+		if err != nil {
+			return code, err
+		}
+		code[i] = num
+	}
+	return code, nil
+}
+
+// toSMTPErr converts textproto.Error into SMTPError, parsing
+// enhanced status code if it is present.
+func toSMTPErr(protoErr *textproto.Error) *SMTPError {
+	if protoErr == nil {
+		return nil
+	}
+	smtpErr := &SMTPError{
+		Code:    protoErr.Code,
+		Message: protoErr.Msg,
+	}
+
+	parts := strings.SplitN(protoErr.Msg, " ", 2)
+	if len(parts) != 2 {
+		return smtpErr
+	}
+
+	enchCode, err := parseEnhancedCode(parts[0])
+	if err != nil {
+		return smtpErr
+	}
+
+	smtpErr.EnhancedCode = enchCode
+	smtpErr.Message = parts[1]
+	return smtpErr
 }

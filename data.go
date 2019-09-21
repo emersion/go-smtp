@@ -6,7 +6,8 @@ import (
 
 type EnhancedCode [3]int
 
-// SMTPError specifies the error code and message that needs to be returned to the client
+// SMTPError specifies the error code, enhanced error code (if any) and
+// message returned by the server.
 type SMTPError struct {
 	Code         int
 	EnhancedCode EnhancedCode
