@@ -31,6 +31,10 @@ func (err *SMTPError) Error() string {
 	return err.Message
 }
 
+func (err *SMTPError) Temporary() bool {
+	return err.Code/100 == 4
+}
+
 var ErrDataTooLarge = &SMTPError{
 	Code:         552,
 	EnhancedCode: EnhancedCode{5, 3, 4},
