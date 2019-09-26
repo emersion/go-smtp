@@ -23,6 +23,13 @@ type backend struct {
 	messages []*message
 	anonmsgs []*message
 
+	implementLMTPData bool
+	lmtpStatus        []struct {
+		addr string
+		err  error
+	}
+	lmtpStatusSync chan struct{}
+
 	panicOnMail bool
 	userErr     error
 }
@@ -35,6 +42,11 @@ func (be *backend) Login(_ *smtp.ConnectionState, username, password string) (sm
 	if username != "username" || password != "password" {
 		return nil, errors.New("Invalid username or password")
 	}
+
+	if be.implementLMTPData {
+		return &lmtpSession{&session{backend: be}}, nil
+	}
+
 	return &session{backend: be}, nil
 }
 
@@ -43,7 +55,15 @@ func (be *backend) AnonymousLogin(_ *smtp.ConnectionState) (smtp.Session, error)
 		return &session{}, be.userErr
 	}
 
+	if be.implementLMTPData {
+		return &lmtpSession{&session{backend: be, anonymous: true}}, nil
+	}
+
 	return &session{backend: be, anonymous: true}, nil
+}
+
+type lmtpSession struct {
+	*session
 }
 
 type session struct {
@@ -86,6 +106,22 @@ func (s *session) Data(r io.Reader) error {
 			s.backend.messages = append(s.backend.messages, s.msg)
 		}
 	}
+	return nil
+}
+
+func (s *session) LMTPData(r io.Reader, collector smtp.StatusCollector) error {
+	if err := s.Data(r); err != nil {
+		return err
+	}
+
+	for _, val := range s.backend.lmtpStatus {
+		collector.SetStatus(val.addr, val.err)
+
+		if s.backend.lmtpStatusSync != nil {
+			s.backend.lmtpStatusSync <- struct{}{}
+		}
+	}
+
 	return nil
 }
 
@@ -583,53 +619,5 @@ func TestStrictServerBad(t *testing.T) {
 	scanner.Scan()
 	if strings.HasPrefix(scanner.Text(), "250 ") {
 		t.Fatal("Invalid MAIL response:", scanner.Text())
-	}
-}
-
-func TestServer_lmtpOK(t *testing.T) {
-	be, s, c, scanner := testServerGreeted(t, func(s *smtp.Server) {
-		s.LMTP = true
-	})
-	defer s.Close()
-	defer c.Close()
-
-	io.WriteString(c, "LHLO localhost\r\n")
-
-	scanner.Scan()
-	if scanner.Text() != "250-Hello localhost" {
-		t.Fatal("Invalid LHLO response:", scanner.Text())
-	}
-
-	for scanner.Scan() {
-		s := scanner.Text()
-
-		if strings.HasPrefix(s, "250 ") {
-			break
-		} else if !strings.HasPrefix(s, "250-") {
-			t.Fatal("Invalid capability response:", s)
-		}
-	}
-
-	io.WriteString(c, "MAIL FROM:<root@nsa.gov>\r\n")
-	scanner.Scan()
-	io.WriteString(c, "RCPT TO:<root@gchq.gov.uk>\r\n")
-	scanner.Scan()
-	io.WriteString(c, "RCPT TO:<root@bnd.bund.de>\r\n")
-	scanner.Scan()
-	io.WriteString(c, "DATA\r\n")
-	scanner.Scan()
-	io.WriteString(c, "Hey <3\r\n")
-	io.WriteString(c, ".\r\n")
-	scanner.Scan()
-
-	if !strings.HasPrefix(scanner.Text(), "250 ") {
-		t.Fatal("Invalid DATA first response:", scanner.Text())
-	}
-	if !strings.HasPrefix(scanner.Text(), "250 ") {
-		t.Fatal("Invalid DATA second response:", scanner.Text())
-	}
-
-	if len(be.messages) != 0 || len(be.anonmsgs) != 1 {
-		t.Fatal("Invalid number of sent messages:", be.messages, be.anonmsgs)
 	}
 }

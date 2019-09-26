@@ -488,40 +488,121 @@ func (c *Conn) handleData(arg string) {
 	// We have recipients, go to accept data
 	c.WriteResponse(354, EnhancedCode{2, 0, 0}, "Go ahead. End your data with <CR><LF>.<CR><LF>")
 
-	var (
-		code         int
-		enhancedCode EnhancedCode
-		msg          string
-	)
-	r := newDataReader(c)
-	err := c.Session().Data(r)
-	io.Copy(ioutil.Discard, r) // Make sure all the data has been consumed
-	if err != nil {
-		if smtperr, ok := err.(*SMTPError); ok {
-			code = smtperr.Code
-			enhancedCode = smtperr.EnhancedCode
-			msg = smtperr.Message
-		} else {
-			code = 554
-			enhancedCode = EnhancedCode{5, 0, 0}
-			msg = "Error: transaction failed, blame it on the weather: " + err.Error()
-		}
-	} else {
-		code = 250
-		enhancedCode = EnhancedCode{2, 0, 0}
-		msg = "OK: queued"
+	if c.server.LMTP {
+		c.handleDataLMTP()
+		return
 	}
 
-	if c.server.LMTP {
-		// TODO: support per-recipient responses
-		for _, rcpt := range c.recipients {
-			c.WriteResponse(code, enhancedCode, "<"+rcpt+"> "+msg)
-		}
-	} else {
-		c.WriteResponse(code, enhancedCode, msg)
-	}
+	r := newDataReader(c)
+	code, enhancedCode, msg := toSMTPStatus(c.Session().Data(r))
+	io.Copy(ioutil.Discard, r) // Make sure all the data has been consumed
+	c.WriteResponse(code, enhancedCode, msg)
 
 	c.reset()
+}
+
+type statusCollector struct {
+	mapLock sync.Mutex
+
+	// Contains map from recipient to list of channels that are used for that
+	// recipient.
+	//
+	// First SetStatus call uses first channel, second - second, etc. Channels
+	// that are already used are set to nil (otherwise we can accidentally
+	// reuse channel that was consumed by handleDataLMTP already).
+	statusMap map[string][]chan error
+
+	// Contains channels from statusMap, in the same
+	// order as Conn.recipients.
+	status []chan error
+}
+
+// fillRemaining sets status for all recipients SetStatus was not called for before.
+func (s statusCollector) fillRemaining(err error) {
+	s.mapLock.Lock()
+	defer s.mapLock.Unlock()
+
+	// Since used channels in statusMap are set to nil, we can simply send
+	// on all non-nil channels to fill statuses not set by LMTPData.
+	for _, chList := range s.statusMap {
+		for _, ch := range chList {
+			if ch == nil {
+				continue
+			}
+			ch <- err
+		}
+	}
+}
+
+func (s statusCollector) SetStatus(rcptTo string, err error) {
+	s.mapLock.Lock()
+	defer s.mapLock.Unlock()
+
+	chList := s.statusMap[rcptTo]
+	if chList == nil {
+		panic("SetStatus is called for recipient that was not specified before")
+	}
+
+	// Pick the first non-nil channel from list.
+	var usedCh chan error
+	for i, ch := range chList {
+		if ch != nil {
+			usedCh = ch
+			chList[i] = nil
+			break
+		}
+	}
+	if usedCh == nil {
+		panic("SetStatus is called more times than particular recipient was specified")
+	}
+
+	usedCh <- err
+}
+
+func (c *Conn) handleDataLMTP() {
+	r := newDataReader(c)
+
+	status := statusCollector{
+		statusMap: make(map[string][]chan error, len(c.recipients)),
+		status:    make([]chan error, 0, len(c.recipients)),
+	}
+	for _, rcpt := range c.recipients {
+		ch := make(chan error, 1)
+		status.status = append(status.status, ch)
+		status.statusMap[rcpt] = append(status.statusMap[rcpt], ch)
+	}
+
+	lmtpSession, ok := c.Session().(LMTPSession)
+	if !ok {
+		// Fallback to using a single status for all recipients.
+		err := c.Session().Data(r)
+		io.Copy(ioutil.Discard, r) // Make sure all the data has been consumed
+		for _, rcpt := range c.recipients {
+			status.SetStatus(rcpt, err)
+		}
+	} else {
+		go func() {
+			status.fillRemaining(lmtpSession.LMTPData(r, status))
+			io.Copy(ioutil.Discard, r) // Make sure all the data has been consumed
+		}()
+	}
+
+	for i, rcpt := range c.recipients {
+		code, enchCode, msg := toSMTPStatus(<-status.status[i])
+		c.WriteResponse(code, enchCode, "<"+rcpt+"> "+msg)
+	}
+}
+
+func toSMTPStatus(err error) (code int, enchCode EnhancedCode, msg string) {
+	if err != nil {
+		if smtperr, ok := err.(*SMTPError); ok {
+			return smtperr.Code, smtperr.EnhancedCode, smtperr.Message
+		} else {
+			return 554, EnhancedCode{5, 0, 0}, "Error: transaction failed, blame it on the weather: " + err.Error()
+		}
+	}
+
+	return 250, EnhancedCode{2, 0, 0}, "OK: queued"
 }
 
 func (c *Conn) Reject() {
