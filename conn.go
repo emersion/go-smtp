@@ -488,6 +488,8 @@ func (c *Conn) handleData(arg string) {
 	// We have recipients, go to accept data
 	c.WriteResponse(354, EnhancedCode{2, 0, 0}, "Go ahead. End your data with <CR><LF>.<CR><LF>")
 
+	defer c.reset()
+
 	if c.server.LMTP {
 		c.handleDataLMTP()
 		return
@@ -498,7 +500,6 @@ func (c *Conn) handleData(arg string) {
 	io.Copy(ioutil.Discard, r) // Make sure all the data has been consumed
 	c.WriteResponse(code, enhancedCode, msg)
 
-	c.reset()
 }
 
 type statusCollector struct {
