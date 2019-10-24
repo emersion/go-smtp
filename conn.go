@@ -364,6 +364,11 @@ func (c *Conn) handleAuth(arg string) {
 		return
 	}
 
+	if _, isTLS := c.TLSConnectionState(); !isTLS && !c.server.AllowInsecureAuth {
+		c.WriteResponse(523, EnhancedCode{5, 7, 10}, "TLS is required")
+		return
+	}
+
 	mechanism := strings.ToUpper(parts[0])
 
 	// Parse client initial response if there is one
