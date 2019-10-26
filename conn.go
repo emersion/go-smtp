@@ -284,6 +284,8 @@ func (c *Conn) handleMail(arg string) {
 	}
 	from = strings.Trim(from, "<>")
 
+	opts := MailOptions{}
+
 	// This is where the Conn may put BODY=8BITMIME, but we already
 	// read the DATA as bytes, so it does not effect our processing.
 	if len(fromArgs) > 1 {
@@ -304,10 +306,12 @@ func (c *Conn) handleMail(arg string) {
 				c.WriteResponse(552, EnhancedCode{5, 3, 4}, "Max message size exceeded")
 				return
 			}
+
+			opts.Size = int(size)
 		}
 	}
 
-	if err := c.Session().Mail(from); err != nil {
+	if err := c.Session().Mail(from, opts); err != nil {
 		if smtpErr, ok := err.(*SMTPError); ok {
 			c.WriteResponse(smtpErr.Code, smtpErr.EnhancedCode, smtpErr.Message)
 			return
