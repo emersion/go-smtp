@@ -235,6 +235,9 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 
 			caps = append(caps, authCap)
 		}
+		if c.server.EnableSMTPUTF8 {
+			caps = append(caps, "SMTPUTF8")
+		}
 		if c.server.MaxMessageBytes > 0 {
 			caps = append(caps, fmt.Sprintf("SIZE %v", c.server.MaxMessageBytes))
 		}
@@ -310,6 +313,9 @@ func (c *Conn) handleMail(arg string) {
 
 			opts.Size = int(size)
 		}
+
+		_, ok := args["SMTPUTF8"]
+		opts.UTF8 = ok
 	}
 
 	if err := c.Session().Mail(from, opts); err != nil {
