@@ -21,6 +21,13 @@ type Backend interface {
 	AnonymousLogin(state *ConnectionState) (Session, error)
 }
 
+// MailOptions contains custom arguments that were
+// passed as an argument to the MAIL command.
+type MailOptions struct {
+	// Size of the body. Can be 0 if not specified by client.
+	Size int
+}
+
 type Session interface {
 	// Discard currently processed message.
 	Reset()
@@ -29,7 +36,7 @@ type Session interface {
 	Logout() error
 
 	// Set return path for currently processed message.
-	Mail(from string) error
+	Mail(from string, opts MailOptions) error
 	// Add recipient for currently processed message.
 	Rcpt(to string) error
 	// Set currently processed message contents and send it.

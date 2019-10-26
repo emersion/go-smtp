@@ -108,7 +108,7 @@ func (bkd *Backend) AnonymousLogin(state *smtp.ConnectionState) (smtp.Session, e
 // A Session is returned after successful login.
 type Session struct{}
 
-func (s *Session) Mail(from string) error {
+func (s *Session) Mail(from string, opts smtp.MailOptions) error {
 	log.Println("Mail from:", from)
 	return nil
 }

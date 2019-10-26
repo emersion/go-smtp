@@ -63,7 +63,7 @@ func (s *session) Logout() error {
 	return nil
 }
 
-func (s *session) Mail(from string) error {
+func (s *session) Mail(from string, opts smtp.MailOptions) error {
 	s.Reset()
 	s.msg.From = from
 	return nil

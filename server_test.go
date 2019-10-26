@@ -61,7 +61,7 @@ func (s *session) Logout() error {
 	return nil
 }
 
-func (s *session) Mail(from string) error {
+func (s *session) Mail(from string, opts smtp.MailOptions) error {
 	if s.backend.panicOnMail {
 		panic("Everything is on fire!")
 	}

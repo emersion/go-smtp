@@ -43,7 +43,7 @@ func (s *transformSession) Reset() {
 	s.Session.Reset()
 }
 
-func (s *transformSession) Mail(from string) error {
+func (s *transformSession) Mail(from string, opts smtp.MailOptions) error {
 	if s.be.TransformMail != nil {
 		var err error
 		from, err = s.be.TransformMail(from)
@@ -51,7 +51,7 @@ func (s *transformSession) Mail(from string) error {
 			return err
 		}
 	}
-	return s.Session.Mail(from)
+	return s.Session.Mail(from, opts)
 }
 
 func (s *transformSession) Rcpt(to string) error {
