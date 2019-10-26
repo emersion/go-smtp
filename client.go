@@ -300,6 +300,20 @@ func (c *Client) Auth(a sasl.Client) error {
 //
 // If server returns an error, it will be of type *SMTPError.
 func (c *Client) Mail(from string) error {
+	return c.MailExt(from, MailOptions{})
+}
+
+// MailExt issues a MAIL command to the server using the provided email address.
+// If the server supports the 8BITMIME extension, Mail adds the BODY=8BITMIME
+// parameter.
+// This initiates a mail transaction and is followed by one or more Rcpt calls.
+//
+// Additionally, MAIL arguments provided in the MailOptions structure
+// will be added to the command. Handling of unsupported options
+// depends on the extension.
+//
+// If server returns an error, it will be of type *SMTPError.
+func (c *Client) MailExt(from string, opts MailOptions) error {
 	if err := validateLine(from); err != nil {
 		return err
 	}
@@ -307,11 +321,20 @@ func (c *Client) Mail(from string) error {
 		return err
 	}
 	cmdStr := "MAIL FROM:<%s>"
-	if c.ext != nil {
-		if _, ok := c.ext["8BITMIME"]; ok {
-			cmdStr += " BODY=8BITMIME"
+	if _, ok := c.ext["8BITMIME"]; ok {
+		cmdStr += " BODY=8BITMIME"
+	}
+	if _, ok := c.ext["SIZE"]; ok && opts.Size != 0 {
+		cmdStr += " SIZE=" + strconv.Itoa(opts.Size)
+	}
+	if opts.UTF8 {
+		if _, ok := c.ext["SMTPUTF8"]; ok {
+			cmdStr += " SMTPUTF8"
+		} else {
+			return errors.New("smtp: server does not support SMTPUTF8")
 		}
 	}
+
 	_, _, err := c.cmd(250, cmdStr, from)
 	return err
 }
