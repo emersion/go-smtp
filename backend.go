@@ -27,6 +27,12 @@ type MailOptions struct {
 	// Size of the body. Can be 0 if not specified by client.
 	Size int
 
+	// TLS is required for the message transmission.
+	//
+	// The message should be rejected if it can't be transmitted
+	// with TLS.
+	RequireTLS bool
+
 	// The message envelope or message header contains UTF-8-encoded strings.
 	// This flag is set by SMTPUTF8-aware (RFC 6531) client.
 	UTF8 bool

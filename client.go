@@ -327,6 +327,13 @@ func (c *Client) MailExt(from string, opts MailOptions) error {
 	if _, ok := c.ext["SIZE"]; ok && opts.Size != 0 {
 		cmdStr += " SIZE=" + strconv.Itoa(opts.Size)
 	}
+	if opts.RequireTLS {
+		if _, ok := c.ext["REQUIRETLS"]; ok {
+			cmdStr += " REQUIRETLS"
+		} else {
+			return errors.New("smtp: server does not support REQUIRETLS")
+		}
+	}
 	if opts.UTF8 {
 		if _, ok := c.ext["SMTPUTF8"]; ok {
 			cmdStr += " SMTPUTF8"
