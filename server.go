@@ -49,6 +49,10 @@ type Server struct {
 	// Should be used only if backend supports it.
 	EnableSMTPUTF8 bool
 
+	// Advertise REQUIRETLS (draft-ietf-uta-smtp-require-tls-09) capability.
+	// Should be used only if backend supports it.
+	EnableREQUIRETLS bool
+
 	// If set, the AUTH command will not be advertised and authentication
 	// attempts will be rejected. This setting overrides AllowInsecureAuth.
 	AuthDisabled bool
