@@ -6,6 +6,7 @@
 //	AUTH      		RFC 2554
 //	STARTTLS  		RFC 3207
 //	ENHANCEDSTATUSCODES	RFC 2034
+//  SMTPUTF8		RFC 6531
 //
 // LMTP (RFC 2033) is also supported.
 //

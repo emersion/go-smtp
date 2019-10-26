@@ -45,6 +45,10 @@ type Server struct {
 	ReadTimeout       time.Duration
 	WriteTimeout      time.Duration
 
+	// Advertise SMTPUTF8 (RFC 6531) capability.
+	// Should be used only if backend supports it.
+	EnableSMTPUTF8 bool
+
 	// If set, the AUTH command will not be advertised and authentication
 	// attempts will be rejected. This setting overrides AllowInsecureAuth.
 	AuthDisabled bool
