@@ -167,6 +167,7 @@ func (c *Conn) SetSession(session Session) {
 func (c *Conn) Close() error {
 	if session := c.Session(); session != nil {
 		session.Logout()
+		c.SetSession(nil)
 	}
 
 	return c.conn.Close()
