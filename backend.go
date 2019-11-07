@@ -62,7 +62,8 @@ type LMTPSession interface {
 	// LMTPData implementation sets status information using passed
 	// StatusCollector by calling SetStatus once per each AddRcpt
 	// call, even if AddRcpt was called multiple times with
-	// the same argument.
+	// the same argument. SetStatus must not be called after
+	// LMTPData returns.
 	//
 	// Return value of LMTPData itself is used as a status for
 	// recipients that got no status set before using StatusCollector.
