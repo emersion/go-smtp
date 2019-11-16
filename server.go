@@ -135,6 +135,11 @@ func (s *Server) handleConn(c *Conn) error {
 			cmd, arg, err := parseCmd(line)
 			if err != nil {
 				c.nbrErrors++
+				if c.nbrErrors > 3 {
+					c.WriteResponse(500, EnhancedCode{5, 5, 2}, "Too many errors")
+					c.Close()
+				}
+
 				c.WriteResponse(501, EnhancedCode{5, 5, 2}, "Bad command")
 				continue
 			}

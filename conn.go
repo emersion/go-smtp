@@ -99,6 +99,11 @@ func (c *Conn) handle(cmd string, arg string) {
 	}()
 
 	if cmd == "" {
+		c.nbrErrors++
+		if c.nbrErrors > 3 {
+			c.WriteResponse(500, EnhancedCode{5, 5, 2}, "Too many errors")
+			c.Close()
+		}
 		c.WriteResponse(500, EnhancedCode{5, 5, 2}, "Speak up")
 		return
 	}
