@@ -99,7 +99,7 @@ func TestBasic(t *testing.T) {
 		t.Fatalf("Shouldn't support DSN")
 	}
 
-	if err := c.Mail("user@gmail.com"); err == nil {
+	if err := c.Mail("user@gmail.com", nil); err == nil {
 		t.Fatalf("MAIL should require authentication")
 	}
 
@@ -123,10 +123,10 @@ func TestBasic(t *testing.T) {
 	if err := c.Rcpt("golang-nuts@googlegroups.com>\r\nDATA\r\nInjected message body\r\n.\r\nQUIT\r\n"); err == nil {
 		t.Fatalf("RCPT should have failed due to a message injection attempt")
 	}
-	if err := c.Mail("user@gmail.com>\r\nDATA\r\nAnother injected message body\r\n.\r\nQUIT\r\n"); err == nil {
+	if err := c.Mail("user@gmail.com>\r\nDATA\r\nAnother injected message body\r\n.\r\nQUIT\r\n", nil); err == nil {
 		t.Fatalf("MAIL should have failed due to a message injection attempt")
 	}
-	if err := c.Mail("user@gmail.com"); err != nil {
+	if err := c.Mail("user@gmail.com", nil); err != nil {
 		t.Fatalf("MAIL failed: %s", err)
 	}
 	if err := c.Rcpt("golang-nuts@googlegroups.com"); err != nil {
@@ -187,7 +187,7 @@ func TestBasic_SMTPError(t *testing.T) {
 		t.Fatalf("NewClient failed: %v", err)
 	}
 
-	err = c.Mail("whatever")
+	err = c.Mail("whatever", nil)
 	if err == nil {
 		t.Fatal("MAIL succeded")
 	}
@@ -205,7 +205,7 @@ func TestBasic_SMTPError(t *testing.T) {
 		t.Fatalf("Wrong message, got %s, want %s", smtpErr.Message, "Failing with enhanced code")
 	}
 
-	err = c.Mail("whatever")
+	err = c.Mail("whatever", nil)
 	if err == nil {
 		t.Fatal("MAIL succeded")
 	}
@@ -385,7 +385,7 @@ func TestHello(t *testing.T) {
 			c.serverName = "smtp.google.com"
 			err = c.Auth(sasl.NewPlainClient("", "user", "pass"))
 		case 4:
-			err = c.Mail("test@example.com")
+			err = c.Mail("test@example.com", nil)
 		case 5:
 			ok, _ := c.Extension("feature")
 			if ok {
@@ -851,7 +851,7 @@ func TestLMTP(t *testing.T) {
 	}
 	c.didHello = true
 
-	if err := c.Mail("user@gmail.com"); err != nil {
+	if err := c.Mail("user@gmail.com", nil); err != nil {
 		t.Fatalf("MAIL failed: %s", err)
 	}
 	if err := c.Rcpt("golang-nuts@googlegroups.com"); err != nil {

@@ -298,22 +298,11 @@ func (c *Client) Auth(a sasl.Client) error {
 // parameter.
 // This initiates a mail transaction and is followed by one or more Rcpt calls.
 //
-// If server returns an error, it will be of type *SMTPError.
-func (c *Client) Mail(from string) error {
-	return c.MailExt(from, MailOptions{})
-}
-
-// MailExt issues a MAIL command to the server using the provided email address.
-// If the server supports the 8BITMIME extension, Mail adds the BODY=8BITMIME
-// parameter.
-// This initiates a mail transaction and is followed by one or more Rcpt calls.
-//
-// Additionally, MAIL arguments provided in the MailOptions structure
-// will be added to the command. Handling of unsupported options
-// depends on the extension.
+// If opts is not nil, MAIL arguments provided in the structure will be added
+// to the command. Handling of unsupported options depends on the extension.
 //
 // If server returns an error, it will be of type *SMTPError.
-func (c *Client) MailExt(from string, opts MailOptions) error {
+func (c *Client) Mail(from string, opts *MailOptions) error {
 	if err := validateLine(from); err != nil {
 		return err
 	}
@@ -324,17 +313,17 @@ func (c *Client) MailExt(from string, opts MailOptions) error {
 	if _, ok := c.ext["8BITMIME"]; ok {
 		cmdStr += " BODY=8BITMIME"
 	}
-	if _, ok := c.ext["SIZE"]; ok && opts.Size != 0 {
+	if _, ok := c.ext["SIZE"]; ok && opts != nil && opts.Size != 0 {
 		cmdStr += " SIZE=" + strconv.Itoa(opts.Size)
 	}
-	if opts.RequireTLS {
+	if opts != nil && opts.RequireTLS {
 		if _, ok := c.ext["REQUIRETLS"]; ok {
 			cmdStr += " REQUIRETLS"
 		} else {
 			return errors.New("smtp: server does not support REQUIRETLS")
 		}
 	}
-	if opts.UTF8 {
+	if opts != nil && opts.UTF8 {
 		if _, ok := c.ext["SMTPUTF8"]; ok {
 			cmdStr += " SMTPUTF8"
 		} else {
@@ -458,7 +447,7 @@ func SendMail(addr string, a sasl.Client, from string, to []string, r io.Reader)
 			return err
 		}
 	}
-	if err = c.Mail(from); err != nil {
+	if err = c.Mail(from, nil); err != nil {
 		return err
 	}
 	for _, addr := range to {
