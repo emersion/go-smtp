@@ -41,7 +41,7 @@ func TestClientAuthTrimSpace(t *testing.T) {
 	c.didHello = true
 	c.Auth(toServerEmptyAuth{})
 	c.Close()
-	if got, want := wrote.String(), "AUTH FOOAUTH\r\n*\r\nQUIT\r\n"; got != want {
+	if got, want := wrote.String(), "AUTH FOOAUTH\r\n*\r\n"; got != want {
 		t.Errorf("wrote %q; want %q", got, want)
 	}
 }
@@ -643,7 +643,6 @@ var authFailedServer = `220 hello world
 var authFailedClient = `EHLO localhost
 AUTH PLAIN AHVzZXIAcGFzcw==
 *
-QUIT
 `
 
 func TestTLSClient(t *testing.T) {
