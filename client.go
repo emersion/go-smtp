@@ -242,7 +242,6 @@ func (c *Client) Verify(addr string) error {
 }
 
 // Auth authenticates a client using the provided authentication mechanism.
-// A failed authentication closes the connection.
 // Only servers that advertise the AUTH extension support this function.
 //
 // If server returns an error, it will be of type *SMTPError.
@@ -253,7 +252,6 @@ func (c *Client) Auth(a sasl.Client) error {
 	encoding := base64.StdEncoding
 	mech, resp, err := a.Start()
 	if err != nil {
-		c.Quit()
 		return err
 	}
 	resp64 := make([]byte, encoding.EncodedLen(len(resp)))
@@ -280,7 +278,6 @@ func (c *Client) Auth(a sasl.Client) error {
 		if err != nil {
 			// abort the AUTH
 			c.cmd(501, "*")
-			c.Quit()
 			break
 		}
 		if resp == nil {
