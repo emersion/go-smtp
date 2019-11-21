@@ -510,6 +510,9 @@ func (c *Client) Noop() error {
 }
 
 // Quit sends the QUIT command and closes the connection to the server.
+//
+// If Quit fails the connection is not closed, Close should be used
+// in this case.
 func (c *Client) Quit() error {
 	if err := c.hello(); err != nil {
 		return err
