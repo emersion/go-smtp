@@ -60,10 +60,10 @@ type Server struct {
 	// The server backend.
 	Backend Backend
 
-	listener net.Listener
-	caps     []string
-	auths    map[string]SaslServerFactory
-	done     chan struct{}
+	listeners []net.Listener
+	caps      []string
+	auths     map[string]SaslServerFactory
+	done      chan struct{}
 
 	locker sync.Mutex
 	conns  map[*Conn]struct{}
@@ -103,8 +103,7 @@ func NewServer(be Backend) *Server {
 
 // Serve accepts incoming connections on the Listener l.
 func (s *Server) Serve(l net.Listener) error {
-	s.listener = l
-	defer s.Close()
+	s.listeners = append(s.listeners, l)
 
 	for {
 		c, err := l.Accept()
@@ -215,8 +214,10 @@ func (s *Server) ListenAndServeTLS() error {
 
 // Close stops the server.
 func (s *Server) Close() {
-	s.done <- struct{}{}
-	s.listener.Close()
+	close(s.done)
+	for _, l := range s.listeners {
+		l.Close()
+	}
 
 	s.locker.Lock()
 	defer s.locker.Unlock()
