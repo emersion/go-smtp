@@ -302,26 +302,38 @@ func (c *Conn) handleMail(arg string) {
 			return
 		}
 
-		if args["SIZE"] != "" {
-			size, err := strconv.ParseInt(args["SIZE"], 10, 32)
-			if err != nil {
-				c.WriteResponse(501, EnhancedCode{5, 5, 4}, "Unable to parse SIZE as an integer")
+		for key, value := range args {
+			switch key {
+			case "SIZE":
+				size, err := strconv.ParseInt(value, 10, 32)
+				if err != nil {
+					c.WriteResponse(501, EnhancedCode{5, 5, 4}, "Unable to parse SIZE as an integer")
+					return
+				}
+
+				if c.server.MaxMessageBytes > 0 && int(size) > c.server.MaxMessageBytes {
+					c.WriteResponse(552, EnhancedCode{5, 3, 4}, "Max message size exceeded")
+					return
+				}
+
+				opts.Size = int(size)
+			case "SMTPUTF8":
+				if !c.server.EnableSMTPUTF8 {
+					c.WriteResponse(504, EnhancedCode{5, 5, 4}, "SMTPUTF8 is not implemented")
+					return
+				}
+				opts.UTF8 = true
+			case "REQUIRETLS":
+				if !c.server.EnableREQUIRETLS {
+					c.WriteResponse(504, EnhancedCode{5, 5, 4}, "REQUIRETLS is not implemented")
+					return
+				}
+				opts.RequireTLS = true
+			default:
+				c.WriteResponse(500, EnhancedCode{5, 5, 4}, "Unknown MAIL FROM argument")
 				return
 			}
-
-			if c.server.MaxMessageBytes > 0 && int(size) > c.server.MaxMessageBytes {
-				c.WriteResponse(552, EnhancedCode{5, 3, 4}, "Max message size exceeded")
-				return
-			}
-
-			opts.Size = int(size)
 		}
-
-		_, ok := args["SMTPUTF8"]
-		opts.UTF8 = ok
-
-		_, ok = args["REQUIRETLS"]
-		opts.RequireTLS = ok
 	}
 
 	if err := c.Session().Mail(from, opts); err != nil {

@@ -285,12 +285,41 @@ func TestServerPanicRecover(t *testing.T) {
 	return
 }
 
-func TestServerBadESMTPVar(t *testing.T) {
+func TestServerSMTPUTF8(t *testing.T) {
+	_, s, c, scanner := testServerAuthenticated(t)
+	s.EnableSMTPUTF8 = true
+	defer s.Close()
+	defer c.Close()
+
+	io.WriteString(c, "MAIL FROM:<alice@wonderland.book> SMTPUTF8\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid MAIL response:", scanner.Text())
+	}
+
+	return
+}
+
+func TestServerSMTPUTF8_Disabled(t *testing.T) {
 	_, s, c, scanner := testServerAuthenticated(t)
 	defer s.Close()
 	defer c.Close()
 
-	io.WriteString(c, "MAIL FROM:<alice@wonderland.book> RABBIT\r\n")
+	io.WriteString(c, "MAIL FROM:<alice@wonderland.book> SMTPUTF8\r\n")
+	scanner.Scan()
+	if strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid MAIL response:", scanner.Text())
+	}
+
+	return
+}
+
+func TestServerUnknownArg(t *testing.T) {
+	_, s, c, scanner := testServerAuthenticated(t)
+	defer s.Close()
+	defer c.Close()
+
+	io.WriteString(c, "MAIL FROM:<alice@wonderland.book> RABIIT\r\n")
 	scanner.Scan()
 	if strings.HasPrefix(scanner.Text(), "250 ") {
 		t.Fatal("Invalid MAIL response:", scanner.Text())
