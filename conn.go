@@ -329,6 +329,13 @@ func (c *Conn) handleMail(arg string) {
 					return
 				}
 				opts.RequireTLS = true
+			case "BODY":
+				switch value {
+				case "7BIT", "8BITMIME":
+				default:
+					c.WriteResponse(500, EnhancedCode{5, 5, 4}, "Unknown BODY value")
+					return
+				}
 			default:
 				c.WriteResponse(500, EnhancedCode{5, 5, 4}, "Unknown MAIL FROM argument")
 				return
