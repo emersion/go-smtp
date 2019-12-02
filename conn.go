@@ -599,6 +599,20 @@ func (c *Conn) handleDataLMTP() {
 		done <- true
 	} else {
 		go func() {
+			defer func() {
+				if err := recover(); err != nil {
+					status.fillRemaining(&SMTPError{
+						Code:         421,
+						EnhancedCode: EnhancedCode{4, 0, 0},
+						Message:      "Internal server error",
+					})
+
+					stack := debug.Stack()
+					c.server.ErrorLog.Printf("panic serving %v: %v\n%s", c.State().RemoteAddr, err, stack)
+					done <- false
+				}
+			}()
+
 			status.fillRemaining(lmtpSession.LMTPData(r, status))
 			io.Copy(ioutil.Discard, r) // Make sure all the data has been consumed
 			done <- true
@@ -610,7 +624,11 @@ func (c *Conn) handleDataLMTP() {
 		c.WriteResponse(code, enchCode, "<"+rcpt+"> "+msg)
 	}
 
-	<-done
+	// If done gets false, the panic occured in LMTPData and the connection
+	// should be closed.
+	if !<-done {
+		c.Close()
+	}
 }
 
 func toSMTPStatus(err error) (code int, enchCode EnhancedCode, msg string) {
