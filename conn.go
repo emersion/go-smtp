@@ -586,6 +586,8 @@ func (c *Conn) handleDataLMTP() {
 		status.status = append(status.status, status.statusMap[rcpt])
 	}
 
+	done := make(chan bool, 1)
+
 	lmtpSession, ok := c.Session().(LMTPSession)
 	if !ok {
 		// Fallback to using a single status for all recipients.
@@ -594,10 +596,12 @@ func (c *Conn) handleDataLMTP() {
 		for _, rcpt := range c.recipients {
 			status.SetStatus(rcpt, err)
 		}
+		done <- true
 	} else {
 		go func() {
 			status.fillRemaining(lmtpSession.LMTPData(r, status))
 			io.Copy(ioutil.Discard, r) // Make sure all the data has been consumed
+			done <- true
 		}()
 	}
 
@@ -605,6 +609,8 @@ func (c *Conn) handleDataLMTP() {
 		code, enchCode, msg := toSMTPStatus(<-status.status[i])
 		c.WriteResponse(code, enchCode, "<"+rcpt+"> "+msg)
 	}
+
+	<-done
 }
 
 func toSMTPStatus(err error) (code int, enchCode EnhancedCode, msg string) {
