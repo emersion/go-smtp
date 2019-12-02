@@ -113,9 +113,11 @@ func (c *Conn) handle(cmd string, arg string) {
 		enhanced := lmtp || cmd == "EHLO"
 		if c.server.LMTP && !lmtp {
 			c.WriteResponse(500, EnhancedCode{5, 5, 1}, "This is a LMTP server, use LHLO")
+			return
 		}
 		if !c.server.LMTP && lmtp {
 			c.WriteResponse(500, EnhancedCode{5, 5, 1}, "This is not a LMTP server")
+			return
 		}
 		c.handleGreet(enhanced, arg)
 	case "MAIL":
