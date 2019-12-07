@@ -65,7 +65,21 @@ func DialTLS(addr string, tlsConfig *tls.Config) (*Client, error) {
 // NewClient returns a new Client using an existing connection and host as a
 // server name to be used when authenticating.
 func NewClient(conn net.Conn, host string) (*Client, error) {
-	text := textproto.NewConn(conn)
+	rwc := struct {
+		io.Reader
+		io.Writer
+		io.Closer
+	}{
+		Reader: lineLimitReader{
+			R: conn,
+			// Doubled maximum line length per RFC 5321 (Section 4.5.3.1.6)
+			LineLimit: 2000,
+		},
+		Writer: conn,
+		Closer: conn,
+	}
+
+	text := textproto.NewConn(rwc)
 	_, _, err := text.ReadResponse(220)
 	if err != nil {
 		text.Close()
