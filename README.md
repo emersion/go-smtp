@@ -140,6 +140,12 @@ Hey <3
 .
 ```
 
+## Relationship with net/smtp
+
+The Go standard library provides a SMTP client implementation in `net/smtp`.
+However `net/smtp` is frozen: it's not getting any new features. go-smtp
+provides a server implementation and a number of client improvements.
+
 ## Licence
 
 MIT
