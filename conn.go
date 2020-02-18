@@ -490,7 +490,14 @@ func (c *Conn) handleStartTLS() {
 	c.conn = tlsConn
 	c.init()
 
-	// Reset envelope as a new EHLO/HELO is required after STARTTLS
+	// Reset all state and close the previous Session.
+	// This is different from just calling reset() since we want the Backend to
+	// be able to see the information about TLS connection in the
+	// ConnectionState object passed to it.
+	if session := c.Session(); session != nil {
+		session.Logout()
+		c.SetSession(nil)
+	}
 	c.reset()
 }
 
