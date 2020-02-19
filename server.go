@@ -60,13 +60,13 @@ type Server struct {
 	// The server backend.
 	Backend Backend
 
-	listeners []net.Listener
-	caps      []string
-	auths     map[string]SaslServerFactory
-	done      chan struct{}
+	caps  []string
+	auths map[string]SaslServerFactory
+	done  chan struct{}
 
-	locker sync.Mutex
-	conns  map[*Conn]struct{}
+	locker    sync.Mutex
+	listeners []net.Listener
+	conns     map[*Conn]struct{}
 }
 
 // New creates a new SMTP server.
@@ -103,7 +103,9 @@ func NewServer(be Backend) *Server {
 
 // Serve accepts incoming connections on the Listener l.
 func (s *Server) Serve(l net.Listener) error {
+	s.locker.Lock()
 	s.listeners = append(s.listeners, l)
+	s.locker.Unlock()
 
 	for {
 		c, err := l.Accept()
@@ -214,13 +216,13 @@ func (s *Server) ListenAndServeTLS() error {
 
 // Close stops the server.
 func (s *Server) Close() {
+	s.locker.Lock()
+	defer s.locker.Unlock()
+
 	close(s.done)
 	for _, l := range s.listeners {
 		l.Close()
 	}
-
-	s.locker.Lock()
-	defer s.locker.Unlock()
 
 	for conn := range s.conns {
 		conn.Close()
