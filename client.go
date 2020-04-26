@@ -365,6 +365,7 @@ func (c *Client) Rcpt(to string) error {
 type dataCloser struct {
 	c *Client
 	io.WriteCloser
+	statusCb func(status *SMTPError)
 }
 
 func (d *dataCloser) Close() error {
@@ -373,9 +374,14 @@ func (d *dataCloser) Close() error {
 		for d.c.rcptToCount > 0 {
 			if _, _, err := d.c.Text.ReadResponse(250); err != nil {
 				if protoErr, ok := err.(*textproto.Error); ok {
-					return toSMTPErr(protoErr)
+					if d.statusCb != nil {
+						d.statusCb(toSMTPErr(protoErr))
+					}
+				} else {
+					return err
 				}
-				return err
+			} else if d.statusCb != nil {
+				d.statusCb(nil)
 			}
 			d.c.rcptToCount--
 		}
@@ -403,7 +409,23 @@ func (c *Client) Data() (io.WriteCloser, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &dataCloser{c, c.Text.DotWriter()}, nil
+	return &dataCloser{c, c.Text.DotWriter(), nil}, nil
+}
+
+// LMTPData is the LMTP-specific version of the Data method. It accepts a callback
+// that will be called for each status response received from the server.
+//
+// Status callback will receive a SMTPError argument for each negative server
+// reply and nil for each positive reply. I/O errors will not be reported using
+// callback and instead will be returned by the Close method of io.WriteCloser.
+// Callback will be called for each successfull Rcpt call done before in the
+// same order.
+func (c *Client) LMTPData(statusCb func(status *SMTPError)) (io.WriteCloser, error) {
+	_, _, err := c.cmd(354, "DATA")
+	if err != nil {
+		return nil, err
+	}
+	return &dataCloser{c, c.Text.DotWriter(), statusCb}, nil
 }
 
 var testHookStartTLS func(*tls.Config) // nil, except for tests
