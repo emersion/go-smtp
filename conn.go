@@ -454,6 +454,12 @@ func (c *Conn) handleAuth(arg string) {
 			return // TODO: error handling
 		}
 
+		if encoded == "*" {
+			// https://tools.ietf.org/html/rfc4954#page-4
+			c.WriteResponse(501, EnhancedCode{5, 0, 0}, "Negotiation cancelled")
+			return
+		}
+
 		response, err = base64.StdEncoding.DecodeString(encoded)
 		if err != nil {
 			c.WriteResponse(454, EnhancedCode{4, 7, 0}, "Invalid base64 data")

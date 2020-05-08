@@ -239,6 +239,28 @@ func testServerAuthenticated(t *testing.T) (be *backend, s *smtp.Server, c net.C
 	return
 }
 
+func TestServerCancelSASL(t *testing.T) {
+	_, _, c, scanner, caps := testServerEhlo(t)
+
+	if _, ok := caps["AUTH PLAIN"]; !ok {
+		t.Fatal("AUTH PLAIN capability is missing when auth is enabled")
+	}
+
+	io.WriteString(c, "AUTH PLAIN\r\n")
+	scanner.Scan()
+	if scanner.Text() != "334 " {
+		t.Fatal("Invalid AUTH response:", scanner.Text())
+	}
+
+	io.WriteString(c, "*\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "501 ") {
+		t.Fatal("Invalid AUTH response:", scanner.Text())
+	}
+
+	return
+}
+
 func TestServerEmptyFrom1(t *testing.T) {
 	_, s, c, scanner := testServerAuthenticated(t)
 	defer s.Close()
