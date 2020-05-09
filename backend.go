@@ -36,6 +36,15 @@ type MailOptions struct {
 	// The message envelope or message header contains UTF-8-encoded strings.
 	// This flag is set by SMTPUTF8-aware (RFC 6531) client.
 	UTF8 bool
+
+	// The authorization identity asserted by the message sender in decoded
+	// form with angle brackets stripped.
+	//
+	// nil value indicates missing AUTH, non-nil empty string indicates
+	// AUTH=<>.
+	//
+	// Defined in RFC 4954.
+	Auth *string
 }
 
 type Session interface {
