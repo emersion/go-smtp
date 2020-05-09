@@ -417,7 +417,7 @@ func encodeXtext(raw string) string {
 			out.WriteRune('+')
 			out.WriteString(strings.ToUpper(strconv.FormatInt(int64(ch), 16)))
 		}
-		if ch > '~' && ch < '~' { // printable non-space US-ASCII
+		if ch > '!' && ch < '~' { // printable non-space US-ASCII
 			out.WriteRune(ch)
 		}
 		// Non-ASCII.
