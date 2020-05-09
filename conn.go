@@ -3,11 +3,13 @@ package smtp
 import (
 	"crypto/tls"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net"
 	"net/textproto"
+	"regexp"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -338,6 +340,22 @@ func (c *Conn) handleMail(arg string) {
 					c.WriteResponse(500, EnhancedCode{5, 5, 4}, "Unknown BODY value")
 					return
 				}
+			case "AUTH":
+				value, err := decodeXtext(value)
+				if err != nil {
+					c.WriteResponse(500, EnhancedCode{5, 5, 4}, "Malformed AUTH parameter value")
+					return
+				}
+				if !strings.HasPrefix(value, "<") {
+					c.WriteResponse(500, EnhancedCode{5, 5, 4}, "Missing opening angle bracket")
+					return
+				}
+				if !strings.HasSuffix(value, ">") {
+					c.WriteResponse(500, EnhancedCode{5, 5, 4}, "Missing closing angle bracket")
+					return
+				}
+				decodedMbox := value[1 : len(value)-1]
+				opts.Auth = &decodedMbox
 			default:
 				c.WriteResponse(500, EnhancedCode{5, 5, 4}, "Unknown MAIL FROM argument")
 				return
@@ -356,6 +374,57 @@ func (c *Conn) handleMail(arg string) {
 
 	c.WriteResponse(250, EnhancedCode{2, 0, 0}, fmt.Sprintf("Roger, accepting mail from <%v>", from))
 	c.fromReceived = true
+}
+
+// This regexp matches 'hexchar' token defined in
+// https://tools.ietf.org/html/rfc4954#section-8 however it is intentionally
+// relaxed by requiring only '+' to be present.  It allows us to detect
+// malformed values such as +A or +HH and report them appropriately.
+var hexcharRe = regexp.MustCompile(`\+[0-9A-F]?[0-9A-F]?`)
+
+func decodeXtext(val string) (string, error) {
+	if !strings.Contains(val, "+") {
+		return val, nil
+	}
+
+	var replaceErr error
+	decoded := hexcharRe.ReplaceAllStringFunc(val, func(match string) string {
+		if len(match) != 3 {
+			replaceErr = errors.New("incomplete hexchar")
+			return ""
+		}
+		char, err := strconv.ParseInt(match, 16, 8)
+		if err != nil {
+			replaceErr = err
+			return ""
+		}
+
+		return string(char)
+	})
+	if replaceErr != nil {
+		return "", replaceErr
+	}
+
+	return decoded, nil
+}
+
+func encodeXtext(raw string) string {
+	var out strings.Builder
+	out.Grow(len(raw))
+
+	for _, ch := range raw {
+		if ch == '+' || ch == '=' {
+			out.WriteRune('+')
+			out.WriteString(strings.ToUpper(strconv.FormatInt(int64(ch), 16)))
+		}
+		if ch > '~' && ch < '~' { // printable non-space US-ASCII
+			out.WriteRune(ch)
+		}
+		// Non-ASCII.
+		out.WriteRune('+')
+		out.WriteString(strings.ToUpper(strconv.FormatInt(int64(ch), 16)))
+	}
+	return out.String()
 }
 
 // MAIL state -> waiting for RCPTs followed by DATA

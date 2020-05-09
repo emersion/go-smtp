@@ -17,6 +17,7 @@ type message struct {
 	From string
 	To   []string
 	Data []byte
+	Opts smtp.MailOptions
 }
 
 type backend struct {
@@ -87,6 +88,7 @@ func (s *session) Mail(from string, opts smtp.MailOptions) error {
 	}
 	s.Reset()
 	s.msg.From = from
+	s.msg.Opts = opts
 	return nil
 }
 
@@ -593,6 +595,56 @@ func TestServer_anonymousUserOK(t *testing.T) {
 
 	if len(be.messages) != 0 || len(be.anonmsgs) != 1 {
 		t.Fatal("Invalid number of sent messages:", be.messages, be.anonmsgs)
+	}
+}
+
+func TestServer_authParam(t *testing.T) {
+	be, s, c, scanner, _ := testServerEhlo(t)
+	defer s.Close()
+	defer c.Close()
+
+	// Invalid HEXCHAR
+	io.WriteString(c, "MAIL FROM: root@nsa.gov AUTH=<hey+A>\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "500 ") {
+		t.Fatal("Invalid MAIL response:", scanner.Text())
+	}
+
+	// Invalid HEXCHAR
+	io.WriteString(c, "MAIL FROM: root@nsa.gov AUTH=<he+YYa>\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "500 ") {
+		t.Fatal("Invalid MAIL response:", scanner.Text())
+	}
+
+	// https://tools.ietf.org/html/rfc4954#section-4
+	// >servers that advertise support for this
+	// >extension MUST support the AUTH parameter to the MAIL FROM
+	// >command even when the client has not authenticated itself to the
+	// >server.
+	io.WriteString(c, "MAIL FROM: root@nsa.gov AUTH=<hey+3Da>\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid MAIL response:", scanner.Text())
+	}
+
+	// Go on as usual.
+	io.WriteString(c, "RCPT TO:<root@gchq.gov.uk>\r\n")
+	scanner.Scan()
+	io.WriteString(c, "DATA\r\n")
+	scanner.Scan()
+	io.WriteString(c, "Hey <3\r\n")
+	io.WriteString(c, ".\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid DATA response:", scanner.Text())
+	}
+
+	if len(be.messages) != 0 || len(be.anonmsgs) != 1 {
+		t.Fatal("Invalid number of sent messages:", be.messages, be.anonmsgs)
+	}
+	if val := be.anonmsgs[0].Opts.Auth; val == nil || *val != "hey=a" {
+		t.Fatal("Invalid Auth value:", val)
 	}
 }
 

@@ -341,7 +341,12 @@ func (c *Client) Mail(from string, opts *MailOptions) error {
 			return errors.New("smtp: server does not support SMTPUTF8")
 		}
 	}
-
+	if opts != nil && opts.Auth != nil {
+		if _, ok := c.ext["AUTH"]; ok {
+			cmdStr += " AUTH=" + encodeXtext(*opts.Auth)
+		}
+		// We can safely discard parameter if server does not support AUTH.
+	}
 	_, _, err := c.cmd(250, cmdStr, from)
 	return err
 }
