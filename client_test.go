@@ -12,6 +12,7 @@ import (
 	"io"
 	"net"
 	"net/textproto"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -998,9 +999,11 @@ Line 1
 .Leading dot line .
 Goodbye.`
 
+	rcpts := []string{}
 	errors := []*SMTPError{}
 
-	w, err := c.LMTPData(func(status *SMTPError) {
+	w, err := c.LMTPData(func(rcpt string, status *SMTPError) {
+		rcpts = append(rcpts, rcpt)
 		errors = append(errors, status)
 	})
 	if err != nil {
@@ -1011,6 +1014,10 @@ Goodbye.`
 	}
 	if err := w.Close(); err != nil {
 		t.Fatalf("Bad data response: %s", err)
+	}
+
+	if !reflect.DeepEqual(rcpts, []string{"golang-nuts@googlegroups.com", "golang-not-nuts@googlegroups.com"}) {
+		t.Fatal("Status callbacks called for wrong recipients:", rcpts)
 	}
 
 	if len(errors) != 2 {
