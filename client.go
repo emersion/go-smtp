@@ -33,11 +33,11 @@ type Client struct {
 	// map of supported extensions
 	ext map[string]string
 	// supported auth mechanisms
-	auth        []string
-	localName   string // the name to use in HELO/EHLO/LHLO
-	didHello    bool   // whether we've said HELO/EHLO/LHLO
-	helloError  error  // the error from the hello
-	rcptToCount int    // number of recipients
+	auth       []string
+	localName  string   // the name to use in HELO/EHLO/LHLO
+	didHello   bool     // whether we've said HELO/EHLO/LHLO
+	helloError error    // the error from the hello
+	rcpts      []string // recipients accumulated for the current session
 }
 
 // Dial returns a new Client connected to an SMTP server at addr.
@@ -363,26 +363,34 @@ func (c *Client) Rcpt(to string) error {
 	if _, _, err := c.cmd(25, "RCPT TO:<%s>", to); err != nil {
 		return err
 	}
-	c.rcptToCount++
+	c.rcpts = append(c.rcpts, to)
 	return nil
 }
 
 type dataCloser struct {
 	c *Client
 	io.WriteCloser
+	statusCb func(rcpt string, status *SMTPError)
 }
 
 func (d *dataCloser) Close() error {
 	d.WriteCloser.Close()
+	expectedResponses := len(d.c.rcpts)
 	if d.c.lmtp {
-		for d.c.rcptToCount > 0 {
+		for expectedResponses > 0 {
+			rcpt := d.c.rcpts[len(d.c.rcpts)-expectedResponses]
 			if _, _, err := d.c.Text.ReadResponse(250); err != nil {
 				if protoErr, ok := err.(*textproto.Error); ok {
-					return toSMTPErr(protoErr)
+					if d.statusCb != nil {
+						d.statusCb(rcpt, toSMTPErr(protoErr))
+					}
+				} else {
+					return err
 				}
-				return err
+			} else if d.statusCb != nil {
+				d.statusCb(rcpt, nil)
 			}
-			d.c.rcptToCount--
+			expectedResponses--
 		}
 		return nil
 	} else {
@@ -408,7 +416,27 @@ func (c *Client) Data() (io.WriteCloser, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &dataCloser{c, c.Text.DotWriter()}, nil
+	return &dataCloser{c, c.Text.DotWriter(), nil}, nil
+}
+
+// LMTPData is the LMTP-specific version of the Data method. It accepts a callback
+// that will be called for each status response received from the server.
+//
+// Status callback will receive a SMTPError argument for each negative server
+// reply and nil for each positive reply. I/O errors will not be reported using
+// callback and instead will be returned by the Close method of io.WriteCloser.
+// Callback will be called for each successfull Rcpt call done before in the
+// same order.
+func (c *Client) LMTPData(statusCb func(rcpt string, status *SMTPError)) (io.WriteCloser, error) {
+	if !c.lmtp {
+		return nil, errors.New("smtp: not a LMTP client")
+	}
+
+	_, _, err := c.cmd(354, "DATA")
+	if err != nil {
+		return nil, err
+	}
+	return &dataCloser{c, c.Text.DotWriter(), statusCb}, nil
 }
 
 var testHookStartTLS func(*tls.Config) // nil, except for tests
@@ -511,7 +539,7 @@ func (c *Client) Reset() error {
 	if _, _, err := c.cmd(250, "RSET"); err != nil {
 		return err
 	}
-	c.rcptToCount = 0
+	c.rcpts = nil
 	return nil
 }
 

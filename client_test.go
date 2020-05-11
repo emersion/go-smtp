@@ -12,6 +12,7 @@ import (
 	"io"
 	"net"
 	"net/textproto"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -955,3 +956,81 @@ Goodbye.
 .
 QUIT
 `
+
+func TestLMTPData(t *testing.T) {
+	var lmtpServerPartial = `250-localhost at your service
+250-SIZE 35651584
+250 8BITMIME
+250 Sender OK
+250 Receiver OK
+250 Receiver OK
+354 Go ahead
+250 This recipient is fine
+500 But not this one
+221 OK
+`
+	server := strings.Join(strings.Split(lmtpServerPartial, "\n"), "\r\n")
+
+	var cmdbuf bytes.Buffer
+	bcmdbuf := bufio.NewWriter(&cmdbuf)
+	var fake faker
+	fake.ReadWriter = bufio.NewReadWriter(bufio.NewReader(strings.NewReader(server)), bcmdbuf)
+	c := &Client{Text: textproto.NewConn(fake), lmtp: true}
+
+	if err := c.Hello("localhost"); err != nil {
+		t.Fatalf("LHLO failed: %s", err)
+	}
+	c.didHello = true
+
+	if err := c.Mail("user@gmail.com", nil); err != nil {
+		t.Fatalf("MAIL failed: %s", err)
+	}
+	if err := c.Rcpt("golang-nuts@googlegroups.com"); err != nil {
+		t.Fatalf("RCPT failed: %s", err)
+	}
+	if err := c.Rcpt("golang-not-nuts@googlegroups.com"); err != nil {
+		t.Fatalf("RCPT failed: %s", err)
+	}
+	msg := `From: user@gmail.com
+To: golang-nuts@googlegroups.com
+Subject: Hooray for Go
+
+Line 1
+.Leading dot line .
+Goodbye.`
+
+	rcpts := []string{}
+	errors := []*SMTPError{}
+
+	w, err := c.LMTPData(func(rcpt string, status *SMTPError) {
+		rcpts = append(rcpts, rcpt)
+		errors = append(errors, status)
+	})
+	if err != nil {
+		t.Fatalf("DATA failed: %s", err)
+	}
+	if _, err := w.Write([]byte(msg)); err != nil {
+		t.Fatalf("Data write failed: %s", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("Bad data response: %s", err)
+	}
+
+	if !reflect.DeepEqual(rcpts, []string{"golang-nuts@googlegroups.com", "golang-not-nuts@googlegroups.com"}) {
+		t.Fatal("Status callbacks called for wrong recipients:", rcpts)
+	}
+
+	if len(errors) != 2 {
+		t.Fatalf("Wrong amount of status callback calls: %v", len(errors))
+	}
+	if errors[0] != nil {
+		t.Fatalf("Unexpected error status for the first recipient: %v", errors[0])
+	}
+	if errors[1] == nil {
+		t.Fatalf("Unexpected success status for the second recipient")
+	}
+
+	if err := c.Quit(); err != nil {
+		t.Fatalf("QUIT failed: %s", err)
+	}
+}
