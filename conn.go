@@ -600,6 +600,7 @@ func (c *Conn) handleData(arg string) {
 
 	r := newDataReader(c)
 	code, enhancedCode, msg := toSMTPStatus(c.Session().Data(r))
+	r.limited = false
 	io.Copy(ioutil.Discard, r) // Make sure all the data has been consumed
 	c.WriteResponse(code, enhancedCode, msg)
 

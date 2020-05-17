@@ -48,7 +48,7 @@ type dataReader struct {
 	n       int64 // Maximum bytes remaining
 }
 
-func newDataReader(c *Conn) io.Reader {
+func newDataReader(c *Conn) *dataReader {
 	dr := &dataReader{
 		r: c.text.DotReader(),
 	}
