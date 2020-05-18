@@ -38,6 +38,7 @@ type Client struct {
 	didHello   bool     // whether we've said HELO/EHLO/LHLO
 	helloError error    // the error from the hello
 	rcpts      []string // recipients accumulated for the current session
+	logHandler func(message string)
 }
 
 // Dial returns a new Client connected to an SMTP server at addr.
@@ -104,6 +105,11 @@ func NewClientLMTP(conn net.Conn, host string) (*Client, error) {
 	return c, nil
 }
 
+// SetLogHandler defines a log handling function for debugging
+func (c *Client) SetLogHandler(logHandler func(message string)) {
+	c.logHandler = logHandler
+}
+
 // Close closes the connection.
 func (c *Client) Close() error {
 	return c.Text.Close()
@@ -139,9 +145,16 @@ func (c *Client) Hello(localName string) error {
 	return c.hello()
 }
 
+func (c *Client) log(direction string, message string) {
+	if c.logHandler != nil {
+		c.logHandler(direction, message)
+	}
+}
+
 // cmd is a convenience function that sends a command and returns the response
 // textproto.Error returned by c.Text.ReadResponse is converted into SMTPError.
 func (c *Client) cmd(expectCode int, format string, args ...interface{}) (int, string, error) {
+	c.log(fmt.Sprintf(format, args...))
 	id, err := c.Text.Cmd(format, args...)
 	if err != nil {
 		return 0, "", err
@@ -149,6 +162,7 @@ func (c *Client) cmd(expectCode int, format string, args ...interface{}) (int, s
 	c.Text.StartResponse(id)
 	defer c.Text.EndResponse(id)
 	code, msg, err := c.Text.ReadResponse(expectCode)
+	c.log(fmt.Sprintf("%v %v", code, msg))
 	if err != nil {
 		if protoErr, ok := err.(*textproto.Error); ok {
 			smtpErr := toSMTPErr(protoErr)
