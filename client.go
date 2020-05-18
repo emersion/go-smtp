@@ -145,9 +145,9 @@ func (c *Client) Hello(localName string) error {
 	return c.hello()
 }
 
-func (c *Client) log(direction string, message string) {
+func (c *Client) log(message string) {
 	if c.logHandler != nil {
-		c.logHandler(direction, message)
+		c.logHandler(message)
 	}
 }
 
