@@ -33,6 +33,9 @@ type Conn struct {
 	session   Session
 	locker    sync.Mutex
 
+	chunkReader *chunkReader
+	bdatError   chan error
+
 	fromReceived bool
 	recipients   []string
 }
@@ -135,6 +138,8 @@ func (c *Conn) handle(cmd string, arg string) {
 		c.WriteResponse(250, EnhancedCode{2, 0, 0}, "Session reset")
 	case "DATA":
 		c.handleData(arg)
+	case "BDAT":
+		c.handleBdat(arg)
 	case "QUIT":
 		c.WriteResponse(221, EnhancedCode{2, 0, 0}, "Goodnight and good luck")
 		c.Close()
@@ -169,9 +174,17 @@ func (c *Conn) SetSession(session Session) {
 }
 
 func (c *Conn) Close() error {
-	if session := c.Session(); session != nil {
-		session.Logout()
-		c.SetSession(nil)
+	c.locker.Lock()
+	defer c.locker.Unlock()
+
+	if c.session != nil {
+		c.session.Logout()
+		c.session = nil
+	}
+
+	if c.chunkReader != nil {
+		c.chunkReader.abort()
+		c.chunkReader = nil
 	}
 
 	return c.conn.Close()
@@ -584,6 +597,11 @@ func (c *Conn) handleData(arg string) {
 		return
 	}
 
+	if c.chunkReader != nil {
+		c.WriteResponse(502, EnhancedCode{5, 5, 1}, "DATA command cannot be used together with BDAT.")
+		return
+	}
+
 	if !c.fromReceived || len(c.recipients) == 0 {
 		c.WriteResponse(502, EnhancedCode{5, 5, 1}, "Missing RCPT TO command.")
 		return
@@ -605,6 +623,126 @@ func (c *Conn) handleData(arg string) {
 	io.Copy(ioutil.Discard, r) // Make sure all the data has been consumed
 	c.WriteResponse(code, enhancedCode, msg)
 
+}
+
+func (c *Conn) handleBdat(arg string) {
+	args := strings.Split(arg, " ")
+	if len(args) == 0 {
+		c.WriteResponse(501, EnhancedCode{5, 5, 4}, "Missing chunk size argument")
+		return
+	}
+
+	if !c.fromReceived || len(c.recipients) == 0 {
+		c.WriteResponse(502, EnhancedCode{5, 5, 1}, "Missing RCPT TO command.")
+		return
+	}
+
+	last := false
+	if len(args) == 2 {
+		if !strings.EqualFold(args[1], "LAST") {
+			c.WriteResponse(501, EnhancedCode{5, 5, 4}, "Unknown BDAT argument")
+			return
+		}
+		last = true
+	}
+
+	// ParseUint instead of Atoi so we will not accept negative values.
+	size, err := strconv.ParseUint(args[0], 10, 32)
+	if err != nil {
+		c.WriteResponse(501, EnhancedCode{5, 5, 4}, "Malformed size argument")
+		return
+	}
+
+	var status *statusCollector
+	if c.server.LMTP {
+		status = c.createStatusCollector()
+	}
+
+	paniced := make(chan struct{}, 1)
+
+	if c.chunkReader == nil {
+		c.chunkReader = newChunkReader(c.text.R, c.server.MaxMessageBytes)
+		c.bdatError = make(chan error, 1)
+
+		chunkReader := c.chunkReader
+
+		go func() {
+			defer func() {
+				if err := recover(); err != nil {
+					c.handlePanic(err, status)
+					paniced <- struct{}{}
+				}
+			}()
+
+			var err error
+			if !c.server.LMTP {
+				err = c.Session().Data(c.chunkReader)
+			} else {
+				lmtpSession, ok := c.Session().(LMTPSession)
+				if !ok {
+					err = c.Session().Data(c.chunkReader)
+					for _, rcpt := range c.recipients {
+						status.SetStatus(rcpt, err)
+					}
+				} else {
+					err = lmtpSession.LMTPData(c.chunkReader, status)
+				}
+			}
+
+			chunkReader.discardCurrentChunk()
+			c.bdatError <- err
+		}()
+	}
+
+	c.chunkReader.addChunk(int(size))
+
+	select {
+	// Wait for Data to consume chunk.
+	case <-c.chunkReader.chunkEnd:
+	case <-paniced:
+		c.WriteResponse(420, EnhancedCode{4, 0, 0}, "Internal server error")
+		c.Close()
+		return
+	case err := <-c.bdatError:
+		// This code path handles early errors that backend may return before
+		// reading _all_ chunks. chunkEnd is not sent to in this case.
+		//
+		// The RFC says the connection is in indeterminate state in this case
+		// so we don't bother resetting it.
+		if c.server.LMTP {
+			status.fillRemaining(err)
+			for i, rcpt := range c.recipients {
+				code, enchCode, msg := toSMTPStatus(<-status.status[i])
+				c.WriteResponse(code, enchCode, "<"+rcpt+"> "+msg)
+			}
+		} else {
+			code, enhancedCode, msg := toSMTPStatus(err)
+			c.WriteResponse(code, enhancedCode, msg)
+		}
+		return
+	}
+
+	if !last {
+		c.WriteResponse(250, EnhancedCode{2, 0, 0}, "Continue")
+		return
+	}
+
+	// This code path handles errors backend may return after processing all
+	// chunks. That is, client had the chance to send all chunks.
+
+	c.chunkReader.end()
+	err = <-c.bdatError
+	if c.server.LMTP {
+		status.fillRemaining(err)
+		for i, rcpt := range c.recipients {
+			code, enchCode, msg := toSMTPStatus(<-status.status[i])
+			c.WriteResponse(code, enchCode, "<"+rcpt+"> "+msg)
+		}
+	} else {
+		code, enhancedCode, msg := toSMTPStatus(err)
+		c.WriteResponse(code, enhancedCode, msg)
+	}
+	c.reset()
 }
 
 type statusCollector struct {
@@ -649,9 +787,7 @@ func (s *statusCollector) SetStatus(rcptTo string, err error) {
 	}
 }
 
-func (c *Conn) handleDataLMTP() {
-	r := newDataReader(c)
-
+func (c *Conn) createStatusCollector() *statusCollector {
 	rcptCounts := make(map[string]int, len(c.recipients))
 
 	status := &statusCollector{
@@ -670,6 +806,26 @@ func (c *Conn) handleDataLMTP() {
 		status.status = append(status.status, status.statusMap[rcpt])
 	}
 
+	return status
+}
+
+func (c *Conn) handlePanic(err interface{}, status *statusCollector) {
+	if status != nil {
+		status.fillRemaining(&SMTPError{
+			Code:         421,
+			EnhancedCode: EnhancedCode{4, 0, 0},
+			Message:      "Internal server error",
+		})
+	}
+
+	stack := debug.Stack()
+	c.server.ErrorLog.Printf("panic serving %v: %v\n%s", c.State().RemoteAddr, err, stack)
+}
+
+func (c *Conn) handleDataLMTP() {
+	r := newDataReader(c)
+
+	status := c.createStatusCollector()
 	done := make(chan bool, 1)
 
 	lmtpSession, ok := c.Session().(LMTPSession)
@@ -685,14 +841,7 @@ func (c *Conn) handleDataLMTP() {
 		go func() {
 			defer func() {
 				if err := recover(); err != nil {
-					status.fillRemaining(&SMTPError{
-						Code:         421,
-						EnhancedCode: EnhancedCode{4, 0, 0},
-						Message:      "Internal server error",
-					})
-
-					stack := debug.Stack()
-					c.server.ErrorLog.Printf("panic serving %v: %v\n%s", c.State().RemoteAddr, err, stack)
+					c.handlePanic(err, status)
 					done <- false
 				}
 			}()
@@ -778,6 +927,11 @@ func (c *Conn) ReadLine() (string, error) {
 func (c *Conn) reset() {
 	c.locker.Lock()
 	defer c.locker.Unlock()
+
+	if c.chunkReader != nil {
+		c.chunkReader.abort()
+		c.chunkReader = nil
+	}
 
 	if c.session != nil {
 		c.session.Reset()

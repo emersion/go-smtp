@@ -31,6 +31,15 @@ type backend struct {
 	}
 	lmtpStatusSync chan struct{}
 
+	// Errors returned by Data method.
+	dataErrors chan error
+
+	// Error that will be returned by Data method.
+	dataErr error
+
+	// Read N bytes of message before returning dataErr.
+	dataErrOffset int64
+
 	panicOnMail bool
 	userErr     error
 }
@@ -98,7 +107,23 @@ func (s *session) Rcpt(to string) error {
 }
 
 func (s *session) Data(r io.Reader) error {
+	if s.backend.dataErr != nil {
+
+		if s.backend.dataErrOffset != 0 {
+			io.CopyN(ioutil.Discard, r, s.backend.dataErrOffset)
+		}
+
+		err := s.backend.dataErr
+		if s.backend.dataErrors != nil {
+			s.backend.dataErrors <- err
+		}
+		return err
+	}
+
 	if b, err := ioutil.ReadAll(r); err != nil {
+		if s.backend.dataErrors != nil {
+			s.backend.dataErrors <- err
+		}
 		return err
 	} else {
 		s.msg.Data = b
@@ -106,6 +131,9 @@ func (s *session) Data(r io.Reader) error {
 			s.backend.anonmsgs = append(s.backend.anonmsgs, s.msg)
 		} else {
 			s.backend.messages = append(s.backend.messages, s.msg)
+		}
+		if s.backend.dataErrors != nil {
+			s.backend.dataErrors <- nil
 		}
 	}
 	return nil
@@ -750,5 +778,270 @@ func TestStrictServerBad(t *testing.T) {
 	scanner.Scan()
 	if strings.HasPrefix(scanner.Text(), "250 ") {
 		t.Fatal("Invalid MAIL response:", scanner.Text())
+	}
+}
+
+func TestServer_Chunking(t *testing.T) {
+	be, s, c, scanner := testServerAuthenticated(t)
+	defer s.Close()
+	defer c.Close()
+
+	io.WriteString(c, "MAIL FROM:<root@nsa.gov>\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid MAIL response:", scanner.Text())
+	}
+
+	io.WriteString(c, "RCPT TO:<root@gchq.gov.uk>\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid RCPT response:", scanner.Text())
+	}
+
+	io.WriteString(c, "BDAT 8\r\n")
+	io.WriteString(c, "Hey <3\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid BDAT response:", scanner.Text())
+	}
+
+	io.WriteString(c, "BDAT 8 LAST\r\n")
+	io.WriteString(c, "Hey :3\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid BDAT response:", scanner.Text())
+	}
+
+	if len(be.messages) != 1 || len(be.anonmsgs) != 0 {
+		t.Fatal("Invalid number of sent messages:", be.messages, be.anonmsgs)
+	}
+
+	msg := be.messages[0]
+	if msg.From != "root@nsa.gov" {
+		t.Fatal("Invalid mail sender:", msg.From)
+	}
+	if len(msg.To) != 1 || msg.To[0] != "root@gchq.gov.uk" {
+		t.Fatal("Invalid mail recipients:", msg.To)
+	}
+	if string(msg.Data) != "Hey <3\nHey :3\n" {
+		t.Fatal("Invalid mail data:", string(msg.Data), msg.Data)
+	}
+}
+
+func TestServer_Chunking_LMTP(t *testing.T) {
+	be, s, c, scanner := testServerAuthenticated(t)
+	s.LMTP = true
+	defer s.Close()
+	defer c.Close()
+
+	io.WriteString(c, "MAIL FROM:<root@nsa.gov>\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid MAIL response:", scanner.Text())
+	}
+
+	io.WriteString(c, "RCPT TO:<root@gchq.gov.uk>\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid RCPT response:", scanner.Text())
+	}
+	io.WriteString(c, "RCPT TO:<toor@gchq.gov.uk>\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid RCPT response:", scanner.Text())
+	}
+
+	io.WriteString(c, "BDAT 8\r\n")
+	io.WriteString(c, "Hey <3\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid BDAT response:", scanner.Text())
+	}
+
+	io.WriteString(c, "BDAT 8 LAST\r\n")
+	io.WriteString(c, "Hey :3\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid BDAT response:", scanner.Text())
+	}
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid BDAT response:", scanner.Text())
+	}
+
+	if len(be.messages) != 1 || len(be.anonmsgs) != 0 {
+		t.Fatal("Invalid number of sent messages:", be.messages, be.anonmsgs)
+	}
+
+	msg := be.messages[0]
+	if msg.From != "root@nsa.gov" {
+		t.Fatal("Invalid mail sender:", msg.From)
+	}
+	if string(msg.Data) != "Hey <3\nHey :3\n" {
+		t.Fatal("Invalid mail data:", string(msg.Data), msg.Data)
+	}
+}
+
+func TestServer_Chunking_Reset(t *testing.T) {
+	be, s, c, scanner := testServerAuthenticated(t)
+	defer s.Close()
+	defer c.Close()
+	be.dataErrors = make(chan error, 10)
+
+	io.WriteString(c, "MAIL FROM:<root@nsa.gov>\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid MAIL response:", scanner.Text())
+	}
+
+	io.WriteString(c, "RCPT TO:<root@gchq.gov.uk>\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid RCPT response:", scanner.Text())
+	}
+
+	io.WriteString(c, "BDAT 8\r\n")
+	io.WriteString(c, "Hey <3\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid BDAT response:", scanner.Text())
+	}
+
+	// Client changed its mind... Note, in this case Data method error is discarded and not returned to the cilent.
+	io.WriteString(c, "RSET\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid BDAT response:", scanner.Text())
+	}
+
+	if err := <-be.dataErrors; err != smtp.ErrDataReset {
+		t.Fatal("Backend received a different error:", err)
+	}
+}
+
+func TestServer_Chunking_ClosedInTheMiddle(t *testing.T) {
+	be, s, c, scanner := testServerAuthenticated(t)
+	defer s.Close()
+	defer c.Close()
+	be.dataErrors = make(chan error, 10)
+
+	io.WriteString(c, "MAIL FROM:<root@nsa.gov>\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid MAIL response:", scanner.Text())
+	}
+
+	io.WriteString(c, "RCPT TO:<root@gchq.gov.uk>\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid RCPT response:", scanner.Text())
+	}
+
+	io.WriteString(c, "BDAT 8\r\n")
+	io.WriteString(c, "Hey <")
+
+	// Bye!
+	c.Close()
+
+	if err := <-be.dataErrors; err != smtp.ErrDataReset {
+		t.Fatal("Backend received a different error:", err)
+	}
+}
+
+func TestServer_Chunking_EarlyError(t *testing.T) {
+	be, s, c, scanner := testServerAuthenticated(t)
+	defer s.Close()
+	defer c.Close()
+
+	be.dataErr = &smtp.SMTPError{
+		Code:         555,
+		EnhancedCode: smtp.EnhancedCode{5, 0, 0},
+		Message:      "I failed",
+	}
+
+	io.WriteString(c, "MAIL FROM:<root@nsa.gov>\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid MAIL response:", scanner.Text())
+	}
+
+	io.WriteString(c, "RCPT TO:<root@gchq.gov.uk>\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid RCPT response:", scanner.Text())
+	}
+
+	io.WriteString(c, "BDAT 8\r\n")
+	io.WriteString(c, "Hey <3\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "555 5.0.0 I failed") {
+		t.Fatal("Invalid BDAT response:", scanner.Text())
+	}
+}
+
+func TestServer_Chunking_EarlyErrorDuringChunk(t *testing.T) {
+	be, s, c, scanner := testServerAuthenticated(t)
+	defer s.Close()
+	defer c.Close()
+
+	be.dataErr = &smtp.SMTPError{
+		Code:         555,
+		EnhancedCode: smtp.EnhancedCode{5, 0, 0},
+		Message:      "I failed",
+	}
+	be.dataErrOffset = 5
+
+	io.WriteString(c, "MAIL FROM:<root@nsa.gov>\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid MAIL response:", scanner.Text())
+	}
+
+	io.WriteString(c, "RCPT TO:<root@gchq.gov.uk>\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid RCPT response:", scanner.Text())
+	}
+
+	io.WriteString(c, "BDAT 8\r\n")
+	io.WriteString(c, "Hey <3\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "555 5.0.0 I failed") {
+		t.Fatal("Invalid BDAT response:", scanner.Text())
+	}
+
+	// See that command stream state is not corrupted e.g. server is still not
+	// waiting for remaining chunk octets.
+	io.WriteString(c, "NOOP\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid RCPT response:", scanner.Text())
+	}
+}
+
+func TestServer_Chunking_tooLongMessage(t *testing.T) {
+	be, s, c, scanner := testServerAuthenticated(t)
+	defer s.Close()
+
+	s.MaxMessageBytes = 50
+
+	io.WriteString(c, "MAIL FROM:<root@nsa.gov>\r\n")
+	scanner.Scan()
+	io.WriteString(c, "RCPT TO:<root@gchq.gov.uk>\r\n")
+	scanner.Scan()
+	io.WriteString(c, "BDAT 30\r\n")
+	io.WriteString(c, "This is a very long message.\r\n")
+	scanner.Scan()
+
+	io.WriteString(c, "BDAT 96 LAST\r\n")
+	io.WriteString(c, "Much longer than you can possibly imagine.\r\n")
+	io.WriteString(c, "And much longer than the server's MaxMessageBytes.\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "552 ") {
+		t.Fatal("Invalid DATA response, expected an error but got:", scanner.Text())
+	}
+
+	if len(be.messages) != 0 || len(be.anonmsgs) != 0 {
+		t.Fatal("Invalid number of sent messages:", be.messages, be.anonmsgs)
 	}
 }
