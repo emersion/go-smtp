@@ -35,6 +35,7 @@ type Conn struct {
 
 	chunkReader *chunkReader
 	bdatError   chan error
+	binarymime  bool
 
 	fromReceived bool
 	recipients   []string
@@ -348,6 +349,8 @@ func (c *Conn) handleMail(arg string) {
 				opts.RequireTLS = true
 			case "BODY":
 				switch value {
+				case "BINARYMIME":
+					c.binarymime = true
 				case "7BIT", "8BITMIME":
 				default:
 					c.WriteResponse(500, EnhancedCode{5, 5, 4}, "Unknown BODY value")
@@ -598,7 +601,11 @@ func (c *Conn) handleData(arg string) {
 	}
 
 	if c.chunkReader != nil {
-		c.WriteResponse(502, EnhancedCode{5, 5, 1}, "DATA command cannot be used together with BDAT.")
+		c.WriteResponse(502, EnhancedCode{5, 5, 1}, "DATA command cannot be used together with BDAT")
+		return
+	}
+	if c.binarymime {
+		c.WriteResponse(502, EnhancedCode{5, 5, 1}, "DATA command cannot be used with BODY=BINARYMIME")
 		return
 	}
 
@@ -938,4 +945,5 @@ func (c *Conn) reset() {
 	}
 	c.fromReceived = false
 	c.recipients = nil
+	c.binarymime = false
 }
