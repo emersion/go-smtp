@@ -276,6 +276,11 @@ func (c *Conn) handleMail(arg string) {
 		return
 	}
 
+	if c.chunkReader != nil {
+		c.WriteResponse(503, EnhancedCode{5, 5, 1}, "RCPT TO not allowed while BDAT is in progress")
+		return
+	}
+
 	if c.Session() == nil {
 		state := c.State()
 		session, err := c.server.Backend.AnonymousLogin(&state)
@@ -457,6 +462,11 @@ func (c *Conn) handleRcpt(arg string) {
 
 	// TODO: This trim is probably too forgiving
 	recipient := strings.Trim(arg[3:], "<> ")
+
+	if c.chunkReader != nil {
+		c.WriteResponse(503, EnhancedCode{5, 5, 1}, "RCPT TO not allowed while BDAT is in progress")
+		return
+	}
 
 	if c.server.MaxRecipients > 0 && len(c.recipients) >= c.server.MaxRecipients {
 		c.WriteResponse(552, EnhancedCode{5, 5, 3}, fmt.Sprintf("Maximum limit of %v recipients reached", c.server.MaxRecipients))
