@@ -19,7 +19,7 @@ var ErrDataReset = errors.New("smtp: message transmission aborted")
 // end of another chunk being reached.
 type chunkReader struct {
 	remainingBytes int
-	conn           io.Reader
+	r              io.Reader
 	chunks         chan int
 	// Sent to by abort() to unlock running Read.
 	rset         chan struct{}
@@ -58,7 +58,7 @@ func (cr *chunkReader) waitNextChunk() error {
 			// Okay, that's the end.
 			return io.EOF
 		}
-		cr.currentChunk = &io.LimitedReader{R: cr.conn, N: int64(r)}
+		cr.currentChunk = &io.LimitedReader{R: cr.r, N: int64(r)}
 		return nil
 	}
 }
@@ -74,7 +74,8 @@ func (cr *chunkReader) Read(b []byte) (int, error) {
 		cr.currentchunk != nil
 
 		3. Chunk ended, cr.currentChunk returns io.EOF.
-		Generate an 250 response and wait for the next chunk.
+		Signal connection handling code to send 250 (using chunkEnd)
+		and wait for the next chunk to arrive.
 	*/
 
 	if cr.currentChunk == nil {
@@ -118,7 +119,7 @@ func (cr *chunkReader) Read(b []byte) (int, error) {
 func newChunkReader(conn io.Reader, maxBytes int) *chunkReader {
 	return &chunkReader{
 		remainingBytes: maxBytes,
-		conn:           conn,
+		r:              conn,
 		chunks:         make(chan int, 1),
 		// buffer to make sure abort() will not block if Read is not running.
 		rset:     make(chan struct{}, 1),

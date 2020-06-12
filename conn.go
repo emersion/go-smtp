@@ -681,6 +681,11 @@ func (c *Conn) handleBdat(arg string) {
 		c.chunkReader = newChunkReader(c.text.R, c.server.MaxMessageBytes)
 		c.bdatError = make(chan error, 1)
 
+		// If chunkReader.abort() is called from somewhere else (e.g.
+		// connection is being forcibly closed) then it will also reset
+		// chunkReader to nil. However, it is important to keep
+		// the original instance so we can call discardCurrentChunk.
+		// This is also the case for RSET command.
 		chunkReader := c.chunkReader
 
 		go func() {
@@ -714,8 +719,11 @@ func (c *Conn) handleBdat(arg string) {
 	c.chunkReader.addChunk(int(size))
 
 	select {
-	// Wait for Data to consume chunk.
 	case <-c.chunkReader.chunkEnd:
+		if !last {
+			c.WriteResponse(250, EnhancedCode{2, 0, 0}, "Continue")
+			return
+		}
 	case <-paniced:
 		c.WriteResponse(420, EnhancedCode{4, 0, 0}, "Internal server error")
 		c.Close()
@@ -739,15 +747,14 @@ func (c *Conn) handleBdat(arg string) {
 		return
 	}
 
-	if !last {
-		c.WriteResponse(250, EnhancedCode{2, 0, 0}, "Continue")
-		return
-	}
-
 	// This code path handles errors backend may return after processing all
 	// chunks. That is, client had the chance to send all chunks.
 
+	// This unlocks Read that Data method may still run, making it return EOF
+	// and allowing Data to complete if it reads all body.
 	c.chunkReader.end()
+
+	// We then wait for it complete and return error to us.
 	err = <-c.bdatError
 	if c.server.LMTP {
 		status.fillRemaining(err)
