@@ -19,6 +19,7 @@ var ErrDataReset = errors.New("smtp: message transmission aborted")
 // end of another chunk being reached.
 type chunkReader struct {
 	remainingBytes int
+	stripCR        bool
 	r              io.Reader
 	chunks         chan int
 	// Sent to by abort() to unlock running Read.
@@ -98,6 +99,10 @@ func (cr *chunkReader) Read(b []byte) (int, error) {
 		}
 	}
 
+	if !cr.stripCR {
+		return n, err
+	}
+
 	// Strip CR from slice contents.
 	offset := 0
 	for i, chr := range b {
@@ -116,8 +121,9 @@ func (cr *chunkReader) Read(b []byte) (int, error) {
 
 }
 
-func newChunkReader(conn io.Reader, maxBytes int) *chunkReader {
+func newChunkReader(conn io.Reader, maxBytes int, stripCR bool) *chunkReader {
 	return &chunkReader{
+		stripCR:        stripCR,
 		remainingBytes: maxBytes,
 		r:              conn,
 		chunks:         make(chan int, 1),

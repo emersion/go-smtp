@@ -678,7 +678,7 @@ func (c *Conn) handleBdat(arg string) {
 	paniced := make(chan struct{}, 1)
 
 	if c.chunkReader == nil {
-		c.chunkReader = newChunkReader(c.text.R, c.server.MaxMessageBytes)
+		c.chunkReader = newChunkReader(c.text.R, c.server.MaxMessageBytes, !c.binarymime)
 		c.bdatError = make(chan error, 1)
 
 		// If chunkReader.abort() is called from somewhere else (e.g.
