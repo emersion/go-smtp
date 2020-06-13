@@ -127,8 +127,7 @@ func newChunkReader(conn io.Reader, maxBytes int, stripCR bool) *chunkReader {
 		remainingBytes: maxBytes,
 		r:              conn,
 		chunks:         make(chan int, 1),
-		// buffer to make sure abort() will not block if Read is not running.
-		rset:     make(chan struct{}, 1),
-		chunkEnd: make(chan struct{}, 1),
+		rset:           make(chan struct{}),
+		chunkEnd:       make(chan struct{}, 1),
 	}
 }
