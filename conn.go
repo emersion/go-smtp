@@ -260,6 +260,9 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 		if _, isTLS := c.TLSConnectionState(); isTLS && c.server.EnableREQUIRETLS {
 			caps = append(caps, "REQUIRETLS")
 		}
+		if c.server.EnableBINARYMIME {
+			caps = append(caps, "BINARYMIME")
+		}
 		if c.server.MaxMessageBytes > 0 {
 			caps = append(caps, fmt.Sprintf("SIZE %v", c.server.MaxMessageBytes))
 		}
@@ -350,11 +353,17 @@ func (c *Conn) handleMail(arg string) {
 				opts.RequireTLS = true
 			case "BODY":
 				switch value {
+				case "BINARYMIME":
+					if !c.server.EnableBINARYMIME {
+						c.WriteResponse(504, EnhancedCode{5, 5, 4}, "BINARYMIME is not implemented")
+						return
+					}
 				case "7BIT", "8BITMIME":
 				default:
 					c.WriteResponse(500, EnhancedCode{5, 5, 4}, "Unknown BODY value")
 					return
 				}
+				opts.Body = BodyType(value)
 			case "AUTH":
 				value, err := decodeXtext(value)
 				if err != nil {

@@ -8,6 +8,8 @@
 //	ENHANCEDSTATUSCODES	RFC 2034
 //  SMTPUTF8		RFC 6531
 //  REQUIRETLS		draft-ietf-uta-smtp-require-tls-09
+//  CHUNKING		RFC 3030
+//  BINARYMIME		RFC 3030
 //
 // LMTP (RFC 2033) is also supported.
 //
