@@ -21,9 +21,20 @@ type Backend interface {
 	AnonymousLogin(state *ConnectionState) (Session, error)
 }
 
+type BodyType string
+
+const (
+	Body7Bit       BodyType = "7BIT"
+	Body8BitMIME   BodyType = "8BITMIME"
+	BodyBinaryMIME BodyType = "BINARYMIME"
+)
+
 // MailOptions contains custom arguments that were
 // passed as an argument to the MAIL command.
 type MailOptions struct {
+	// Value of BODY= argument, 7BIT, 8BITMIME or BINARYMIME.
+	Body BodyType
+
 	// Size of the body. Can be 0 if not specified by client.
 	Size int
 
