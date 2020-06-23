@@ -25,13 +25,14 @@ type ConnectionState struct {
 }
 
 type Conn struct {
-	conn      net.Conn
-	text      *textproto.Conn
-	server    *Server
-	helo      string
-	nbrErrors int
-	session   Session
-	locker    sync.Mutex
+	conn       net.Conn
+	text       *textproto.Conn
+	server     *Server
+	helo       string
+	nbrErrors  int
+	session    Session
+	locker     sync.Mutex
+	binarymime bool
 
 	bdatPipe      *io.PipeWriter
 	bdatStatus    *statusCollector // used for BDAT on LMTP
@@ -279,6 +280,10 @@ func (c *Conn) handleMail(arg string) {
 		c.WriteResponse(502, EnhancedCode{2, 5, 1}, "Please introduce yourself first.")
 		return
 	}
+	if c.bdatPipe != nil {
+		c.WriteResponse(502, EnhancedCode{5, 5, 1}, "MAIL not allowed during message transfer")
+		return
+	}
 
 	if c.Session() == nil {
 		state := c.State()
@@ -315,6 +320,7 @@ func (c *Conn) handleMail(arg string) {
 
 	opts := MailOptions{}
 
+	c.binarymime = false
 	// This is where the Conn may put BODY=8BITMIME, but we already
 	// read the DATA as bytes, so it does not effect our processing.
 	if len(fromArgs) > 1 {
@@ -358,6 +364,7 @@ func (c *Conn) handleMail(arg string) {
 						c.WriteResponse(504, EnhancedCode{5, 5, 4}, "BINARYMIME is not implemented")
 						return
 					}
+					c.binarymime = true
 				case "7BIT", "8BITMIME":
 				default:
 					c.WriteResponse(500, EnhancedCode{5, 5, 4}, "Unknown BODY value")
@@ -455,6 +462,10 @@ func encodeXtext(raw string) string {
 func (c *Conn) handleRcpt(arg string) {
 	if !c.fromReceived {
 		c.WriteResponse(502, EnhancedCode{5, 5, 1}, "Missing MAIL FROM command.")
+		return
+	}
+	if c.bdatPipe != nil {
+		c.WriteResponse(502, EnhancedCode{5, 5, 1}, "RCPT not allowed during message transfer")
 		return
 	}
 
@@ -605,6 +616,14 @@ func (c *Conn) handleStartTLS() {
 func (c *Conn) handleData(arg string) {
 	if arg != "" {
 		c.WriteResponse(501, EnhancedCode{5, 5, 4}, "DATA command should not have any arguments")
+		return
+	}
+	if c.bdatPipe != nil {
+		c.WriteResponse(502, EnhancedCode{5, 5, 1}, "DATA not allowed during message transfer")
+		return
+	}
+	if c.binarymime {
+		c.WriteResponse(502, EnhancedCode{5, 5, 1}, "DATA not allowed for BINARYMIME messages")
 		return
 	}
 
