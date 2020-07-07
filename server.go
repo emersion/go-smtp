@@ -220,7 +220,12 @@ func (s *Server) ListenAndServeTLS() error {
 
 // Close stops the server.
 func (s *Server) Close() error {
-	close(s.done)
+	select {
+	case <-s.done:
+		return errors.New("smtp: server already closed")
+	default:
+		close(s.done)
+	}
 
 	var err error
 	for _, l := range s.listeners {
