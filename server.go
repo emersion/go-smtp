@@ -219,18 +219,23 @@ func (s *Server) ListenAndServeTLS() error {
 }
 
 // Close stops the server.
-func (s *Server) Close() {
-	s.locker.Lock()
-	defer s.locker.Unlock()
-
+func (s *Server) Close() error {
 	close(s.done)
+
+	var err error
 	for _, l := range s.listeners {
-		l.Close()
+		if lerr := l.Close(); lerr != nil && err == nil {
+			err = lerr
+		}
 	}
 
+	s.locker.Lock()
 	for conn := range s.conns {
 		conn.Close()
 	}
+	s.locker.Unlock()
+
+	return err
 }
 
 // EnableAuth enables an authentication mechanism on this server.
