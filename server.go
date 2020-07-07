@@ -49,7 +49,7 @@ type Server struct {
 	// Should be used only if backend supports it.
 	EnableSMTPUTF8 bool
 
-	// Advertise REQUIRETLS (draft-ietf-uta-smtp-require-tls-09) capability.
+	// Advertise REQUIRETLS (RFC 8689) capability.
 	// Should be used only if backend supports it.
 	EnableREQUIRETLS bool
 
