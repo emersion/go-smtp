@@ -218,7 +218,10 @@ func (s *Server) ListenAndServeTLS() error {
 	return s.Serve(l)
 }
 
-// Close stops the server.
+// Close immediately closes all active listeners and connections.
+//
+// Close returns any error returned from closing the server's underlying
+// listener(s).
 func (s *Server) Close() error {
 	select {
 	case <-s.done:
