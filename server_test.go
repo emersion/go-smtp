@@ -455,7 +455,7 @@ func TestServer(t *testing.T) {
 		t.Fatal("Invalid DATA response:", scanner.Text())
 	}
 
-	io.WriteString(c, "Hey <3\r\n")
+	io.WriteString(c, "Hey\r <3\r\n")
 	io.WriteString(c, ".\r\n")
 	scanner.Scan()
 	if !strings.HasPrefix(scanner.Text(), "250 ") {
@@ -473,7 +473,7 @@ func TestServer(t *testing.T) {
 	if len(msg.To) != 1 || msg.To[0] != "root@gchq.gov.uk" {
 		t.Fatal("Invalid mail recipients:", msg.To)
 	}
-	if string(msg.Data) != "Hey <3\n" {
+	if string(msg.Data) != "Hey\r <3\r\n" {
 		t.Fatal("Invalid mail data:", string(msg.Data))
 	}
 }
