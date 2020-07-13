@@ -1,6 +1,7 @@
 package smtp
 
 import (
+	"bufio"
 	"io"
 )
 
@@ -42,7 +43,8 @@ var ErrDataTooLarge = &SMTPError{
 }
 
 type dataReader struct {
-	r io.Reader
+	r     *bufio.Reader
+	state int
 
 	limited bool
 	n       int64 // Maximum bytes remaining
@@ -50,7 +52,7 @@ type dataReader struct {
 
 func newDataReader(c *Conn) *dataReader {
 	dr := &dataReader{
-		r: c.text.DotReader(),
+		r: c.text.R,
 	}
 
 	if c.server.MaxMessageBytes > 0 {
@@ -71,7 +73,79 @@ func (r *dataReader) Read(b []byte) (n int, err error) {
 		}
 	}
 
-	n, err = r.r.Read(b)
+	// Code below is taken from net/textproto with only one modification to
+	// not rewrite CRLF -> LF.
+
+	// Run data through a simple state machine to
+	// elide leading dots and detect ending .\r\n line.
+	const (
+		stateBeginLine = iota // beginning of line; initial state; must be zero
+		stateDot              // read . at beginning of line
+		stateDotCR            // read .\r at beginning of line
+		stateCR               // read \r (possibly at end of line)
+		stateData             // reading data in middle of line
+		stateEOF              // reached .\r\n end marker line
+	)
+	for n < len(b) && r.state != stateEOF {
+		var c byte
+		c, err = r.r.ReadByte()
+		if err != nil {
+			if err == io.EOF {
+				err = io.ErrUnexpectedEOF
+			}
+			break
+		}
+		switch r.state {
+		case stateBeginLine:
+			if c == '.' {
+				r.state = stateDot
+				continue
+			}
+			if c == '\r' {
+				r.state = stateCR
+				continue
+			}
+			r.state = stateData
+
+		case stateDot:
+			if c == '\r' {
+				r.state = stateDotCR
+				continue
+			}
+			if c == '\n' {
+				r.state = stateEOF
+				continue
+			}
+			r.state = stateData
+
+		case stateDotCR:
+			if c == '\n' {
+				r.state = stateEOF
+				continue
+			}
+			r.state = stateData
+
+		case stateCR:
+			if c == '\n' {
+				r.state = stateBeginLine
+				break
+			}
+			r.state = stateData
+
+		case stateData:
+			if c == '\r' {
+				r.state = stateCR
+			}
+			if c == '\n' {
+				r.state = stateBeginLine
+			}
+		}
+		b[n] = c
+		n++
+	}
+	if err == nil && r.state == stateEOF {
+		err = io.EOF
+	}
 
 	if r.limited {
 		r.n -= int64(n)

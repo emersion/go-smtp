@@ -252,7 +252,7 @@ func TestServer(t *testing.T) {
 		t.Fatal("Invalid mail recipients:", msg.To)
 	}
 	// base64 of "Hey <3\n" (with actual newline)
-	if string(msg.Data) != "SGV5IDwzCg==" {
+	if string(msg.Data) != "SGV5IDwzDQo=" {
 		t.Fatal("Invalid mail data:", string(msg.Data))
 	}
 }
@@ -316,8 +316,8 @@ func TestServer_anonymousUserOK(t *testing.T) {
 	if len(msg.To) != 1 || msg.To[0] != "cm9vdEBnY2hxLmdvdi51aw==" {
 		t.Fatal("Invalid mail recipients:", msg.To)
 	}
-	// base64 of "Hey <3\n" (with actual newline)
-	if string(msg.Data) != "SGV5IDwzCg==" {
+	// base64 of "Hey <3\r\n" (with actual newline)
+	if string(msg.Data) != "SGV5IDwzDQo=" {
 		t.Fatal("Invalid mail data:", string(msg.Data))
 	}
 }
