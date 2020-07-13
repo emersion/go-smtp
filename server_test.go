@@ -287,8 +287,6 @@ func TestServerCancelSASL(t *testing.T) {
 	if !strings.HasPrefix(scanner.Text(), "501 ") {
 		t.Fatal("Invalid AUTH response:", scanner.Text())
 	}
-
-	return
 }
 
 func TestServerEmptyFrom1(t *testing.T) {
@@ -301,8 +299,6 @@ func TestServerEmptyFrom1(t *testing.T) {
 	if strings.HasPrefix(scanner.Text(), "250 ") {
 		t.Fatal("Invalid MAIL response:", scanner.Text())
 	}
-
-	return
 }
 
 func TestServerEmptyFrom2(t *testing.T) {
@@ -315,8 +311,6 @@ func TestServerEmptyFrom2(t *testing.T) {
 	if !strings.HasPrefix(scanner.Text(), "250 ") {
 		t.Fatal("Invalid MAIL response:", scanner.Text())
 	}
-
-	return
 }
 
 func TestServerPanicRecover(t *testing.T) {
@@ -333,8 +327,6 @@ func TestServerPanicRecover(t *testing.T) {
 	if !strings.HasPrefix(scanner.Text(), "421 ") {
 		t.Fatal("Invalid MAIL response:", scanner.Text())
 	}
-
-	return
 }
 
 func TestServerSMTPUTF8(t *testing.T) {
@@ -348,8 +340,6 @@ func TestServerSMTPUTF8(t *testing.T) {
 	if !strings.HasPrefix(scanner.Text(), "250 ") {
 		t.Fatal("Invalid MAIL response:", scanner.Text())
 	}
-
-	return
 }
 
 func TestServerSMTPUTF8_Disabled(t *testing.T) {
@@ -362,8 +352,6 @@ func TestServerSMTPUTF8_Disabled(t *testing.T) {
 	if strings.HasPrefix(scanner.Text(), "250 ") {
 		t.Fatal("Invalid MAIL response:", scanner.Text())
 	}
-
-	return
 }
 
 func TestServer8BITMIME(t *testing.T) {
@@ -376,8 +364,6 @@ func TestServer8BITMIME(t *testing.T) {
 	if !strings.HasPrefix(scanner.Text(), "250 ") {
 		t.Fatal("Invalid MAIL response:", scanner.Text())
 	}
-
-	return
 }
 
 func TestServer_BODYInvalidValue(t *testing.T) {
@@ -390,8 +376,6 @@ func TestServer_BODYInvalidValue(t *testing.T) {
 	if strings.HasPrefix(scanner.Text(), "250 ") {
 		t.Fatal("Invalid MAIL response:", scanner.Text())
 	}
-
-	return
 }
 
 func TestServerUnknownArg(t *testing.T) {
@@ -404,8 +388,6 @@ func TestServerUnknownArg(t *testing.T) {
 	if strings.HasPrefix(scanner.Text(), "250 ") {
 		t.Fatal("Invalid MAIL response:", scanner.Text())
 	}
-
-	return
 }
 
 func TestServerBadSize(t *testing.T) {
@@ -418,8 +400,6 @@ func TestServerBadSize(t *testing.T) {
 	if strings.HasPrefix(scanner.Text(), "250 ") {
 		t.Fatal("Invalid MAIL response:", scanner.Text())
 	}
-
-	return
 }
 
 func TestServerTooBig(t *testing.T) {
@@ -432,8 +412,6 @@ func TestServerTooBig(t *testing.T) {
 	if strings.HasPrefix(scanner.Text(), "250 ") {
 		t.Fatal("Invalid MAIL response:", scanner.Text())
 	}
-
-	return
 }
 
 func TestServerEmptyTo(t *testing.T) {
@@ -452,8 +430,6 @@ func TestServerEmptyTo(t *testing.T) {
 	if strings.HasPrefix(scanner.Text(), "250 ") {
 		t.Fatal("Invalid RCPT response:", scanner.Text())
 	}
-
-	return
 }
 
 func TestServer(t *testing.T) {

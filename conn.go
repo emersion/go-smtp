@@ -590,8 +590,7 @@ func (c *Conn) handleStartTLS() {
 	c.WriteResponse(220, EnhancedCode{2, 0, 0}, "Ready to start TLS")
 
 	// Upgrade to TLS
-	var tlsConn *tls.Conn
-	tlsConn = tls.Server(c.conn, c.server.TLSConfig)
+	tlsConn := tls.Server(c.conn, c.server.TLSConfig)
 
 	if err := tlsConn.Handshake(); err != nil {
 		c.server.ErrorLog.Printf("TLS handshake error for %s: %v", c.conn.RemoteAddr(), err)
@@ -762,8 +761,7 @@ func (c *Conn) handleBdat(arg string) {
 				c.WriteResponse(code, enchCode, "<"+rcpt+"> "+msg)
 			}
 		} else {
-			code, enhancedCode, msg := toSMTPStatus(err)
-			c.WriteResponse(code, enhancedCode, msg)
+			c.WriteResponse(toSMTPStatus(err))
 		}
 
 		if err == errPanic {
