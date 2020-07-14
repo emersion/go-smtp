@@ -21,6 +21,18 @@ type Backend interface {
 	AnonymousLogin(state *ConnectionState) (Session, error)
 }
 
+type Feature int32
+
+const (
+	FeatureNoSMTPUTF8 Feature = 2 << iota
+	FeatureNoBINARYMIME
+	FeatureNoREQUIRETLS
+)
+
+type FeatureBackend interface {
+	Features() Feature
+}
+
 type BodyType string
 
 const (

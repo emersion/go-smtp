@@ -45,18 +45,6 @@ type Server struct {
 	ReadTimeout       time.Duration
 	WriteTimeout      time.Duration
 
-	// Advertise SMTPUTF8 (RFC 6531) capability.
-	// Should be used only if backend supports it.
-	EnableSMTPUTF8 bool
-
-	// Advertise REQUIRETLS (RFC 8689) capability.
-	// Should be used only if backend supports it.
-	EnableREQUIRETLS bool
-
-	// Advertise BINARYMIME (RFC 3030) capability.
-	// Should be used only if backend supports it.
-	EnableBINARYMIME bool
-
 	// If set, the AUTH command will not be advertised and authentication
 	// attempts will be rejected. This setting overrides AllowInsecureAuth.
 	AuthDisabled bool
@@ -261,4 +249,12 @@ func (s *Server) ForEachConn(f func(*Conn)) {
 	for conn := range s.conns {
 		f(conn)
 	}
+}
+
+func (s *Server) backendFeatures() Feature {
+	fb, ok := s.Backend.(FeatureBackend)
+	if !ok {
+		return 0
+	}
+	return fb.Features()
 }
