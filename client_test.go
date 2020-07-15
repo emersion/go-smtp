@@ -167,7 +167,10 @@ func TestBasic_SMTPError(t *testing.T) {
 250-mx.google.com at your service
 250 ENHANCEDSTATUSCODES
 500 5.0.0 Failing with enhanced code
-500 Failing without enhanced code`
+500 Failing without enhanced code
+500-5.0.0 Failing with multiline and enhanced code
+500 5.0.0 ... still failing
+`
 	// RFC 2034 says that enhanced codes *SHOULD* be included in errors,
 	// this means it can be violated hence we need to handle last
 	// case properly.
@@ -219,6 +222,21 @@ func TestBasic_SMTPError(t *testing.T) {
 	}
 	if smtpErr.Message != "Failing without enhanced code" {
 		t.Fatalf("Wrong message, got %s, want %s", smtpErr.Message, "Failing without enhanced code")
+	}
+
+	err = c.Mail("whatever", nil)
+	if err == nil {
+		t.Fatal("MAIL succeded")
+	}
+	smtpErr, ok = err.(*SMTPError)
+	if !ok {
+		t.Fatal("Returned error is not SMTPError")
+	}
+	if smtpErr.Code != 500 {
+		t.Fatalf("Wrong status code, got %d, want %d", smtpErr.Code, 500)
+	}
+	if want := "Failing with multiline and enhanced code\n... still failing"; smtpErr.Message != want {
+		t.Fatalf("Wrong message, got %s, want %s", smtpErr.Message, want)
 	}
 }
 
