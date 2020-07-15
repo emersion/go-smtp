@@ -22,6 +22,8 @@ type ConnectionState struct {
 	LocalAddr  net.Addr
 	RemoteAddr net.Addr
 	TLS        tls.ConnectionState
+
+	Original *ConnectionState
 }
 
 type Conn struct {
@@ -41,6 +43,10 @@ type Conn struct {
 
 	fromReceived bool
 	recipients   []string
+
+	// We store ConnectionState built from XCLIENT command as multiple commands can be sent with
+	// different fields.
+	xclientState *ConnectionState
 }
 
 func newConn(c net.Conn, s *Server) *Conn {
@@ -128,6 +134,8 @@ func (c *Conn) handle(cmd string, arg string) {
 			return
 		}
 		c.handleGreet(enhanced, arg)
+	case "XCLIENT":
+		c.handleXclient(arg)
 	case "MAIL":
 		c.handleMail(arg)
 	case "RCPT":
@@ -204,6 +212,10 @@ func (c *Conn) TLSConnectionState() (state tls.ConnectionState, ok bool) {
 }
 
 func (c *Conn) State() ConnectionState {
+	if c.xclientState != nil {
+		return *c.xclientState
+	}
+
 	state := ConnectionState{}
 	tlsState, ok := c.TLSConnectionState()
 	if ok {
@@ -266,6 +278,12 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 		}
 		if c.server.MaxMessageBytes > 0 {
 			caps = append(caps, fmt.Sprintf("SIZE %v", c.server.MaxMessageBytes))
+		}
+		if _, ok := c.server.Backend.(ProxyBackend); ok {
+			// We list fields we can convert into ConnectionState plus PROTO that does not really matter in practice.
+			// Notable omission here is LOGIN for SASL username assertion and NAME which cannot be represented
+			// by ConnectionState fields.
+			caps = append(caps, "XCLIENT ADDR PORT DESTADDR DESTPORT HELO PROTO")
 		}
 
 		args := []string{"Hello " + domain}
@@ -986,4 +1004,131 @@ func (c *Conn) reset() {
 
 	c.fromReceived = false
 	c.recipients = nil
+}
+
+func (c *Conn) handleXclient(arg string) {
+	be, ok := c.server.Backend.(ProxyBackend)
+	if !ok {
+		c.unrecognizedCommand("XCLIENT")
+		return
+	}
+	if c.fromReceived {
+		c.WriteResponse(502, EnhancedCode{5, 5, 1}, "XCLIENT not allowed during message transfer")
+		return
+	}
+	args := strings.Fields(arg)
+
+	c.locker.Lock()
+	connState := c.xclientState
+	if connState == nil {
+		connState = &ConnectionState{}
+	}
+	c.locker.Unlock()
+	remoteTCP := net.TCPAddr{}
+	localTCP := net.TCPAddr{}
+
+	for _, kv := range args {
+		kvSplit := strings.SplitN(kv, "=", 2)
+		if len(kvSplit) == 1 {
+			c.WriteResponse(502, EnhancedCode{5, 5, 4}, "Malformed XCLIENT argument")
+			return
+		}
+		key := kvSplit[0]
+		value, err := decodeXtext(kvSplit[1])
+		if err != nil {
+			c.WriteResponse(502, EnhancedCode{5, 5, 4}, "Malformed XCLIENT argument (invalid xtext encoding)")
+			return
+		}
+
+		if strings.EqualFold(value, "[UNAVAILABLE]") {
+			continue // Leave corresponding value unpopulated.
+		}
+
+		switch key := strings.ToUpper(key); key {
+		case "NAME", "LOGIN":
+			c.WriteResponse(502, EnhancedCode{5, 5, 4}, "Malformed XCLIENT argument (unknown attribute)")
+			return
+		case "ADDR", "DESTADDR":
+			if strings.HasPrefix(strings.ToUpper(value), "IPV6:") {
+				value = value[len("IPV6:"):]
+			}
+			ip := net.ParseIP(value)
+			if ip == nil {
+				c.WriteResponse(502, EnhancedCode{5, 5, 4}, "Malformed XCLIENT argument (invalid IP address)")
+				return
+			}
+			if key == "DESTADDR" {
+				localTCP.IP = ip
+			} else {
+				remoteTCP.IP = ip
+			}
+		case "PORT", "DESTPORT":
+			port, err := strconv.Atoi(value)
+			if err != nil || port < 0 || port > 65535 {
+				c.WriteResponse(502, EnhancedCode{5, 5, 4}, "Malformed XCLIENT argument (invalid port)")
+				return
+			}
+			if key == "DESTPORT" {
+				localTCP.Port = port
+			} else {
+				remoteTCP.Port = port
+			}
+		case "PROTO":
+			// Let it go, let it go...
+		case "HELO":
+			connState.Hostname = value
+		default:
+			c.WriteResponse(502, EnhancedCode{5, 5, 4}, "Malformed XCLIENT argument (unknown attribute)")
+			return
+		}
+	}
+
+	// Do not override value unless we have at least address since port alone is rarely helpful (we also allow
+	// port to be 0).
+	if remoteTCP.IP != nil {
+		connState.RemoteAddr = &remoteTCP
+	}
+	if localTCP.IP != nil {
+		connState.LocalAddr = &localTCP
+	}
+
+	c.locker.Lock()
+	defer c.locker.Unlock()
+
+	if c.session != nil {
+		// We safely check ProxyBackend before and require backends to implement both or none.
+		se := c.session.(ProxySession)
+
+		if !se.AllowProxy(*connState) {
+			c.WriteResponse(550, EnhancedCode{5, 7, 0}, "XCLIENT not permitted")
+			return
+		}
+
+		c.session.Logout()
+		c.session = nil
+	} else {
+		if !be.AllowProxy(c.State(), *connState) {
+			c.WriteResponse(550, EnhancedCode{5, 7, 0}, "XCLIENT not permitted")
+			return
+		}
+	}
+
+	// Save actual values that were known before XCLIENT took effect.
+	//
+	// Note we do not overwrite it each time XCLIENT runs since c.State() will return xclientState
+	// after it is set.
+	if connState.Original == nil {
+		actualState := c.State()
+		connState.Original = &actualState
+	}
+
+	// Do not save xclientState unless change in state is allowed by Backend.
+	c.xclientState = connState
+
+	c.bdatStatus = nil
+	c.bytesReceived = 0
+	c.fromReceived = false
+	c.recipients = nil
+	c.greet()
+	c.helo = ""
 }
