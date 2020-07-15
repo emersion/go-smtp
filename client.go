@@ -605,7 +605,12 @@ func toSMTPErr(protoErr *textproto.Error) *SMTPError {
 		return smtpErr
 	}
 
+	msg := parts[1]
+
+	// Per RFC 2034, enhanced code should be prepended to each line.
+	msg = strings.ReplaceAll(msg, "\n"+parts[0]+" ", "\n")
+
 	smtpErr.EnhancedCode = enchCode
-	smtpErr.Message = parts[1]
+	smtpErr.Message = msg
 	return smtpErr
 }
