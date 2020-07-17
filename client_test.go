@@ -80,7 +80,7 @@ func TestBasic(t *testing.T) {
 	bcmdbuf := bufio.NewWriter(&cmdbuf)
 	var fake faker
 	fake.ReadWriter = bufio.NewReadWriter(bufio.NewReader(strings.NewReader(server)), bcmdbuf)
-	c := &Client{Text: textproto.NewConn(fake), localName: "localhost"}
+	c := &Client{Text: textproto.NewConn(fake), conn: fake, localName: "localhost"}
 
 	if err := c.helo(); err != nil {
 		t.Fatalf("HELO failed: %s", err)
@@ -912,7 +912,7 @@ func TestLMTP(t *testing.T) {
 	bcmdbuf := bufio.NewWriter(&cmdbuf)
 	var fake faker
 	fake.ReadWriter = bufio.NewReadWriter(bufio.NewReader(strings.NewReader(server)), bcmdbuf)
-	c := &Client{Text: textproto.NewConn(fake), lmtp: true}
+	c := &Client{Text: textproto.NewConn(fake), conn: fake, lmtp: true}
 
 	if err := c.Hello("localhost"); err != nil {
 		t.Fatalf("LHLO failed: %s", err)
@@ -997,7 +997,7 @@ func TestLMTPData(t *testing.T) {
 	bcmdbuf := bufio.NewWriter(&cmdbuf)
 	var fake faker
 	fake.ReadWriter = bufio.NewReadWriter(bufio.NewReader(strings.NewReader(server)), bcmdbuf)
-	c := &Client{Text: textproto.NewConn(fake), lmtp: true}
+	c := &Client{Text: textproto.NewConn(fake), conn: fake, lmtp: true}
 
 	if err := c.Hello("localhost"); err != nil {
 		t.Fatalf("LHLO failed: %s", err)
