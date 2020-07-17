@@ -14,6 +14,7 @@ import (
 	"net/textproto"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/emersion/go-sasl"
 )
@@ -38,6 +39,12 @@ type Client struct {
 	didHello   bool     // whether we've said HELO/EHLO/LHLO
 	helloError error    // the error from the hello
 	rcpts      []string // recipients accumulated for the current session
+
+	// Time to wait for command responses (this includes 3xx reply to DATA).
+	CommandTimeout time.Duration
+
+	// Time to wait for responses after final dot.
+	SubmissionTimeout time.Duration
 }
 
 // Dial returns a new Client connected to an SMTP server at addr.
@@ -89,7 +96,20 @@ func NewClient(conn net.Conn, host string) (*Client, error) {
 		return nil, err
 	}
 	_, isTLS := conn.(*tls.Conn)
-	c := &Client{Text: text, conn: conn, serverName: host, localName: "localhost", tls: isTLS}
+	c := &Client{
+		Text:       text,
+		conn:       conn,
+		serverName: host,
+		localName:  "localhost",
+		tls:        isTLS,
+		// As recommended by RFC 5321. For DATA command reply (3xx one) RFC
+		// recommends a slightly shorter timeout but we do not bother
+		// differentiating these.
+		CommandTimeout: 5 * time.Minute,
+		// 10 minutes + 2 minute buffer in case the server is doing transparent
+		// forwarding and also follows recommended timeouts.
+		SubmissionTimeout: 12 * time.Minute,
+	}
 	return c, nil
 }
 
@@ -142,6 +162,9 @@ func (c *Client) Hello(localName string) error {
 // cmd is a convenience function that sends a command and returns the response
 // textproto.Error returned by c.Text.ReadResponse is converted into SMTPError.
 func (c *Client) cmd(expectCode int, format string, args ...interface{}) (int, string, error) {
+	c.conn.SetDeadline(time.Now().Add(c.CommandTimeout))
+	defer c.conn.SetDeadline(time.Time{})
+
 	id, err := c.Text.Cmd(format, args...)
 	if err != nil {
 		return 0, "", err
@@ -174,6 +197,7 @@ func (c *Client) ehlo() error {
 	if c.lmtp {
 		cmd = "LHLO"
 	}
+
 	_, msg, err := c.cmd(250, "%s %s", cmd, c.localName)
 	if err != nil {
 		return err
@@ -375,6 +399,10 @@ type dataCloser struct {
 
 func (d *dataCloser) Close() error {
 	d.WriteCloser.Close()
+
+	d.c.conn.SetDeadline(time.Now().Add(d.c.SubmissionTimeout))
+	defer d.c.conn.SetDeadline(time.Time{})
+
 	expectedResponses := len(d.c.rcpts)
 	if d.c.lmtp {
 		for expectedResponses > 0 {
