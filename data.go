@@ -103,10 +103,8 @@ func (r *dataReader) Read(b []byte) (n int, err error) {
 			}
 			if c == '\r' {
 				r.state = stateCR
-				continue
 			}
 			r.state = stateData
-
 		case stateDot:
 			if c == '\r' {
 				r.state = stateDotCR
@@ -116,22 +114,20 @@ func (r *dataReader) Read(b []byte) (n int, err error) {
 				r.state = stateEOF
 				continue
 			}
-			r.state = stateData
 
+			r.state = stateData
 		case stateDotCR:
 			if c == '\n' {
 				r.state = stateEOF
 				continue
 			}
 			r.state = stateData
-
 		case stateCR:
 			if c == '\n' {
 				r.state = stateBeginLine
 				break
 			}
 			r.state = stateData
-
 		case stateData:
 			if c == '\r' {
 				r.state = stateCR
