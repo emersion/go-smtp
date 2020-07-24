@@ -481,6 +481,50 @@ func TestServer(t *testing.T) {
 	}
 }
 
+func TestServer_LFDotLF(t *testing.T) {
+	be, s, c, scanner := testServerAuthenticated(t)
+	defer s.Close()
+	defer c.Close()
+
+	io.WriteString(c, "MAIL FROM:<root@nsa.gov>\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid MAIL response:", scanner.Text())
+	}
+
+	io.WriteString(c, "RCPT TO:<root@gchq.gov.uk>\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid RCPT response:", scanner.Text())
+	}
+
+	io.WriteString(c, "DATA\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "354 ") {
+		t.Fatal("Invalid DATA response:", scanner.Text())
+	}
+
+	io.WriteString(c, "From: root@nsa.gov\r\n")
+	io.WriteString(c, "\r\n")
+	io.WriteString(c, "hey\r\n")
+	io.WriteString(c, "\n.\n")
+	io.WriteString(c, "this is going to break your server\r\n")
+	io.WriteString(c, ".\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid DATA response:", scanner.Text())
+	}
+
+	if len(be.messages) != 1 || len(be.anonmsgs) != 0 {
+		t.Fatal("Invalid number of sent messages:", be.messages, be.anonmsgs)
+	}
+
+	msg := be.messages[0]
+	if string(msg.Data) != "From: root@nsa.gov\r\n\r\nhey\r\n\n.\nthis is going to break your server\r\n" {
+		t.Fatal("Invalid mail data:", string(msg.Data))
+	}
+}
+
 func TestServer_authDisabled(t *testing.T) {
 	_, s, c, scanner, caps := testServerEhlo(t, authDisabled)
 	defer s.Close()
