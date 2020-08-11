@@ -25,11 +25,16 @@ type ConnectionState struct {
 }
 
 type Conn struct {
-	conn       net.Conn
-	text       *textproto.Conn
-	server     *Server
-	helo       string
-	nbrErrors  int
+	conn   net.Conn
+	text   *textproto.Conn
+	server *Server
+	helo   string
+
+	// Number of errors witnessed on this connection
+	errCount int
+	// Number of errors we'll tolerate per connection before closing. Defaults to 3.
+	errThreshold int
+
 	session    Session
 	locker     sync.Mutex
 	binarymime bool
@@ -45,8 +50,9 @@ type Conn struct {
 
 func newConn(c net.Conn, s *Server) *Conn {
 	sc := &Conn{
-		server: s,
-		conn:   c,
+		server:       s,
+		conn:         c,
+		errThreshold: 3,
 	}
 
 	sc.init()
@@ -82,16 +88,6 @@ func (c *Conn) init() {
 	c.text = textproto.NewConn(rwc)
 }
 
-func (c *Conn) unrecognizedCommand(cmd string) {
-	c.WriteResponse(500, EnhancedCode{5, 5, 2}, fmt.Sprintf("Syntax error, %v command unrecognized", cmd))
-
-	c.nbrErrors++
-	if c.nbrErrors > 3 {
-		c.WriteResponse(500, EnhancedCode{5, 5, 2}, "Too many unrecognized commands")
-		c.Close()
-	}
-}
-
 // Commands are dispatched to the appropriate handler functions.
 func (c *Conn) handle(cmd string, arg string) {
 	// If panic happens during command handling - send 421 response
@@ -107,7 +103,7 @@ func (c *Conn) handle(cmd string, arg string) {
 	}()
 
 	if cmd == "" {
-		c.WriteResponse(500, EnhancedCode{5, 5, 2}, "Speak up")
+		c.handleError(500, EnhancedCode{5, 5, 2}, "Speak up")
 		return
 	}
 
@@ -148,14 +144,15 @@ func (c *Conn) handle(cmd string, arg string) {
 		c.Close()
 	case "AUTH":
 		if c.server.AuthDisabled {
-			c.unrecognizedCommand(cmd)
+			c.handleError(500, EnhancedCode{5, 5, 2}, "Syntax error, AUTH command unrecognized")
 		} else {
 			c.handleAuth(arg)
 		}
 	case "STARTTLS":
 		c.handleStartTLS()
 	default:
-		c.unrecognizedCommand(cmd)
+		msg := fmt.Sprintf("Syntax errors, %v command unrecognized", cmd)
+		c.handleError(500, EnhancedCode{5, 5, 2}, msg)
 	}
 }
 
@@ -220,6 +217,18 @@ func (c *Conn) State() ConnectionState {
 func (c *Conn) authAllowed() bool {
 	_, isTLS := c.TLSConnectionState()
 	return !c.server.AuthDisabled && (isTLS || c.server.AllowInsecureAuth)
+}
+
+// handleError writes errors responses and closes the connection once too many
+// have occurred.
+func (c *Conn) handleError(code int, ec EnhancedCode, msg string) {
+	c.WriteResponse(code, ec, msg)
+
+	c.errCount++
+	if c.errCount > c.errThreshold {
+		c.WriteResponse(500, EnhancedCode{5, 5, 2}, "Too many errors. Quiting now")
+		c.Close()
+	}
 }
 
 // GREET state -> waiting for HELO
