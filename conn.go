@@ -103,7 +103,7 @@ func (c *Conn) handle(cmd string, arg string) {
 	}()
 
 	if cmd == "" {
-		c.handleError(500, EnhancedCode{5, 5, 2}, "Speak up")
+		c.protocolError(500, EnhancedCode{5, 5, 2}, "Speak up")
 		return
 	}
 
@@ -144,7 +144,7 @@ func (c *Conn) handle(cmd string, arg string) {
 		c.Close()
 	case "AUTH":
 		if c.server.AuthDisabled {
-			c.handleError(500, EnhancedCode{5, 5, 2}, "Syntax error, AUTH command unrecognized")
+			c.protocolError(500, EnhancedCode{5, 5, 2}, "Syntax error, AUTH command unrecognized")
 		} else {
 			c.handleAuth(arg)
 		}
@@ -152,7 +152,7 @@ func (c *Conn) handle(cmd string, arg string) {
 		c.handleStartTLS()
 	default:
 		msg := fmt.Sprintf("Syntax errors, %v command unrecognized", cmd)
-		c.handleError(500, EnhancedCode{5, 5, 2}, msg)
+		c.protocolError(500, EnhancedCode{5, 5, 2}, msg)
 	}
 }
 
@@ -219,14 +219,16 @@ func (c *Conn) authAllowed() bool {
 	return !c.server.AuthDisabled && (isTLS || c.server.AllowInsecureAuth)
 }
 
-// handleError writes errors responses and closes the connection once too many
+// protocolError writes errors responses and closes the connection once too many
 // have occurred.
-func (c *Conn) handleError(code int, ec EnhancedCode, msg string) {
+func (c *Conn) protocolError(code int, ec EnhancedCode, msg string) {
 	c.WriteResponse(code, ec, msg)
 
 	c.errCount++
 	if c.errCount > c.errThreshold {
-		c.WriteResponse(500, EnhancedCode{5, 5, 2}, "Too many errors. Quiting now")
+		// 421 -> Connection closing (RFC5321 Section-4.2.3)
+		// 5.7.0 -> Persistent security related issue
+		c.WriteResponse(421, EnhancedCode{5, 7, 0}, "Too many errors. Quiting now")
 		c.Close()
 	}
 }

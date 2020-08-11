@@ -147,7 +147,7 @@ func (s *Server) handleConn(c *Conn) error {
 		if err == nil {
 			cmd, arg, err := parseCmd(line)
 			if err != nil {
-				c.handleError(501, EnhancedCode{5, 5, 2}, "Bad command")
+				c.protocolError(501, EnhancedCode{5, 5, 2}, "Bad command")
 				continue
 			}
 
