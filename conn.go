@@ -17,6 +17,9 @@ import (
 	"time"
 )
 
+// Number of errors we'll tolerate per connection before closing. Defaults to 3.
+const errThreshold = 3
+
 type ConnectionState struct {
 	Hostname   string
 	LocalAddr  net.Addr
@@ -32,8 +35,6 @@ type Conn struct {
 
 	// Number of errors witnessed on this connection
 	errCount int
-	// Number of errors we'll tolerate per connection before closing. Defaults to 3.
-	errThreshold int
 
 	session    Session
 	locker     sync.Mutex
@@ -50,9 +51,8 @@ type Conn struct {
 
 func newConn(c net.Conn, s *Server) *Conn {
 	sc := &Conn{
-		server:       s,
-		conn:         c,
-		errThreshold: 3,
+		server: s,
+		conn:   c,
 	}
 
 	sc.init()
@@ -225,7 +225,7 @@ func (c *Conn) protocolError(code int, ec EnhancedCode, msg string) {
 	c.WriteResponse(code, ec, msg)
 
 	c.errCount++
-	if c.errCount > c.errThreshold {
+	if c.errCount > errThreshold {
 		// 421 -> Connection closing (RFC5321 Section-4.2.3)
 		// 5.7.0 -> Persistent security related issue
 		c.WriteResponse(421, EnhancedCode{5, 7, 0}, "Too many errors. Quiting now")
