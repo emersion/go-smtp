@@ -590,7 +590,7 @@ func TestServer_tooManyInvalidCommands(t *testing.T) {
 	}
 
 	scanner.Scan()
-	if !strings.HasPrefix(scanner.Text(), "421 ") {
+	if !strings.HasPrefix(scanner.Text(), "500 ") {
 		t.Fatal("Invalid invalid command response:", scanner.Text())
 	}
 }
