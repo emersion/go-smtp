@@ -439,7 +439,7 @@ func decodeXtext(val string) (string, error) {
 			return ""
 		}
 
-		return string(char)
+		return string(rune(char))
 	})
 	if replaceErr != nil {
 		return "", replaceErr
@@ -956,12 +956,12 @@ func (c *Conn) WriteResponse(code int, enhCode EnhancedCode, text ...string) {
 	}
 
 	for i := 0; i < len(text)-1; i++ {
-		c.text.PrintfLine("%v-%v", code, text[i])
+		c.text.PrintfLine("%d-%v", code, text[i])
 	}
 	if enhCode == NoEnhancedCode {
-		c.text.PrintfLine("%v %v", code, text[len(text)-1])
+		c.text.PrintfLine("%d %v", code, text[len(text)-1])
 	} else {
-		c.text.PrintfLine("%v %v.%v.%v %v", code, enhCode[0], enhCode[1], enhCode[2], text[len(text)-1])
+		c.text.PrintfLine("%d %v.%v.%v %v", code, enhCode[0], enhCode[1], enhCode[2], text[len(text)-1])
 	}
 }
 
