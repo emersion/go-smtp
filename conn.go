@@ -226,9 +226,7 @@ func (c *Conn) protocolError(code int, ec EnhancedCode, msg string) {
 
 	c.errCount++
 	if c.errCount > errThreshold {
-		// 421 -> Connection closing (RFC5321 Section-4.2.3)
-		// 5.7.0 -> Persistent security related issue
-		c.WriteResponse(421, EnhancedCode{5, 7, 0}, "Too many errors. Quiting now")
+		c.WriteResponse(500, EnhancedCode{5, 5, 1}, "Too many errors. Quiting now")
 		c.Close()
 	}
 }
