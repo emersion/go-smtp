@@ -54,7 +54,7 @@ func newConn(c net.Conn, s *Server) *Conn {
 		server: s,
 		conn:   c,
 	}
-
+	//c.SetNoDelay(false) // tut
 	sc.init()
 	return sc
 }
@@ -969,7 +969,7 @@ func (c *Conn) WriteResponse(code int, enhCode EnhancedCode, text ...string) {
 	// Essentially it is a client's problem. but...
 	reply := ""
 	for i := 0; i < len(text)-1; i++ {
-		reply += fmt.Sprintf("%d-%v", code, text[i])
+		reply += fmt.Sprintf("%d-%v\r\n", code, text[i])
 	}
 	if enhCode == NoEnhancedCode {
 		reply += fmt.Sprintf("%d %v", code, text[len(text)-1])
@@ -977,6 +977,7 @@ func (c *Conn) WriteResponse(code int, enhCode EnhancedCode, text ...string) {
 		reply += fmt.Sprintf("%d %v.%v.%v %v", code, enhCode[0], enhCode[1], enhCode[2], text[len(text)-1])
 	}
 	c.text.PrintfLine("%s", reply)
+
 	/*
 		for i := 0; i < len(text)-1; i++ {
 			c.text.PrintfLine("%d-%v", code, text[i])
@@ -987,7 +988,6 @@ func (c *Conn) WriteResponse(code int, enhCode EnhancedCode, text ...string) {
 			c.text.PrintfLine("%d %v.%v.%v %v", code, enhCode[0], enhCode[1], enhCode[2], text[len(text)-1])
 		}
 	*/
-
 }
 
 // Reads a line of input
