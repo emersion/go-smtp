@@ -956,8 +956,8 @@ func (c *Conn) WriteResponse(code int, enhCode EnhancedCode, text ...string) {
 	}
 
 	// Multiple tcp packets cause error
-	// in some controllers like sim800. reply must be a single tcp packet. 14.09.2020 ignatev vadim.
-	// example:
+	// in some controllers like sim800. reply must be in a single tcp packet. 
+	// sim800 behavior:
 	// s: 220 greets
 	// c: EHLO me
 	// s: 250-hello-me
@@ -965,7 +965,7 @@ func (c *Conn) WriteResponse(code int, enhCode EnhancedCode, text ...string) {
 	// s: 250-AUTH LOGIN
 	// c: AUTH LOGIN      <- client got previous packet and began authorization
 	// s: 250-STARTTLS    <- server keeps sending reply to EHLO
-	// c: error, disconnect. beacuse expected 334 VXNlcm5hbWU6
+	// c: error, disconnect. beacuse it expected 334 VXNlcm5hbWU6
 	// Essentially it is a client's problem. but...
 	reply := ""
 	for i := 0; i < len(text)-1; i++ {
@@ -978,16 +978,6 @@ func (c *Conn) WriteResponse(code int, enhCode EnhancedCode, text ...string) {
 	}
 	c.text.PrintfLine("%s", reply)
 
-	/*
-		for i := 0; i < len(text)-1; i++ {
-			c.text.PrintfLine("%d-%v", code, text[i])
-		}
-		if enhCode == NoEnhancedCode {
-			c.text.PrintfLine("%d %v", code, text[len(text)-1])
-		} else {
-			c.text.PrintfLine("%d %v.%v.%v %v", code, enhCode[0], enhCode[1], enhCode[2], text[len(text)-1])
-		}
-	*/
 }
 
 // Reads a line of input
