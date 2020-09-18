@@ -122,6 +122,7 @@ func (s *Server) Serve(l net.Listener) error {
 				return err
 			}
 		}
+
 		go s.handleConn(newConn(c, s))
 	}
 }
@@ -180,6 +181,7 @@ func (s *Server) ListenAndServe() error {
 	if s.LMTP {
 		network = "unix"
 	}
+
 	addr := s.Addr
 	if !s.LMTP && addr == "" {
 		addr = ":smtp"
@@ -189,6 +191,7 @@ func (s *Server) ListenAndServe() error {
 	if err != nil {
 		return err
 	}
+
 	return s.Serve(l)
 }
 
