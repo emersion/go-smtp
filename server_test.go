@@ -192,7 +192,11 @@ func testServerGreeted(t *testing.T, fn ...serverConfigureFunc) (be *backend, s 
 	be, s, c, scanner = testServer(t, fn...)
 
 	scanner.Scan()
-	if scanner.Text() != "220 localhost ESMTP Service Ready" {
+	expectedGreeting := "220 localhost ESMTP Service Ready"
+	if s.LMTP {
+		expectedGreeting = "220 localhost LMTP Service Ready"
+	}
+	if scanner.Text() != expectedGreeting {
 		t.Fatal("Invalid greeting:", scanner.Text())
 	}
 
