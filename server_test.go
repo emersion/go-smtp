@@ -6,9 +6,12 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"net"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/emersion/go-smtp"
 )
@@ -1114,5 +1117,40 @@ func TestServer_Chunking_Binarymime(t *testing.T) {
 	}
 	if want := "Hey <3\r\nHey :3\r\n"; string(msg.Data) != want {
 		t.Fatal("Invalid mail data:", string(msg.Data), msg.Data)
+	}
+}
+
+func TestServer_SMTP_NetworkDefaultBehaviorTCP(t *testing.T) {
+	be := new(backend)
+	s := smtp.NewServer(be)
+	s.Domain = "localhost"
+	s.AllowInsecureAuth = true
+
+	s.Network = ""
+	s.LMTP = false
+
+	testport := rand.Intn(65535-1024) + 1024
+	s.Addr = "127.0.0.1:" + strconv.Itoa(testport)
+
+	go s.ListenAndServe()
+
+	var err error
+	var c net.Conn
+	for i := 0; i < 5; i++ {
+		c, err = net.Dial("tcp", s.Addr)
+		if err == nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	scanner := bufio.NewScanner(c)
+	scanner.Scan()
+	if scanner.Text() != "220 localhost ESMTP Service Ready" {
+		t.Fatal("Invalid greeting:", scanner.Text())
 	}
 }

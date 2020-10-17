@@ -4,8 +4,13 @@ import (
 	"bufio"
 	"errors"
 	"io"
+	"math/rand"
+	"net"
+	"os"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/emersion/go-smtp"
 )
@@ -193,5 +198,105 @@ func TestServer_LMTP_DuplicatedRcpt(t *testing.T) {
 
 	if len(be.messages) != 0 || len(be.anonmsgs) != 1 {
 		t.Fatal("Invalid number of sent messages:", be.messages, be.anonmsgs)
+	}
+}
+
+func TestServer_LMTP_NetworkDefaultBehaviorUnix(t *testing.T) {
+	be := new(backend)
+	s := smtp.NewServer(be)
+	s.Domain = "localhost"
+	s.AllowInsecureAuth = true
+
+	s.Network = ""
+	s.LMTP = true
+	s.Addr = "./testsocket"
+
+	defer os.Remove("./testsocket")
+	go s.ListenAndServe()
+
+	var err error
+	var c net.Conn
+	for i := 0; i < 5; i++ {
+		c, err = net.Dial("unix", s.Addr)
+		if err == nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	scanner := bufio.NewScanner(c)
+	scanner.Scan()
+	if scanner.Text() != "220 localhost ESMTP Service Ready" {
+		t.Fatal("Invalid greeting:", scanner.Text())
+	}
+}
+
+func TestServer_LMTP_TCP(t *testing.T) {
+	be := new(backend)
+	s := smtp.NewServer(be)
+	s.Domain = "localhost"
+	s.AllowInsecureAuth = true
+
+	testPort := rand.Int31n(65535-1024) + 1024
+
+	s.Network = "tcp"
+	s.LMTP = true
+	s.Addr = "127.0.0.1:" + strconv.Itoa(int(testPort))
+
+	go s.ListenAndServe()
+
+	var err error
+	var c net.Conn
+	for i := 0; i < 5; i++ {
+		c, err = net.Dial("tcp", s.Addr)
+		if err == nil {
+			break
+		}
+	}
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	scanner := bufio.NewScanner(c)
+	scanner.Scan()
+	if scanner.Text() != "220 localhost ESMTP Service Ready" {
+		t.Fatal("Invalid greeting:", scanner.Text())
+	}
+}
+
+func TestServer_LMTP_NoAddressError(t *testing.T) {
+	be := new(backend)
+	s := smtp.NewServer(be)
+	s.Domain = "localhost"
+	s.AllowInsecureAuth = true
+
+	s.Network = "tcp"
+	s.LMTP = true
+	s.Addr = ""
+
+	err := s.ListenAndServe()
+	if err == nil || err.Error() != "lmtp: no port was defined and no default port exists for this protocol" {
+		t.Fatalf("expected no default port error, got %v", err)
+	}
+}
+
+func TestServer_LMTP_TLS_NoAddressError(t *testing.T) {
+	be := new(backend)
+	s := smtp.NewServer(be)
+	s.Domain = "localhost"
+	s.AllowInsecureAuth = true
+
+	s.Network = "tcp"
+	s.LMTP = true
+	s.Addr = ""
+
+	err := s.ListenAndServeTLS()
+	if err == nil || err.Error() != "lmtp: no port was defined and no default port exists for this protocol" {
+		t.Fatalf("expected no default port error, got %v", err)
 	}
 }
