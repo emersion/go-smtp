@@ -13,7 +13,7 @@ import (
 	"github.com/emersion/go-sasl"
 )
 
-var errNoAddressSpecified = errors.New("lmtp: no port was defined and no default port exists for this protocol")
+var errNoAddressSpecified = errors.New("lmtp: no address was defined and no default port exists for this protocol")
 
 // A function that creates SASL servers.
 type SaslServerFactory func(conn *Conn) sasl.Server

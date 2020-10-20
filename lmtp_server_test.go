@@ -268,7 +268,7 @@ func TestServer_LMTP_NoAddressError(t *testing.T) {
 	s.Addr = ""
 
 	err := s.ListenAndServe()
-	if err == nil || err.Error() != "lmtp: no port was defined and no default port exists for this protocol" {
+	if err == nil || err.Error() != "lmtp: no address was defined and no default port exists for this protocol" {
 		t.Fatalf("expected no default port error, got %v", err)
 	}
 }
@@ -284,7 +284,7 @@ func TestServer_LMTP_TLS_NoAddressError(t *testing.T) {
 	s.Addr = ""
 
 	err := s.ListenAndServeTLS()
-	if err == nil || err.Error() != "lmtp: no port was defined and no default port exists for this protocol" {
+	if err == nil || err.Error() != "lmtp: no address was defined and no default port exists for this protocol" {
 		t.Fatalf("expected no default port error, got %v", err)
 	}
 }
