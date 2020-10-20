@@ -4,13 +4,10 @@ import (
 	"bufio"
 	"errors"
 	"io"
-	"math/rand"
 	"net"
 	"os"
-	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/emersion/go-smtp"
 )
@@ -211,27 +208,16 @@ func TestServer_LMTP_NetworkDefaultBehaviorUnix(t *testing.T) {
 	s.LMTP = true
 	s.Addr = "./testsocket"
 
-	defer os.Remove("./testsocket")
-	go s.ListenAndServe()
-
-	var err error
-	var c net.Conn
-	for i := 0; i < 5; i++ {
-		c, err = net.Dial("unix", s.Addr)
-		if err == nil {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-
+	l, err := s.Listen()
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer os.Remove("./testsocket")
+	defer l.Close()
 
-	scanner := bufio.NewScanner(c)
-	scanner.Scan()
-	if scanner.Text() != "220 localhost ESMTP Service Ready" {
-		t.Fatal("Invalid greeting:", scanner.Text())
+	network := l.Addr().Network()
+	if network != "unix" {
+		t.Fatalf("expected network unix, got %s", network)
 	}
 }
 
@@ -241,18 +227,20 @@ func TestServer_LMTP_TCP(t *testing.T) {
 	s.Domain = "localhost"
 	s.AllowInsecureAuth = true
 
-	testPort := rand.Int31n(65535-1024) + 1024
-
 	s.Network = "tcp"
 	s.LMTP = true
-	s.Addr = "127.0.0.1:" + strconv.Itoa(int(testPort))
+	s.Addr = "127.0.0.1:0"
 
-	go s.ListenAndServe()
+	l, err := s.Listen()
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	var err error
+	go s.Serve(l)
+
 	var c net.Conn
 	for i := 0; i < 5; i++ {
-		c, err = net.Dial("tcp", s.Addr)
+		c, err = net.Dial("tcp", l.Addr().String())
 		if err == nil {
 			break
 		}

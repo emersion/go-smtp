@@ -3,17 +3,13 @@ package smtp_test
 import (
 	"bufio"
 	"errors"
+	"github.com/emersion/go-smtp"
 	"io"
 	"io/ioutil"
 	"log"
-	"math/rand"
 	"net"
-	"strconv"
 	"strings"
 	"testing"
-	"time"
-
-	"github.com/emersion/go-smtp"
 )
 
 type message struct {
@@ -1129,28 +1125,16 @@ func TestServer_SMTP_NetworkDefaultBehaviorTCP(t *testing.T) {
 	s.Network = ""
 	s.LMTP = false
 
-	testport := rand.Intn(65535-1024) + 1024
-	s.Addr = "127.0.0.1:" + strconv.Itoa(testport)
+	s.Addr = "127.0.0.1:0"
 
-	go s.ListenAndServe()
-
-	var err error
-	var c net.Conn
-	for i := 0; i < 5; i++ {
-		c, err = net.Dial("tcp", s.Addr)
-		if err == nil {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-
+	l, err := s.Listen()
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer l.Close()
 
-	scanner := bufio.NewScanner(c)
-	scanner.Scan()
-	if scanner.Text() != "220 localhost ESMTP Service Ready" {
-		t.Fatal("Invalid greeting:", scanner.Text())
+	network := l.Addr().Network()
+	if network != "tcp" {
+		t.Fatalf("expected tcp, got %s", network)
 	}
 }

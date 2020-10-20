@@ -176,12 +176,21 @@ func (s *Server) handleConn(c *Conn) error {
 	}
 }
 
-// ListenAndServe listens on the network address s.Addr and then calls Serve
-// to handle requests on incoming connections.
-//
-// If s.Addr is blank and LMTP is disabled, ":smtp" is used.
-// If s.Addr is blank and LMTP is enabled, an error is returned, as there is no default port for LMTP
-func (s *Server) ListenAndServe() error {
+// Listen configures a listener according to the server configuration, without TLS
+// This listener can then be passed to Serve. If access to the listener is not needed, then the
+// combined function ListenAndServe can be used
+func (s *Server) Listen() (net.Listener, error) {
+	return s.listen(false)
+}
+
+// ListenTLS configures a listener according to the server configuration, with TLS
+// This listener can then be passed to Serve. If access to the listener is not needed, then the
+// combined function ListenAndServe can be used
+func (s *Server) ListenTLS() (net.Listener, error) {
+	return s.listen(true)
+}
+
+func (s *Server) listen(useTLS bool) (net.Listener, error) {
 	network := s.Network
 	if !s.LMTP && network == "" {
 		network = "tcp"
@@ -193,14 +202,33 @@ func (s *Server) ListenAndServe() error {
 	if !s.LMTP && addr == "" {
 		addr = ":smtp"
 	} else if s.LMTP && addr == "" {
-		return errNoAddressSpecified
+		return nil, errNoAddressSpecified
 	}
 
-	l, err := net.Listen(network, addr)
+	var l net.Listener
+	var err error
+	if useTLS {
+		l, err = tls.Listen(network, addr, s.TLSConfig)
+	} else {
+		l, err = net.Listen(network, addr)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	return l, nil
+}
+
+// ListenAndServe listens on the network address s.Addr and then calls Serve
+// to handle requests on incoming connections.
+//
+// If s.Addr is blank and LMTP is disabled, ":smtp" is used.
+// If s.Addr is blank and LMTP is enabled, an error is returned, as there is no default port for LMTP
+func (s *Server) ListenAndServe() error {
+	l, err := s.listen(false)
 	if err != nil {
 		return err
 	}
-
 	return s.Serve(l)
 }
 
@@ -210,18 +238,10 @@ func (s *Server) ListenAndServe() error {
 // If s.Addr is blank in SMTP mode, ":smtps" is used.
 // If s.Addr is blank in LMTP mode, an error is returned, as there is no default port for lmtps
 func (s *Server) ListenAndServeTLS() error {
-	addr := s.Addr
-	if !s.LMTP && addr == "" {
-		addr = ":smtps"
-	} else if s.LMTP && addr == "" {
-		return errNoAddressSpecified
-	}
-
-	l, err := tls.Listen("tcp", addr, s.TLSConfig)
+	l, err := s.listen(true)
 	if err != nil {
 		return err
 	}
-
 	return s.Serve(l)
 }
 
