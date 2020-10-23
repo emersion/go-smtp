@@ -58,6 +58,9 @@ type MailOptions struct {
 	Auth *string
 }
 
+// Session is used by servers to respond to an SMTP client.
+//
+// The methods are called when the remote client issues the matching command.
 type Session interface {
 	// Discard currently processed message.
 	Reset()
@@ -73,6 +76,8 @@ type Session interface {
 	Data(r io.Reader) error
 }
 
+// LMTPSession is an add-on interface for Session. It can be implemented by
+// LMTP servers to provide extra functionality.
 type LMTPSession interface {
 	// LMTPData is the LMTP-specific version of Data method.
 	// It can be optionally implemented by the backend to provide
@@ -90,6 +95,8 @@ type LMTPSession interface {
 	LMTPData(r io.Reader, status StatusCollector) error
 }
 
+// StatusCollector allows a backend to provide per-recipient status
+// information.
 type StatusCollector interface {
 	SetStatus(rcptTo string, err error)
 }
