@@ -60,6 +60,8 @@ func Dial(addr string) (*Client, error) {
 
 // DialTLS returns a new Client connected to an SMTP server via TLS at addr.
 // The addr must include a port, as in "mail.example.com:smtps".
+//
+// A nil tlsConfig is equivalent to a zero tls.Config.
 func DialTLS(addr string, tlsConfig *tls.Config) (*Client, error) {
 	conn, err := tls.Dial("tcp", addr, tlsConfig)
 	if err != nil {
@@ -224,6 +226,8 @@ func (c *Client) ehlo() error {
 
 // StartTLS sends the STARTTLS command and encrypts all further communication.
 // Only servers that advertise the STARTTLS extension support this function.
+//
+// A nil config is equivalent to a zero tls.Config.
 //
 // If server returns an error, it will be of type *SMTPError.
 func (c *Client) StartTLS(config *tls.Config) error {
