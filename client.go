@@ -490,11 +490,10 @@ func (c *Client) LMTPData(statusCb func(rcpt string, status *SMTPError)) (io.Wri
 
 var testHookStartTLS func(*tls.Config) // nil, except for tests
 
-// SendMail connects to the server at addr, switches to TLS if
-// possible, authenticates with the optional mechanism a if possible,
-// and then sends an email from address from, to addresses to, with
-// message r.
-// The addr must include a port, as in "mail.example.com:smtp".
+// SendMail connects to the server at addr, switches to TLS, authenticates with
+// the optional SASL client, and then sends an email from address from, to
+// addresses to, with message r. The addr must include a port, as in
+// "mail.example.com:smtp".
 //
 // The addresses in the to parameter are the SMTP RCPT addresses.
 //
@@ -529,10 +528,11 @@ func SendMail(addr string, a sasl.Client, from string, to []string, r io.Reader)
 	if err = c.hello(); err != nil {
 		return err
 	}
-	if ok, _ := c.Extension("STARTTLS"); ok {
-		if err = c.StartTLS(nil); err != nil {
-			return err
-		}
+	if ok, _ := c.Extension("STARTTLS"); !ok {
+		return errors.New("smtp: server doesn't support STARTTLS")
+	}
+	if err = c.StartTLS(nil); err != nil {
+		return err
 	}
 	if a != nil && c.ext != nil {
 		if _, ok := c.ext["AUTH"]; !ok {
