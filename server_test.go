@@ -1116,3 +1116,15 @@ func TestServer_Chunking_Binarymime(t *testing.T) {
 		t.Fatal("Invalid mail data:", string(msg.Data), msg.Data)
 	}
 }
+
+func TestServer_TooLongCommand(t *testing.T) {
+	_, s, c, scanner := testServerAuthenticated(t)
+	defer s.Close()
+	defer c.Close()
+
+	io.WriteString(c, "MAIL FROM:<"+strings.Repeat("a", s.MaxLineLength)+">\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "500 5.4.0 ") {
+		t.Fatal("Invalid too long MAIL response:", scanner.Text())
+	}
+}

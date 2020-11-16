@@ -79,7 +79,7 @@ func NewClient(conn net.Conn, host string) (*Client, error) {
 		io.Writer
 		io.Closer
 	}{
-		Reader: lineLimitReader{
+		Reader: &lineLimitReader{
 			R: conn,
 			// Doubled maximum line length per RFC 5321 (Section 4.5.3.1.6)
 			LineLimit: 2000,

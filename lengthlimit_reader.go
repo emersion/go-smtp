@@ -18,7 +18,7 @@ type lineLimitReader struct {
 	curLineLength int
 }
 
-func (r lineLimitReader) Read(b []byte) (int, error) {
+func (r *lineLimitReader) Read(b []byte) (int, error) {
 	if r.curLineLength > r.LineLimit {
 		return 0, ErrTooLongLine
 	}

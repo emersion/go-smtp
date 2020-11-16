@@ -65,7 +65,7 @@ func (c *Conn) init() {
 		io.Writer
 		io.Closer
 	}{
-		Reader: lineLimitReader{
+		Reader: &lineLimitReader{
 			R:         c.conn,
 			LineLimit: c.server.MaxLineLength,
 		},
