@@ -45,6 +45,9 @@ type Client struct {
 	CommandTimeout time.Duration
 	// Time to wait for responses after final dot.
 	SubmissionTimeout time.Duration
+
+	// Logger for all network activity.
+	DebugWriter io.Writer
 }
 
 // Dial returns a new Client connected to an SMTP server at addr.
@@ -115,17 +118,25 @@ func NewClientLMTP(conn net.Conn, host string) (*Client, error) {
 func (c *Client) setConn(conn net.Conn) {
 	c.conn = conn
 
+	var r io.Reader = conn
+	var w io.Writer = conn
+
+	r = &lineLimitReader{
+		R: conn,
+		// Doubled maximum line length per RFC 5321 (Section 4.5.3.1.6)
+		LineLimit: 2000,
+	}
+
+	r = io.TeeReader(r, clientDebugWriter{c})
+	w = io.MultiWriter(w, clientDebugWriter{c})
+
 	rwc := struct {
 		io.Reader
 		io.Writer
 		io.Closer
 	}{
-		Reader: &lineLimitReader{
-			R: conn,
-			// Doubled maximum line length per RFC 5321 (Section 4.5.3.1.6)
-			LineLimit: 2000,
-		},
-		Writer: conn,
+		Reader: r,
+		Writer: w,
 		Closer: conn,
 	}
 	c.Text = textproto.NewConn(rwc)
@@ -651,4 +662,15 @@ func toSMTPErr(protoErr *textproto.Error) *SMTPError {
 	smtpErr.EnhancedCode = enchCode
 	smtpErr.Message = msg
 	return smtpErr
+}
+
+type clientDebugWriter struct {
+	c *Client
+}
+
+func (cdw clientDebugWriter) Write(b []byte) (int, error) {
+	if cdw.c.DebugWriter == nil {
+		return len(b), nil
+	}
+	return cdw.c.DebugWriter.Write(b)
 }
