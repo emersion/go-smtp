@@ -14,7 +14,6 @@ import (
 	"net/textproto"
 	"reflect"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -522,84 +521,6 @@ var helloClient = []string{
 	"NOOP\n",
 }
 
-func TestSendMail(t *testing.T) {
-	server := strings.Join(strings.Split(sendMailServer, "\n"), "\r\n")
-	client := strings.Join(strings.Split(sendMailClient, "\n"), "\r\n")
-	var cmdbuf bytes.Buffer
-	bcmdbuf := bufio.NewWriter(&cmdbuf)
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("Unable to create listener: %v", err)
-	}
-	defer l.Close()
-
-	// prevent data race on bcmdbuf
-	var done = make(chan struct{})
-	go func(data []string) {
-
-		defer close(done)
-
-		conn, err := l.Accept()
-		if err != nil {
-			t.Errorf("Accept error: %v", err)
-			return
-		}
-		defer conn.Close()
-
-		tc := textproto.NewConn(conn)
-		for i := 0; i < len(data) && data[i] != ""; i++ {
-			tc.PrintfLine(data[i])
-			for len(data[i]) >= 4 && data[i][3] == '-' {
-				i++
-				tc.PrintfLine(data[i])
-			}
-			if data[i] == "221 Goodbye" {
-				return
-			}
-			read := false
-			for !read || data[i] == "354 Go ahead" {
-				msg, err := tc.ReadLine()
-				bcmdbuf.Write([]byte(msg + "\r\n"))
-				read = true
-				if err != nil {
-					t.Errorf("Read error: %v", err)
-					return
-				}
-				if data[i] == "354 Go ahead" && msg == "." {
-					break
-				}
-			}
-		}
-	}(strings.Split(server, "\r\n"))
-
-	err = SendMail(l.Addr().String(), nil, "test@example.com", []string{"other@example.com>\n\rDATA\r\nInjected message body\r\n.\r\nQUIT\r\n"}, strings.NewReader(strings.Replace(`From: test@example.com
-To: other@example.com
-Subject: SendMail test
-SendMail is working for me.
-`, "\n", "\r\n", -1)))
-	if err == nil {
-		t.Errorf("Expected SendMail to be rejected due to a message injection attempt")
-	}
-
-	err = SendMail(l.Addr().String(), nil, "test@example.com", []string{"other@example.com"}, strings.NewReader(strings.Replace(`From: test@example.com
-To: other@example.com
-Subject: SendMail test
-
-SendMail is working for me.
-`, "\n", "\r\n", -1)))
-
-	if err != nil {
-		t.Errorf("%v", err)
-	}
-
-	<-done
-	bcmdbuf.Flush()
-	actualcmds := cmdbuf.String()
-	if client != actualcmds {
-		t.Errorf("Got:\n%s\nExpected:\n%s", actualcmds, client)
-	}
-}
-
 var sendMailServer = `220 hello world
 502 EH?
 250 mx.google.com at your service
@@ -623,53 +544,6 @@ SendMail is working for me.
 .
 QUIT
 `
-
-func TestSendMailWithAuth(t *testing.T) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("Unable to create listener: %v", err)
-	}
-	defer l.Close()
-	wg := sync.WaitGroup{}
-	var done = make(chan struct{})
-	go func() {
-		defer wg.Done()
-		conn, err := l.Accept()
-		if err != nil {
-			t.Errorf("Accept error: %v", err)
-			return
-		}
-		defer conn.Close()
-
-		tc := textproto.NewConn(conn)
-		tc.PrintfLine("220 hello world")
-		msg, err := tc.ReadLine()
-		if err != nil {
-			t.Errorf("ReadLine error: %v", err)
-			return
-		}
-		if msg == "EHLO localhost" {
-			tc.PrintfLine("250 mx.google.com at your service")
-		}
-		// for this test case, there should have no more traffic
-		<-done
-	}()
-	wg.Add(1)
-
-	err = SendMail(l.Addr().String(), sasl.NewPlainClient("", "user", "pass"), "test@example.com", []string{"other@example.com"}, strings.NewReader(strings.Replace(`From: test@example.com
-To: other@example.com
-Subject: SendMail test
-SendMail is working for me.
-`, "\n", "\r\n", -1)))
-	if err == nil {
-		t.Error("SendMail: Server doesn't support AUTH, expected to get an error, but got none ")
-	}
-	if err.Error() != "smtp: server doesn't support AUTH" {
-		t.Errorf("Expected: smtp: server doesn't support AUTH, got: %s", err)
-	}
-	close(done)
-	wg.Wait()
-}
 
 func TestAuthFailed(t *testing.T) {
 	server := strings.Join(strings.Split(authFailedServer, "\n"), "\r\n")
