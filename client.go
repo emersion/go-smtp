@@ -505,6 +505,9 @@ var testHookStartTLS func(*tls.Config) // nil, except for tests
 // messages is accomplished by including an email address in the to
 // parameter but not including it in the r headers.
 //
+// SendMail is intended to be used for very simple use-cases. If you want to
+// customize SendMail's behavior, use a Client instead.
+//
 // The SendMail function and the go-smtp package are low-level
 // mechanisms and provide no support for DKIM signing (see go-msgauth), MIME
 // attachments (see the mime/multipart package or the go-message package), or
