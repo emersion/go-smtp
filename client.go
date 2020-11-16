@@ -24,6 +24,7 @@ type Client struct {
 	// Text is the textproto.Conn used by the Client. It is exported to allow for
 	// clients to add extensions.
 	Text *textproto.Conn
+
 	// keep a reference to the connection so it can be used to create a TLS
 	// connection later
 	conn net.Conn
@@ -42,7 +43,6 @@ type Client struct {
 
 	// Time to wait for command responses (this includes 3xx reply to DATA).
 	CommandTimeout time.Duration
-
 	// Time to wait for responses after final dot.
 	SubmissionTimeout time.Duration
 }
@@ -74,6 +74,47 @@ func DialTLS(addr string, tlsConfig *tls.Config) (*Client, error) {
 // NewClient returns a new Client using an existing connection and host as a
 // server name to be used when authenticating.
 func NewClient(conn net.Conn, host string) (*Client, error) {
+	c := &Client{
+		serverName: host,
+		localName:  "localhost",
+		// As recommended by RFC 5321. For DATA command reply (3xx one) RFC
+		// recommends a slightly shorter timeout but we do not bother
+		// differentiating these.
+		CommandTimeout: 5 * time.Minute,
+		// 10 minutes + 2 minute buffer in case the server is doing transparent
+		// forwarding and also follows recommended timeouts.
+		SubmissionTimeout: 12 * time.Minute,
+	}
+
+	c.setConn(conn)
+
+	_, _, err := c.Text.ReadResponse(220)
+	if err != nil {
+		c.Text.Close()
+		if protoErr, ok := err.(*textproto.Error); ok {
+			return nil, toSMTPErr(protoErr)
+		}
+		return nil, err
+	}
+
+	return c, nil
+}
+
+// NewClientLMTP returns a new LMTP Client (as defined in RFC 2033) using an
+// existing connector and host as a server name to be used when authenticating.
+func NewClientLMTP(conn net.Conn, host string) (*Client, error) {
+	c, err := NewClient(conn, host)
+	if err != nil {
+		return nil, err
+	}
+	c.lmtp = true
+	return c, nil
+}
+
+// setConn sets the underlying network connection for the client.
+func (c *Client) setConn(conn net.Conn) {
+	c.conn = conn
+
 	rwc := struct {
 		io.Reader
 		io.Writer
@@ -87,43 +128,10 @@ func NewClient(conn net.Conn, host string) (*Client, error) {
 		Writer: conn,
 		Closer: conn,
 	}
+	c.Text = textproto.NewConn(rwc)
 
-	text := textproto.NewConn(rwc)
-	_, _, err := text.ReadResponse(220)
-	if err != nil {
-		text.Close()
-		if protoErr, ok := err.(*textproto.Error); ok {
-			return nil, toSMTPErr(protoErr)
-		}
-		return nil, err
-	}
 	_, isTLS := conn.(*tls.Conn)
-	c := &Client{
-		Text:       text,
-		conn:       conn,
-		serverName: host,
-		localName:  "localhost",
-		tls:        isTLS,
-		// As recommended by RFC 5321. For DATA command reply (3xx one) RFC
-		// recommends a slightly shorter timeout but we do not bother
-		// differentiating these.
-		CommandTimeout: 5 * time.Minute,
-		// 10 minutes + 2 minute buffer in case the server is doing transparent
-		// forwarding and also follows recommended timeouts.
-		SubmissionTimeout: 12 * time.Minute,
-	}
-	return c, nil
-}
-
-// NewClientLMTP returns a new LMTP Client (as defined in RFC 2033) using an
-// existing connector and host as a server name to be used when authenticating.
-func NewClientLMTP(conn net.Conn, host string) (*Client, error) {
-	c, err := NewClient(conn, host)
-	if err != nil {
-		return nil, err
-	}
-	c.lmtp = true
-	return c, nil
+	c.tls = isTLS
 }
 
 // Close closes the connection.
@@ -249,9 +257,7 @@ func (c *Client) StartTLS(config *tls.Config) error {
 	if testHookStartTLS != nil {
 		testHookStartTLS(config)
 	}
-	c.conn = tls.Client(c.conn, config)
-	c.Text = textproto.NewConn(c.conn)
-	c.tls = true
+	c.setConn(tls.Client(c.conn, config))
 	return c.ehlo()
 }
 
