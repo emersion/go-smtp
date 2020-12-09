@@ -9,10 +9,10 @@ import (
 	"github.com/emersion/go-smtp"
 )
 
-var addr string
+var addr = "127.0.0.1:1025"
 
 func init() {
-	flag.StringVar(&addr, "l", "127.0.0.1:1025", "Listen address")
+	flag.StringVar(&addr, "l", addr, "Listen address")
 }
 
 type backend struct{}
@@ -50,7 +50,7 @@ func main() {
 
 	s := smtp.NewServer(&backend{})
 
-	s.Addr = ":1025"
+	s.Addr = addr
 	s.Domain = "localhost"
 	s.AllowInsecureAuth = true
 	s.Debug = os.Stdout
