@@ -171,7 +171,6 @@ func testServer(t *testing.T, fn ...serverConfigureFunc) (be *backend, s *smtp.S
 
 	be = new(backend)
 	s = smtp.NewServer(be)
-	s.Domain = "localhost"
 	s.AllowInsecureAuth = true
 	for _, f := range fn {
 		f(s)
@@ -728,7 +727,6 @@ func testStrictServer(t *testing.T) (s *smtp.Server, c net.Conn, scanner *bufio.
 	}
 
 	s = smtp.NewServer(new(backend))
-	s.Domain = "localhost"
 	s.AllowInsecureAuth = true
 	s.AuthDisabled = true
 	s.Strict = true

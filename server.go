@@ -34,7 +34,7 @@ type Server struct {
 	// TCP listener.
 	LMTP bool
 
-	Domain            string
+	Domain            string // DEPRECATED
 	MaxRecipients     int
 	MaxMessageBytes   int
 	MaxLineLength     int
@@ -44,6 +44,9 @@ type Server struct {
 	ErrorLog          Logger
 	ReadTimeout       time.Duration
 	WriteTimeout      time.Duration
+
+	// The text that follows the 220 status code in the SMTP greeting banner.
+	Banner string
 
 	// Advertise SMTPUTF8 (RFC 6531) capability.
 	// Should be used only if backend supports it.
@@ -75,7 +78,7 @@ type Server struct {
 
 // New creates a new SMTP server.
 func NewServer(be Backend) *Server {
-	return &Server{
+	s := &Server{
 		// Doubled maximum line length per RFC 5321 (Section 4.5.3.1.6)
 		MaxLineLength: 2000,
 
@@ -103,6 +106,12 @@ func NewServer(be Backend) *Server {
 		},
 		conns: make(map[*Conn]struct{}),
 	}
+
+	if s.Banner == "" {
+		s.Banner = "ESMTP Service Ready"
+	}
+
+	return s
 }
 
 // Serve accepts incoming connections on the Listener l.

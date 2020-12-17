@@ -122,7 +122,6 @@ func testServer(t *testing.T, fn ...serverConfigureFunc) (be *backend, s *smtp.S
 		TransformData: transformMailReader,
 	}
 	s = smtp.NewServer(tbe)
-	s.Domain = "localhost"
 	s.AllowInsecureAuth = true
 	for _, f := range fn {
 		f(s)
