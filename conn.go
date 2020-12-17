@@ -934,7 +934,7 @@ func (c *Conn) Reject() {
 }
 
 func (c *Conn) greet() {
-	c.WriteResponse(220, NoEnhancedCode, fmt.Sprintf("%v ESMTP Service Ready", c.server.Banner))
+	c.WriteResponse(220, NoEnhancedCode, c.server.Banner)
 }
 
 func (c *Conn) WriteResponse(code int, enhCode EnhancedCode, text ...string) {
