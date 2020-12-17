@@ -34,7 +34,7 @@ type Server struct {
 	// TCP listener.
 	LMTP bool
 
-	Domain            string // DEPRECATED
+	Domain            string // DEPRECATED. Keep for backward compatible.
 	MaxRecipients     int
 	MaxMessageBytes   int
 	MaxLineLength     int
