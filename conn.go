@@ -103,7 +103,7 @@ func (c *Conn) handle(cmd string, arg string) {
 	}()
 
 	if cmd == "" {
-		c.protocolError(500, EnhancedCode{5, 5, 2}, "Speak up")
+		c.protocolError(500, EnhancedCode{5, 5, 2}, "Error: bad syntax")
 		return
 	}
 
@@ -140,7 +140,7 @@ func (c *Conn) handle(cmd string, arg string) {
 	case "DATA":
 		c.handleData(arg)
 	case "QUIT":
-		c.WriteResponse(221, EnhancedCode{2, 0, 0}, "Goodnight and good luck")
+		c.WriteResponse(221, EnhancedCode{2, 0, 0}, "Bye")
 		c.Close()
 	case "AUTH":
 		if c.server.AuthDisabled {
