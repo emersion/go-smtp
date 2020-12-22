@@ -34,7 +34,7 @@ type Server struct {
 	// TCP listener.
 	LMTP bool
 
-	Domain            string // DEPRECATED. Keep for backward compatible.
+	Domain            string
 	MaxRecipients     int
 	MaxMessageBytes   int
 	MaxLineLength     int
@@ -108,7 +108,9 @@ func NewServer(be Backend) *Server {
 	}
 
 	if s.Banner == "" {
-		s.Banner = "ESMTP Service Ready"
+		s.Banner = s.Domain + " ESMTP Service Ready"
+	} else {
+		s.Banner = s.Domain + " " + s.Banner
 	}
 
 	return s

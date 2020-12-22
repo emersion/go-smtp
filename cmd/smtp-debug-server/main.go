@@ -51,6 +51,7 @@ func main() {
 	s := smtp.NewServer(&backend{})
 
 	s.Addr = addr
+	s.Domain = "localhost"
 	s.AllowInsecureAuth = true
 	s.Debug = os.Stdout
 

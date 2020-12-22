@@ -742,7 +742,7 @@ func testStrictServer(t *testing.T) (s *smtp.Server, c net.Conn, scanner *bufio.
 	scanner = bufio.NewScanner(c)
 
 	scanner.Scan()
-	if scanner.Text() != "220 ESMTP Service Ready" {
+	if scanner.Text() != "220 localhost ESMTP Service Ready" {
 		t.Fatal("Invalid greeting:", scanner.Text())
 	}
 

@@ -139,7 +139,8 @@ func ExampleNewServer() {
 	s := smtp.NewServer(be)
 
 	s.Addr = ":1025"
-	s.Banner = "localhost ESMTP Server Ready"
+	s.Domain = "localhost"
+	s.Banner = s.Domain + " ESMTP Server Ready"
 	s.WriteTimeout = 10 * time.Second
 	s.ReadTimeout = 10 * time.Second
 	s.MaxMessageBytes = 1024 * 1024
