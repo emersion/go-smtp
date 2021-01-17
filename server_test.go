@@ -14,10 +14,11 @@ import (
 )
 
 type message struct {
-	From string
-	To   []string
-	Data []byte
-	Opts smtp.MailOptions
+	From     string
+	To       []string
+	RcptOpts []smtp.RcptOptions
+	Data     []byte
+	Opts     smtp.MailOptions
 }
 
 type backend struct {
@@ -101,8 +102,9 @@ func (s *session) Mail(from string, opts smtp.MailOptions) error {
 	return nil
 }
 
-func (s *session) Rcpt(to string) error {
+func (s *session) Rcpt(to string, opts smtp.RcptOptions) error {
 	s.msg.To = append(s.msg.To, to)
+	s.msg.RcptOpts = append(s.msg.RcptOpts, opts)
 	return nil
 }
 

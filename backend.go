@@ -58,6 +58,8 @@ type MailOptions struct {
 	Auth *string
 }
 
+type RcptOptions struct{}
+
 // Session is used by servers to respond to an SMTP client.
 //
 // The methods are called when the remote client issues the matching command.
@@ -71,7 +73,7 @@ type Session interface {
 	// Set return path for currently processed message.
 	Mail(from string, opts MailOptions) error
 	// Add recipient for currently processed message.
-	Rcpt(to string) error
+	Rcpt(to string, opts RcptOptions) error
 	// Set currently processed message contents and send it.
 	Data(r io.Reader) error
 }

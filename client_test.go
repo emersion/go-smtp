@@ -121,7 +121,7 @@ func TestBasic(t *testing.T) {
 		t.Fatalf("AUTH failed: %s", err)
 	}
 
-	if err := c.Rcpt("golang-nuts@googlegroups.com>\r\nDATA\r\nInjected message body\r\n.\r\nQUIT\r\n"); err == nil {
+	if err := c.Rcpt("golang-nuts@googlegroups.com>\r\nDATA\r\nInjected message body\r\n.\r\nQUIT\r\n", nil); err == nil {
 		t.Fatalf("RCPT should have failed due to a message injection attempt")
 	}
 	if err := c.Mail("user@gmail.com>\r\nDATA\r\nAnother injected message body\r\n.\r\nQUIT\r\n", nil); err == nil {
@@ -130,7 +130,7 @@ func TestBasic(t *testing.T) {
 	if err := c.Mail("user@gmail.com", nil); err != nil {
 		t.Fatalf("MAIL failed: %s", err)
 	}
-	if err := c.Rcpt("golang-nuts@googlegroups.com"); err != nil {
+	if err := c.Rcpt("golang-nuts@googlegroups.com", nil); err != nil {
 		t.Fatalf("RCPT failed: %s", err)
 	}
 	msg := `From: user@gmail.com
@@ -922,7 +922,7 @@ func TestLMTP(t *testing.T) {
 	if err := c.Mail("user@gmail.com", nil); err != nil {
 		t.Fatalf("MAIL failed: %s", err)
 	}
-	if err := c.Rcpt("golang-nuts@googlegroups.com"); err != nil {
+	if err := c.Rcpt("golang-nuts@googlegroups.com", nil); err != nil {
 		t.Fatalf("RCPT failed: %s", err)
 	}
 	msg := `From: user@gmail.com
@@ -1007,10 +1007,10 @@ func TestLMTPData(t *testing.T) {
 	if err := c.Mail("user@gmail.com", nil); err != nil {
 		t.Fatalf("MAIL failed: %s", err)
 	}
-	if err := c.Rcpt("golang-nuts@googlegroups.com"); err != nil {
+	if err := c.Rcpt("golang-nuts@googlegroups.com", nil); err != nil {
 		t.Fatalf("RCPT failed: %s", err)
 	}
-	if err := c.Rcpt("golang-not-nuts@googlegroups.com"); err != nil {
+	if err := c.Rcpt("golang-not-nuts@googlegroups.com", nil); err != nil {
 		t.Fatalf("RCPT failed: %s", err)
 	}
 	msg := `From: user@gmail.com

@@ -491,7 +491,7 @@ func (c *Conn) handleRcpt(arg string) {
 		return
 	}
 
-	if err := c.Session().Rcpt(recipient); err != nil {
+	if err := c.Session().Rcpt(recipient, RcptOptions{}); err != nil {
 		if smtpErr, ok := err.(*SMTPError); ok {
 			c.WriteResponse(smtpErr.Code, smtpErr.EnhancedCode, smtpErr.Message)
 			return

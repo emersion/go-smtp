@@ -31,7 +31,7 @@ func (s *session) Mail(from string, opts smtp.MailOptions) error {
 	return nil
 }
 
-func (s *session) Rcpt(to string) error {
+func (s *session) Rcpt(to string, opts smtp.RcptOptions) error {
 	return nil
 }
 

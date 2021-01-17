@@ -400,8 +400,11 @@ func (c *Client) Mail(from string, opts *MailOptions) error {
 // A call to Rcpt must be preceded by a call to Mail and may be followed by
 // a Data call or another Rcpt call.
 //
+// If opts is not nil, RCPT arguments provided in the structure will be added
+// to the command. Handling of unsupported options depends on the extension.
+//
 // If server returns an error, it will be of type *SMTPError.
-func (c *Client) Rcpt(to string) error {
+func (c *Client) Rcpt(to string, opts *RcptOptions) error {
 	if err := validateLine(to); err != nil {
 		return err
 	}
@@ -546,7 +549,7 @@ func SendMail(addr string, a sasl.Client, from string, to []string, r io.Reader)
 		return err
 	}
 	for _, addr := range to {
-		if err = c.Rcpt(addr); err != nil {
+		if err = c.Rcpt(addr, nil); err != nil {
 			return err
 		}
 	}
