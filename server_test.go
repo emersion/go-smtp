@@ -344,9 +344,10 @@ func TestServerPanicRecover(t *testing.T) {
 }
 
 func TestServerSMTPUTF8(t *testing.T) {
-	_, s, c, scanner := testServerAuthenticated(t)
+	be, s, c, scanner := testServerAuthenticated(t)
 	defer s.Close()
 	defer c.Close()
+	be.features = smtp.FeatureSMTPUTF8
 
 	io.WriteString(c, "MAIL FROM:<alice@wonderland.book> SMTPUTF8\r\n")
 	scanner.Scan()
@@ -358,10 +359,9 @@ func TestServerSMTPUTF8(t *testing.T) {
 }
 
 func TestServerSMTPUTF8_Disabled(t *testing.T) {
-	be, s, c, scanner := testServerAuthenticated(t)
+	_, s, c, scanner := testServerAuthenticated(t)
 	defer s.Close()
 	defer c.Close()
-	be.features = smtp.FeatureNoSMTPUTF8
 
 	io.WriteString(c, "MAIL FROM:<alice@wonderland.book> SMTPUTF8\r\n")
 	scanner.Scan()
@@ -1056,6 +1056,7 @@ func TestServer_Chunking_Binarymime(t *testing.T) {
 	be, s, c, scanner := testServerAuthenticated(t)
 	defer s.Close()
 	defer c.Close()
+	be.features = smtp.FeatureBINARYMIME
 
 	io.WriteString(c, "MAIL FROM:<root@nsa.gov> BODY=BINARYMIME\r\n")
 	scanner.Scan()

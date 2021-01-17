@@ -256,13 +256,13 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 			caps = append(caps, authCap)
 		}
 		feat := c.server.backendFeatures()
-		if feat&FeatureNoSMTPUTF8 == 0 {
+		if feat.Contains(FeatureSMTPUTF8) {
 			caps = append(caps, "SMTPUTF8")
 		}
-		if _, isTLS := c.TLSConnectionState(); isTLS && feat&FeatureNoREQUIRETLS == 0 {
+		if _, isTLS := c.TLSConnectionState(); isTLS && feat.Contains(FeatureREQUIRETLS) {
 			caps = append(caps, "REQUIRETLS")
 		}
-		if feat&FeatureNoBINARYMIME == 0 {
+		if feat.Contains(FeatureBINARYMIME) {
 			caps = append(caps, "BINARYMIME")
 		}
 		if c.server.MaxMessageBytes > 0 {
@@ -347,13 +347,13 @@ func (c *Conn) handleMail(arg string) {
 
 				opts.Size = int(size)
 			case "SMTPUTF8":
-				if c.server.backendFeatures()&FeatureNoSMTPUTF8 != 0 {
+				if !c.server.backendFeatures().Contains(FeatureSMTPUTF8) {
 					c.WriteResponse(504, EnhancedCode{5, 5, 4}, "SMTPUTF8 is not implemented")
 					return
 				}
 				opts.UTF8 = true
 			case "REQUIRETLS":
-				if c.server.backendFeatures()&FeatureNoREQUIRETLS != 0 {
+				if !c.server.backendFeatures().Contains(FeatureREQUIRETLS) {
 					c.WriteResponse(504, EnhancedCode{5, 5, 4}, "REQUIRETLS is not implemented")
 					return
 				}
@@ -361,7 +361,7 @@ func (c *Conn) handleMail(arg string) {
 			case "BODY":
 				switch value {
 				case "BINARYMIME":
-					if c.server.backendFeatures()&FeatureNoBINARYMIME != 0 {
+					if !c.server.backendFeatures().Contains(FeatureBINARYMIME) {
 						c.WriteResponse(504, EnhancedCode{5, 5, 4}, "BINARYMIME is not implemented")
 						return
 					}
@@ -431,7 +431,7 @@ func decodeXtext(val string) (string, error) {
 			return ""
 		}
 
-		return string(char)
+		return string(rune(char))
 	})
 	if replaceErr != nil {
 		return "", replaceErr

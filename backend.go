@@ -24,10 +24,14 @@ type Backend interface {
 type Feature int32
 
 const (
-	FeatureNoSMTPUTF8 Feature = 2 << iota
-	FeatureNoBINARYMIME
-	FeatureNoREQUIRETLS
+	FeatureSMTPUTF8 Feature = 2 << iota
+	FeatureBINARYMIME
+	FeatureREQUIRETLS
 )
+
+func (f Feature) Contains(feat Feature) bool {
+	return f&feat != 0
+}
 
 type FeatureBackend interface {
 	Features() Feature
