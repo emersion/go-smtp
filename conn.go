@@ -273,6 +273,9 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 		if c.server.EnableBINARYMIME {
 			caps = append(caps, "BINARYMIME")
 		}
+		if c.server.EnableDSN {
+			caps = append(caps, "DSN")
+		}
 		if c.server.MaxMessageBytes > 0 {
 			caps = append(caps, fmt.Sprintf("SIZE %v", c.server.MaxMessageBytes))
 		}
@@ -396,6 +399,24 @@ func (c *Conn) handleMail(arg string) {
 				}
 				decodedMbox := value[1 : len(value)-1]
 				opts.Auth = &decodedMbox
+			case "RET":
+				value := DSNReturn(strings.ToUpper(value))
+				if value != ReturnFull && value != ReturnHeaders {
+					c.WriteResponse(501, EnhancedCode{5, 5, 4}, "Unsupported RET value")
+					return
+				}
+				opts.Return = value
+			case "ENVID":
+				value, err := decodeXtext(value)
+				if err != nil {
+					c.WriteResponse(501, EnhancedCode{5, 5, 4}, "Malformed xtext in ENVID")
+					return
+				}
+				if !checkPrintableASCII(value) {
+					c.WriteResponse(501, EnhancedCode{5, 5, 4}, "Only printable ASCII allowed in ENVID")
+					return
+				}
+				opts.EnvelopeID = value
 			default:
 				c.WriteResponse(500, EnhancedCode{5, 5, 4}, "Unknown MAIL FROM argument")
 				return
@@ -467,6 +488,15 @@ func encodeXtext(raw string) string {
 	return out.String()
 }
 
+func checkPrintableASCII(s string) bool {
+	for _, c := range s {
+		if c < 32 && c > 127 {
+			return false
+		}
+	}
+	return true
+}
+
 // MAIL state -> waiting for RCPTs followed by DATA
 func (c *Conn) handleRcpt(arg string) {
 	if !c.fromReceived {
@@ -478,17 +508,65 @@ func (c *Conn) handleRcpt(arg string) {
 		return
 	}
 
-	if (len(arg) < 4) || (strings.ToUpper(arg[0:3]) != "TO:") {
-		c.WriteResponse(501, EnhancedCode{5, 5, 2}, "Was expecting RCPT arg syntax of TO:<address>")
+	if len(arg) < 4 || strings.ToUpper(arg[0:3]) != "TO:" {
+		c.WriteResponse(501, EnhancedCode{5, 5, 1}, "Was expecting TO arg syntax of TO:<address>")
 		return
 	}
-
-	// TODO: This trim is probably too forgiving
-	recipient := strings.Trim(arg[3:], "<> ")
+	toArgs := strings.Split(strings.Trim(arg[3:], " "), " ")
+	if c.server.Strict {
+		if !strings.HasPrefix(toArgs[0], "<") || !strings.HasSuffix(toArgs[0], ">") {
+			c.WriteResponse(501, EnhancedCode{5, 5, 1}, "Was expecting TO arg syntax of TO:<address>")
+			return
+		}
+	}
+	recipient := toArgs[0]
+	if recipient == "" {
+		c.WriteResponse(501, EnhancedCode{5, 5, 2}, "Was expecting MAIL arg syntax of FROM:<address>")
+		return
+	}
+	recipient = strings.Trim(recipient, "<>")
 
 	if c.server.MaxRecipients > 0 && len(c.recipients) >= c.server.MaxRecipients {
 		c.WriteResponse(552, EnhancedCode{5, 5, 3}, fmt.Sprintf("Maximum limit of %v recipients reached", c.server.MaxRecipients))
 		return
+	}
+
+	opts := RcptOptions{}
+
+	if len(toArgs) > 1 {
+		args, err := parseArgs(toArgs[1:])
+		if err != nil {
+			c.WriteResponse(501, EnhancedCode{5, 5, 4}, "Unable to parse TO ESMTP parameters")
+			return
+		}
+
+		for key, value := range args {
+			switch key {
+			case "ORCPT":
+			case "NOTIFY":
+				notifyFlags := strings.Split(strings.ToUpper(value), ",")
+				seenFlags := make(map[string]struct{})
+				for _, f := range notifyFlags {
+					if _, ok := seenFlags[f]; ok {
+						c.WriteResponse(501, EnhancedCode{5, 5, 4}, "NOTIFY parameters cannot be specified multiple times")
+						return
+					}
+					switch DSNNotify(f) {
+					case NotifyNever:
+						if len(notifyFlags) != 1 {
+							c.WriteResponse(501, EnhancedCode{5, 5, 4}, "NOTIFY=NEVER cannot be combined with other options")
+							return
+						}
+					case NotifyDelayed, NotifySuccess, NotifyFailure:
+					default:
+						c.WriteResponse(501, EnhancedCode{5, 5, 4}, "Unknown NOTIFY parameter")
+						return
+					}
+					seenFlags[f] = struct{}{}
+					opts.Notify = append(opts.Notify, DSNNotify(f))
+				}
+			}
+		}
 	}
 
 	if err := c.Session().Rcpt(recipient, RcptOptions{}); err != nil {

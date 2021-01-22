@@ -29,6 +29,18 @@ const (
 	BodyBinaryMIME BodyType = "BINARYMIME"
 )
 
+type DSNReturn string
+
+const (
+	// Attach the full copy of the message to any DSN that indicates
+	// a failure. Non-failure DSNs always contain the header only.
+	ReturnFull DSNReturn = "FULL"
+
+	// Attach only header of the message to any DSN that indicates a
+	// failure.
+	ReturnHeaders DSNReturn = "HDRS"
+)
+
 // MailOptions contains custom arguments that were
 // passed as an argument to the MAIL command.
 type MailOptions struct {
@@ -56,9 +68,46 @@ type MailOptions struct {
 	//
 	// Defined in RFC 4954.
 	Auth *string
+
+	// Whether the full message or header only should be returned in
+	// failure DSNs.
+	//
+	// Defined in RFC 3461. Ignored if the server does not support DSN
+	// extension.
+	Return DSNReturn
+
+	// Envelope ID identifier. Returned in any DSN for the message.
+	//
+	// Not in xtext encoding. go-smtp restricts value to printable US-ASCII
+	// as required by specification.
+	//
+	// Defined in RFC 3461. Ignored if the server does not support DSN
+	// extension.
+	EnvelopeID string
 }
 
-type RcptOptions struct{}
+type DSNNotify string
+
+const (
+	NotifyNever   DSNNotify = "NEVER"
+	NotifySuccess DSNNotify = "SUCCESS"
+	NotifyDelayed DSNNotify = "DELAYED"
+	NotifyFailure DSNNotify = "FAILURE"
+)
+
+type RcptOptions struct {
+	// When DSN should be generated for this recipient.
+	// As described in RFC 3461.
+	Notify []DSNNotify
+
+	// Original message recipient as described in RFC 3461.
+	//
+	// Value of OriginalRecipient is preserved as is. No xtext
+	// encoding/decoding or sanitization is done irregardless of
+	// OriginalRecipientType.
+	OriginalRecipient     string
+	OriginalRecipientType string
+}
 
 // Session is used by servers to respond to an SMTP client.
 //

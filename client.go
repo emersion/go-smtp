@@ -372,25 +372,36 @@ func (c *Client) Mail(from string, opts *MailOptions) error {
 	if _, ok := c.ext["SIZE"]; ok && opts != nil && opts.Size != 0 {
 		cmdStr += " SIZE=" + strconv.Itoa(opts.Size)
 	}
-	if opts != nil && opts.RequireTLS {
-		if _, ok := c.ext["REQUIRETLS"]; ok {
-			cmdStr += " REQUIRETLS"
-		} else {
-			return errors.New("smtp: server does not support REQUIRETLS")
+	if opts != nil {
+		if opts.RequireTLS {
+			if _, ok := c.ext["REQUIRETLS"]; ok {
+				cmdStr += " REQUIRETLS"
+			} else {
+				return errors.New("smtp: server does not support REQUIRETLS")
+			}
 		}
-	}
-	if opts != nil && opts.UTF8 {
-		if _, ok := c.ext["SMTPUTF8"]; ok {
-			cmdStr += " SMTPUTF8"
-		} else {
-			return errors.New("smtp: server does not support SMTPUTF8")
+		if opts.UTF8 {
+			if _, ok := c.ext["SMTPUTF8"]; ok {
+				cmdStr += " SMTPUTF8"
+			} else {
+				return errors.New("smtp: server does not support SMTPUTF8")
+			}
 		}
-	}
-	if opts != nil && opts.Auth != nil {
-		if _, ok := c.ext["AUTH"]; ok {
-			cmdStr += " AUTH=" + encodeXtext(*opts.Auth)
+		if opts.Auth != nil {
+			if _, ok := c.ext["AUTH"]; ok {
+				cmdStr += " AUTH=" + encodeXtext(*opts.Auth)
+			}
+			// We can safely discard parameter if server does not support AUTH.
 		}
-		// We can safely discard parameter if server does not support AUTH.
+		if _, dsn := c.ext["DSN"]; dsn && opts.Return != "" {
+			cmdStr += " RET=" + string(opts.Return)
+		}
+		if _, dsn := c.ext["DSN"]; dsn && opts.EnvelopeID != "" {
+			if !checkPrintableASCII(opts.EnvelopeID) {
+				return errors.New("smtp: characters outside of printable ASCII are not allowed in EnvelopeID")
+			}
+			cmdStr += " ENVID=" + encodeXtext(opts.EnvelopeID)
+		}
 	}
 	_, _, err := c.cmd(250, cmdStr, from)
 	return err
@@ -408,7 +419,40 @@ func (c *Client) Rcpt(to string, opts *RcptOptions) error {
 	if err := validateLine(to); err != nil {
 		return err
 	}
-	if _, _, err := c.cmd(25, "RCPT TO:<%s>", to); err != nil {
+	cmdStr := "RCPT TO:<%s>"
+	if opts != nil {
+		if len(opts.Notify) != 0 {
+			if _, ok := c.ext["DSN"]; ok {
+				notifyFlags := make([]string, len(opts.Notify))
+				for i := range opts.Notify {
+					if opts.Notify[i] == NotifyNever && len(opts.Notify) != 1 {
+						return errors.New("smtp: NotifyNever cannot be combined with other options")
+					}
+					notifyFlags[i] = string(opts.Notify[i])
+				}
+				cmdStr += " NOTIFY=" + strings.Join(notifyFlags, ",")
+			} else {
+				return errors.New("smtp: server does not support DSN")
+			}
+		}
+		if opts.OriginalRecipientType != "" {
+			// This is not strictly speaking a requirement of RFC that requires a registered
+			// address type but we verify it nonetheless to prevent injections.
+			if !checkPrintableASCII(opts.OriginalRecipientType) {
+				return errors.New("smtp: characters outside of printable ASCII are not allowed in OriginalRecipientType")
+			}
+			if !checkPrintableASCII(opts.OriginalRecipient) {
+				return errors.New("smtp: characters outside of printable ASCII are not allowed in OriginalRecipient")
+			}
+			if _, ok := c.ext["DSN"]; ok {
+				cmdStr += " ORCPT=" + opts.OriginalRecipientType + ";" + encodeXtext(opts.OriginalRecipient)
+			}
+			// ORCPT is unlikely to be critical for message handling so we can
+			// silently disregard it if server actually does not support DSN
+			// extension.
+		}
+	}
+	if _, _, err := c.cmd(25, cmdStr, to); err != nil {
 		return err
 	}
 	c.rcpts = append(c.rcpts, to)
