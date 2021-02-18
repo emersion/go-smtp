@@ -275,6 +275,8 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 		}
 		if c.server.MaxMessageBytes > 0 {
 			caps = append(caps, fmt.Sprintf("SIZE %v", c.server.MaxMessageBytes))
+		} else {
+			caps = append(caps, "SIZE")
 		}
 
 		args := []string{"Hello " + domain}
