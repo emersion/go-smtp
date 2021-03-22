@@ -40,6 +40,7 @@ type Conn struct {
 	locker     sync.Mutex
 	binarymime bool
 
+	bdatReader    *lineLimitReader
 	bdatPipe      *io.PipeWriter
 	bdatStatus    *statusCollector // used for BDAT on LMTP
 	dataResult    chan error
@@ -60,15 +61,17 @@ func newConn(c net.Conn, s *Server) *Conn {
 }
 
 func (c *Conn) init() {
+	c.bdatReader = &lineLimitReader{
+		R:            c.conn,
+		LineLimit:    c.server.MaxLineLength,
+		DisableCheck: false,
+	}
 	rwc := struct {
 		io.Reader
 		io.Writer
 		io.Closer
 	}{
-		Reader: &lineLimitReader{
-			R:         c.conn,
-			LineLimit: c.server.MaxLineLength,
-		},
+		Reader: c.bdatReader,
 		Writer: c.conn,
 		Closer: c.conn,
 	}
@@ -739,7 +742,8 @@ func (c *Conn) handleBdat(arg string) {
 		}()
 	}
 
-	chunk := io.LimitReader(c.conn, int64(size))
+	c.bdatReader.DisableCheck = true
+	chunk := io.LimitReader(c.text.R, int64(size))
 	_, err = io.Copy(c.bdatPipe, chunk)
 	if err != nil {
 		// Backend might return an error early using CloseWithError without consuming
