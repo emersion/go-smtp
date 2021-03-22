@@ -40,11 +40,11 @@ type Conn struct {
 	locker     sync.Mutex
 	binarymime bool
 
-	bdatReader    *lineLimitReader
-	bdatPipe      *io.PipeWriter
-	bdatStatus    *statusCollector // used for BDAT on LMTP
-	dataResult    chan error
-	bytesReceived int // counts total size of chunks when BDAT is used
+	lineLimitReader *lineLimitReader
+	bdatPipe        *io.PipeWriter
+	bdatStatus      *statusCollector // used for BDAT on LMTP
+	dataResult      chan error
+	bytesReceived   int // counts total size of chunks when BDAT is used
 
 	fromReceived bool
 	recipients   []string
@@ -61,17 +61,16 @@ func newConn(c net.Conn, s *Server) *Conn {
 }
 
 func (c *Conn) init() {
-	c.bdatReader = &lineLimitReader{
-		R:            c.conn,
-		LineLimit:    c.server.MaxLineLength,
-		DisableCheck: false,
+	c.lineLimitReader = &lineLimitReader{
+		R:         c.conn,
+		LineLimit: c.server.MaxLineLength,
 	}
 	rwc := struct {
 		io.Reader
 		io.Writer
 		io.Closer
 	}{
-		Reader: c.bdatReader,
+		Reader: c.lineLimitReader,
 		Writer: c.conn,
 		Closer: c.conn,
 	}
@@ -742,7 +741,8 @@ func (c *Conn) handleBdat(arg string) {
 		}()
 	}
 
-	c.bdatReader.DisableCheck = true
+	prevLineLimit := c.lineLimitReader.LineLimit
+	c.lineLimitReader.LineLimit = 0
 	chunk := io.LimitReader(c.text.R, int64(size))
 	_, err = io.Copy(c.bdatPipe, chunk)
 	if err != nil {
@@ -757,6 +757,7 @@ func (c *Conn) handleBdat(arg string) {
 		}
 
 		c.reset()
+		c.lineLimitReader.LineLimit = prevLineLimit
 		return
 	}
 
@@ -779,6 +780,7 @@ func (c *Conn) handleBdat(arg string) {
 
 		if err == errPanic {
 			c.Close()
+			c.lineLimitReader.LineLimit = prevLineLimit
 			return
 		}
 
@@ -786,6 +788,7 @@ func (c *Conn) handleBdat(arg string) {
 	} else {
 		c.WriteResponse(250, EnhancedCode{2, 0, 0}, "Continue")
 	}
+	c.lineLimitReader.LineLimit = prevLineLimit
 }
 
 // ErrDataReset is returned by Reader pased to Data function if client does not

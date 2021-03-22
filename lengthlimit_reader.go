@@ -12,15 +12,14 @@ var ErrTooLongLine = errors.New("smtp: too longer line in input stream")
 //
 // If line length exceeds the limit - Read returns ErrTooLongLine
 type lineLimitReader struct {
-	R            io.Reader
-	LineLimit    int
-	DisableCheck bool
+	R         io.Reader
+	LineLimit int
 
 	curLineLength int
 }
 
 func (r *lineLimitReader) Read(b []byte) (int, error) {
-	if r.curLineLength > r.LineLimit && !r.DisableCheck {
+	if r.curLineLength > r.LineLimit && r.LineLimit > 0 {
 		return 0, ErrTooLongLine
 	}
 
@@ -29,7 +28,7 @@ func (r *lineLimitReader) Read(b []byte) (int, error) {
 		return n, err
 	}
 
-	if r.LineLimit == 0 || r.DisableCheck {
+	if r.LineLimit == 0 {
 		return n, nil
 	}
 
