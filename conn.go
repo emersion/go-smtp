@@ -739,7 +739,7 @@ func (c *Conn) handleBdat(arg string) {
 		}()
 	}
 
-	chunk := io.LimitReader(c.text.R, int64(size))
+	chunk := io.LimitReader(c.conn, int64(size))
 	_, err = io.Copy(c.bdatPipe, chunk)
 	if err != nil {
 		// Backend might return an error early using CloseWithError without consuming
