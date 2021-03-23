@@ -743,10 +743,10 @@ func (c *Conn) handleBdat(arg string) {
 
 	prevLineLimit := c.lineLimitReader.LineLimit
 	c.lineLimitReader.LineLimit = 0
-	recover := func() {
+	recoverLineLimit := func() {
 		c.lineLimitReader.LineLimit = prevLineLimit
 	}
-	defer recover()
+	defer recoverLineLimit()
 	chunk := io.LimitReader(c.text.R, int64(size))
 	_, err = io.Copy(c.bdatPipe, chunk)
 	if err != nil {
