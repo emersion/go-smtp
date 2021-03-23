@@ -743,6 +743,10 @@ func (c *Conn) handleBdat(arg string) {
 
 	prevLineLimit := c.lineLimitReader.LineLimit
 	c.lineLimitReader.LineLimit = 0
+	recover := func() {
+		c.lineLimitReader.LineLimit = prevLineLimit
+	}
+	defer recover()
 	chunk := io.LimitReader(c.text.R, int64(size))
 	_, err = io.Copy(c.bdatPipe, chunk)
 	if err != nil {
@@ -757,7 +761,6 @@ func (c *Conn) handleBdat(arg string) {
 		}
 
 		c.reset()
-		c.lineLimitReader.LineLimit = prevLineLimit
 		return
 	}
 
@@ -780,7 +783,6 @@ func (c *Conn) handleBdat(arg string) {
 
 		if err == errPanic {
 			c.Close()
-			c.lineLimitReader.LineLimit = prevLineLimit
 			return
 		}
 
@@ -788,7 +790,6 @@ func (c *Conn) handleBdat(arg string) {
 	} else {
 		c.WriteResponse(250, EnhancedCode{2, 0, 0}, "Continue")
 	}
-	c.lineLimitReader.LineLimit = prevLineLimit
 }
 
 // ErrDataReset is returned by Reader pased to Data function if client does not
