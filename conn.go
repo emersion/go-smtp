@@ -741,12 +741,8 @@ func (c *Conn) handleBdat(arg string) {
 		}()
 	}
 
-	prevLineLimit := c.lineLimitReader.LineLimit
 	c.lineLimitReader.LineLimit = 0
-	recoverLineLimit := func() {
-		c.lineLimitReader.LineLimit = prevLineLimit
-	}
-	defer recoverLineLimit()
+
 	chunk := io.LimitReader(c.text.R, int64(size))
 	_, err = io.Copy(c.bdatPipe, chunk)
 	if err != nil {
@@ -767,6 +763,8 @@ func (c *Conn) handleBdat(arg string) {
 	c.bytesReceived += int(size)
 
 	if last {
+		c.lineLimitReader.LineLimit = c.server.MaxLineLength
+
 		c.bdatPipe.Close()
 
 		err := <-c.dataResult
