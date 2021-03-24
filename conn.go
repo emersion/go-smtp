@@ -757,6 +757,7 @@ func (c *Conn) handleBdat(arg string) {
 		}
 
 		c.reset()
+		c.lineLimitReader.LineLimit = c.server.MaxLineLength
 		return
 	}
 
