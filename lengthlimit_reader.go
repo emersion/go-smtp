@@ -19,7 +19,7 @@ type lineLimitReader struct {
 }
 
 func (r *lineLimitReader) Read(b []byte) (int, error) {
-	if r.curLineLength > r.LineLimit {
+	if r.curLineLength > r.LineLimit && r.LineLimit > 0 {
 		return 0, ErrTooLongLine
 	}
 

@@ -40,10 +40,11 @@ type Conn struct {
 	locker     sync.Mutex
 	binarymime bool
 
-	bdatPipe      *io.PipeWriter
-	bdatStatus    *statusCollector // used for BDAT on LMTP
-	dataResult    chan error
-	bytesReceived int // counts total size of chunks when BDAT is used
+	lineLimitReader *lineLimitReader
+	bdatPipe        *io.PipeWriter
+	bdatStatus      *statusCollector // used for BDAT on LMTP
+	dataResult      chan error
+	bytesReceived   int // counts total size of chunks when BDAT is used
 
 	fromReceived bool
 	recipients   []string
@@ -60,15 +61,16 @@ func newConn(c net.Conn, s *Server) *Conn {
 }
 
 func (c *Conn) init() {
+	c.lineLimitReader = &lineLimitReader{
+		R:         c.conn,
+		LineLimit: c.server.MaxLineLength,
+	}
 	rwc := struct {
 		io.Reader
 		io.Writer
 		io.Closer
 	}{
-		Reader: &lineLimitReader{
-			R:         c.conn,
-			LineLimit: c.server.MaxLineLength,
-		},
+		Reader: c.lineLimitReader,
 		Writer: c.conn,
 		Closer: c.conn,
 	}
@@ -741,6 +743,8 @@ func (c *Conn) handleBdat(arg string) {
 		}()
 	}
 
+	c.lineLimitReader.LineLimit = 0
+
 	chunk := io.LimitReader(c.text.R, int64(size))
 	_, err = io.Copy(c.bdatPipe, chunk)
 	if err != nil {
@@ -755,12 +759,15 @@ func (c *Conn) handleBdat(arg string) {
 		}
 
 		c.reset()
+		c.lineLimitReader.LineLimit = c.server.MaxLineLength
 		return
 	}
 
 	c.bytesReceived += int(size)
 
 	if last {
+		c.lineLimitReader.LineLimit = c.server.MaxLineLength
+
 		c.bdatPipe.Close()
 
 		err := <-c.dataResult
