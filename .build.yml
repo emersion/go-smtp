@@ -1,11 +1,10 @@
 image: alpine/edge
 packages:
   - go
-  # Required by codecov
-  - bash
-  - findutils
 sources:
   - https://github.com/emersion/go-smtp
+artifacts:
+  - coverage.html
 tasks:
   - build: |
       cd go-smtp
@@ -13,7 +12,6 @@ tasks:
   - test: |
       cd go-smtp
       go test -coverprofile=coverage.txt -covermode=atomic ./...
-  - upload-coverage: |
+  - coverage: |
       cd go-smtp
-      export CODECOV_TOKEN=3f257f71-a128-4834-8f68-2b534e9f4cb1
-      curl -s https://codecov.io/bash | bash
+      go tool cover -html=coverage.txt -o ~/coverage.html
