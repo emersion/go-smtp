@@ -91,6 +91,10 @@ func NewClient(conn net.Conn, host string) (*Client, error) {
 
 	c.setConn(conn)
 
+	// Initial greeting timeout. RFC 5321 recommends 5 minutes.
+	c.conn.SetDeadline(time.Now().Add(5 * time.Minute))
+	defer c.conn.SetDeadline(time.Time{})
+
 	_, _, err := c.Text.ReadResponse(220)
 	if err != nil {
 		c.Text.Close()
