@@ -40,8 +40,14 @@ type backend struct {
 	// Read N bytes of message before returning dataErr.
 	dataErrOffset int64
 
+	features smtp.Feature
+
 	panicOnMail bool
 	userErr     error
+}
+
+func (be *backend) Features() smtp.Feature {
+	return be.features
 }
 
 func (be *backend) Login(_ *smtp.ConnectionState, username, password string) (smtp.Session, error) {
@@ -330,10 +336,10 @@ func TestServerPanicRecover(t *testing.T) {
 }
 
 func TestServerSMTPUTF8(t *testing.T) {
-	_, s, c, scanner := testServerAuthenticated(t)
-	s.EnableSMTPUTF8 = true
+	be, s, c, scanner := testServerAuthenticated(t)
 	defer s.Close()
 	defer c.Close()
+	be.features = smtp.FeatureSMTPUTF8
 
 	io.WriteString(c, "MAIL FROM:<alice@wonderland.book> SMTPUTF8\r\n")
 	scanner.Scan()
@@ -1073,7 +1079,7 @@ func TestServer_Chunking_Binarymime(t *testing.T) {
 	be, s, c, scanner := testServerAuthenticated(t)
 	defer s.Close()
 	defer c.Close()
-	s.EnableBINARYMIME = true
+	be.features = smtp.FeatureBINARYMIME
 
 	io.WriteString(c, "MAIL FROM:<root@nsa.gov> BODY=BINARYMIME\r\n")
 	scanner.Scan()

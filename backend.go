@@ -21,6 +21,26 @@ type Backend interface {
 	AnonymousLogin(state *ConnectionState) (Session, error)
 }
 
+type Feature uint32
+
+const (
+	// SMTPUTF8 (RFC 6531) extension.
+	FeatureSMTPUTF8 Feature = 2 << iota
+	// BINARYMIME (RFC 3030) extension. CHUNKING extension is always supported.
+	FeatureBINARYMIME
+	// REQUIRETLS (RFC 8689) extension.
+	FeatureREQUIRETLS
+)
+
+func (f Feature) Contains(feat Feature) bool {
+	return f&feat != 0
+}
+
+type FeatureBackend interface {
+	Backend
+	Features() Feature
+}
+
 type BodyType string
 
 const (
