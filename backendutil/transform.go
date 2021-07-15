@@ -37,7 +37,7 @@ func (s *transformSession) AuthPlain(username, password string) error {
 	return s.Session.AuthPlain(username, password)
 }
 
-func (s *transformSession) Mail(from string, opts smtp.MailOptions) error {
+func (s *transformSession) Mail(from string, opts *smtp.MailOptions) error {
 	if s.be.TransformMail != nil {
 		var err error
 		from, err = s.be.TransformMail(from)

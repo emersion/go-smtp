@@ -56,7 +56,7 @@ func (s *session) AuthPlain(username, password string) error {
 	return nil
 }
 
-func (s *session) Mail(from string, opts smtp.MailOptions) error {
+func (s *session) Mail(from string, opts *smtp.MailOptions) error {
 	if s.backend.userErr != nil {
 		return s.backend.userErr
 	}

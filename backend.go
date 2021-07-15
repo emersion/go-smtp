@@ -72,7 +72,7 @@ type Session interface {
 	AuthPlain(username, password string) error
 
 	// Set return path for currently processed message.
-	Mail(from string, opts MailOptions) error
+	Mail(from string, opts *MailOptions) error
 	// Add recipient for currently processed message.
 	Rcpt(to string) error
 	// Set currently processed message contents and send it.

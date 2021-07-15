@@ -17,7 +17,7 @@ type message struct {
 	From string
 	To   []string
 	Data []byte
-	Opts smtp.MailOptions
+	Opts *smtp.MailOptions
 }
 
 type backend struct {
@@ -79,7 +79,7 @@ func (s *session) Logout() error {
 	return nil
 }
 
-func (s *session) Mail(from string, opts smtp.MailOptions) error {
+func (s *session) Mail(from string, opts *smtp.MailOptions) error {
 	if s.backend.userErr != nil {
 		return s.backend.userErr
 	}
