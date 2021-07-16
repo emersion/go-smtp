@@ -1,24 +1,24 @@
 package smtp
 
 import (
-	"errors"
 	"io"
 )
 
 var (
-	ErrAuthRequired    = errors.New("Please authenticate first")
-	ErrAuthUnsupported = errors.New("Authentication not supported")
-)
+	ErrAuthRequired    = &SMTPError{
+		Code: 502,
+		EnhancedCode: EnhancedCode{5, 7, 0},
+		Message: "Please authenticate first",
+	}
+	ErrAuthUnsupported    = &SMTPError{
+		Code: 502,
+		EnhancedCode: EnhancedCode{5, 7, 0},
+		Message: "Authentication not supported",
+	})
 
 // A SMTP server backend.
 type Backend interface {
-	// Authenticate a user. Return smtp.ErrAuthUnsupported if you don't want to
-	// support this.
-	Login(state *ConnectionState, username, password string) (Session, error)
-
-	// Called if the client attempts to send mail without logging in first.
-	// Return smtp.ErrAuthRequired if you don't want to support this.
-	AnonymousLogin(state *ConnectionState) (Session, error)
+	NewSession(c ConnectionState, hostname string) (Session, error)
 }
 
 type BodyType string
@@ -67,6 +67,9 @@ type Session interface {
 
 	// Free all resources associated with session.
 	Logout() error
+
+	// Authenticate the user using SASL PLAIN.
+	AuthPlain(username, password string) error
 
 	// Set return path for currently processed message.
 	Mail(from string, opts MailOptions) error

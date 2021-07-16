@@ -65,21 +65,19 @@ import (
 // The Backend implements SMTP server methods.
 type Backend struct{}
 
-// Login handles a login command with username and password.
-func (bkd *Backend) Login(state *smtp.ConnectionState, username, password string) (smtp.Session, error) {
-	if username != "username" || password != "password" {
-		return nil, errors.New("Invalid username or password")
-	}
+func (bkd *Backend) NewSession(_ smtp.ConnectionState, _ string) (smtp.Session, error) {
 	return &Session{}, nil
 }
 
-// AnonymousLogin requires clients to authenticate using SMTP AUTH before sending emails
-func (bkd *Backend) AnonymousLogin(state *smtp.ConnectionState) (smtp.Session, error) {
-	return nil, smtp.ErrAuthRequired
-}
-
-// A Session is returned after successful login.
+// A Session is returned after EHLO.
 type Session struct{}
+
+func (s *Session) AuthPlain(username, password string) error {
+	if username != "username" || password != "password" {
+		return errors.New("Invalid username or password")
+	}
+	return nil
+}
 
 func (s *Session) Mail(from string, opts smtp.MailOptions) error {
 	log.Println("Mail from:", from)
