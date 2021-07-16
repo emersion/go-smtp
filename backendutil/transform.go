@@ -15,22 +15,12 @@ type TransformBackend struct {
 	TransformData func(r io.Reader) (io.Reader, error)
 }
 
-// Login implements the smtp.Backend interface.
-func (be *TransformBackend) Login(state *smtp.ConnectionState, username, password string) (smtp.Session, error) {
-	s, err := be.Backend.Login(state, username, password)
+func (be *TransformBackend) NewSession(c smtp.ConnectionState, hostname string) (smtp.Session, error) {
+	sess, err := be.Backend.NewSession(c, hostname)
 	if err != nil {
 		return nil, err
 	}
-	return &transformSession{s, be}, nil
-}
-
-// AnonymousLogin implements the smtp.Backend interface.
-func (be *TransformBackend) AnonymousLogin(state *smtp.ConnectionState) (smtp.Session, error) {
-	s, err := be.Backend.AnonymousLogin(state)
-	if err != nil {
-		return nil, err
-	}
-	return &transformSession{s, be}, nil
+	return &transformSession{Session: sess, be: be}, nil
 }
 
 type transformSession struct {
@@ -41,6 +31,10 @@ type transformSession struct {
 
 func (s *transformSession) Reset() {
 	s.Session.Reset()
+}
+
+func (s *transformSession) AuthPlain(username, password string) error {
+	return s.Session.AuthPlain(username, password)
 }
 
 func (s *transformSession) Mail(from string, opts smtp.MailOptions) error {
