@@ -19,7 +19,7 @@ var (
 
 // A SMTP server backend.
 type Backend interface {
-	NewSession(c ConnectionState) (Session, error)
+	NewSession(c *Conn) (Session, error)
 }
 
 type BodyType string

@@ -98,7 +98,7 @@ import (
 // The Backend implements SMTP server methods.
 type Backend struct{}
 
-func (bkd *Backend) NewSession(_ smtp.ConnectionState) (smtp.Session, error) {
+func (bkd *Backend) NewSession(_ *smtp.Conn) (smtp.Session, error) {
 	return &Session{}, nil
 }
 

@@ -172,7 +172,7 @@ func (s *Server) handleConn(c *Conn) error {
 	c.greet()
 
 	for {
-		line, err := c.ReadLine()
+		line, err := c.readLine()
 		if err == nil {
 			cmd, arg, err := parseCmd(line)
 			if err != nil {
@@ -186,16 +186,16 @@ func (s *Server) handleConn(c *Conn) error {
 				return nil
 			}
 			if err == ErrTooLongLine {
-				c.WriteResponse(500, EnhancedCode{5, 4, 0}, "Too long line, closing connection")
+				c.writeResponse(500, EnhancedCode{5, 4, 0}, "Too long line, closing connection")
 				return nil
 			}
 
 			if neterr, ok := err.(net.Error); ok && neterr.Timeout() {
-				c.WriteResponse(221, EnhancedCode{2, 4, 2}, "Idle timeout, bye bye")
+				c.writeResponse(221, EnhancedCode{2, 4, 2}, "Idle timeout, bye bye")
 				return nil
 			}
 
-			c.WriteResponse(221, EnhancedCode{2, 4, 0}, "Connection error, sorry")
+			c.writeResponse(221, EnhancedCode{2, 4, 0}, "Connection error, sorry")
 			return err
 		}
 	}
