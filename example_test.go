@@ -93,7 +93,7 @@ func ExampleSendMail() {
 type Backend struct{}
 
 // NewSession is called after client greeting (EHLO, HELO).
-func (bkd *Backend) NewSession(c smtp.ConnectionState) (smtp.Session, error) {
+func (bkd *Backend) NewSession(c *smtp.Conn) (smtp.Session, error) {
 	return &Session{}, nil
 }
 
