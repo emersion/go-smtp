@@ -228,13 +228,13 @@ func (s *Server) Close() error {
 	}
 
 	var err error
+	s.locker.Lock()
 	for _, l := range s.listeners {
 		if lerr := l.Close(); lerr != nil && err == nil {
 			err = lerr
 		}
 	}
 
-	s.locker.Lock()
 	for conn := range s.conns {
 		conn.Close()
 	}
