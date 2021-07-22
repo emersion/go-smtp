@@ -601,6 +601,7 @@ func (c *Conn) handleStartTLS() {
 	if err := tlsConn.Handshake(); err != nil {
 		c.server.ErrorLog.Printf("TLS handshake error for %s: %v", c.conn.RemoteAddr(), err)
 		c.WriteResponse(550, EnhancedCode{5, 0, 0}, "Handshake error")
+		return
 	}
 
 	c.conn = tlsConn
