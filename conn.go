@@ -48,6 +48,7 @@ type Conn struct {
 
 	fromReceived bool
 	recipients   []string
+	didAuth      bool
 }
 
 func newConn(c net.Conn, s *Server) *Conn {
@@ -501,6 +502,10 @@ func (c *Conn) handleAuth(arg string) {
 		c.WriteResponse(502, EnhancedCode{5, 5, 1}, "Please introduce yourself first.")
 		return
 	}
+	if c.didAuth {
+		c.WriteResponse(503, EnhancedCode{5, 5, 1}, "Already authenticated")
+		return
+	}
 
 	parts := strings.Fields(arg)
 	if len(parts) == 0 {
@@ -573,9 +578,8 @@ func (c *Conn) handleAuth(arg string) {
 		}
 	}
 
-	if c.Session() != nil {
-		c.WriteResponse(235, EnhancedCode{2, 0, 0}, "Authentication succeeded")
-	}
+	c.WriteResponse(235, EnhancedCode{2, 0, 0}, "Authentication succeeded")
+	c.didAuth = true
 }
 
 func (c *Conn) handleStartTLS() {
@@ -610,6 +614,7 @@ func (c *Conn) handleStartTLS() {
 		session.Logout()
 		c.SetSession(nil)
 	}
+	c.didAuth = false
 	c.reset()
 }
 

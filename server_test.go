@@ -260,6 +260,38 @@ func testServerAuthenticated(t *testing.T) (be *backend, s *smtp.Server, c net.C
 	return
 }
 
+func TestServerAuthTwice(t *testing.T) {
+	_, _, c, scanner, caps := testServerEhlo(t)
+
+	if _, ok := caps["AUTH PLAIN"]; !ok {
+		t.Fatal("AUTH PLAIN capability is missing when auth is enabled")
+	}
+
+	io.WriteString(c, "AUTH PLAIN AHVzZXJuYW1lAHBhc3N3b3Jk\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "235 ") {
+		t.Fatal("Invalid AUTH response:", scanner.Text())
+	}
+
+	io.WriteString(c, "AUTH PLAIN AHVzZXJuYW1lAHBhc3N3b3Jk\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "503 ") {
+		t.Fatal("Invalid AUTH response:", scanner.Text())
+	}
+
+	io.WriteString(c, "RSET\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid AUTH response:", scanner.Text())
+	}
+
+	io.WriteString(c, "AUTH PLAIN AHVzZXJuYW1lAHBhc3N3b3Jk\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "503 ") {
+		t.Fatal("Invalid AUTH response:", scanner.Text())
+	}
+}
+
 func TestServerCancelSASL(t *testing.T) {
 	_, _, c, scanner, caps := testServerEhlo(t)
 
