@@ -397,7 +397,13 @@ func (c *Conn) handleMail(arg string) {
 		}
 	}
 
-	if err := c.Session().Mail(from, opts); err != nil {
+	session := c.Session()
+	if session == nil {
+		c.WriteResponse(toSMTPStatus(errPanic))
+		return
+	}
+
+	if err := session.Mail(from, opts); err != nil {
 		if smtpErr, ok := err.(*SMTPError); ok {
 			c.WriteResponse(smtpErr.Code, smtpErr.EnhancedCode, smtpErr.Message)
 			return
@@ -485,7 +491,13 @@ func (c *Conn) handleRcpt(arg string) {
 		return
 	}
 
-	if err := c.Session().Rcpt(recipient); err != nil {
+	session := c.Session()
+	if session == nil {
+		c.WriteResponse(toSMTPStatus(errPanic))
+		return
+	}
+
+	if err := session.Rcpt(recipient); err != nil {
 		if smtpErr, ok := err.(*SMTPError); ok {
 			c.WriteResponse(smtpErr.Code, smtpErr.EnhancedCode, smtpErr.Message)
 			return
@@ -649,8 +661,14 @@ func (c *Conn) handleData(arg string) {
 		return
 	}
 
+	session := c.Session()
+	if session == nil {
+		c.WriteResponse(toSMTPStatus(errPanic))
+		return
+	}
+
 	r := newDataReader(c)
-	code, enhancedCode, msg := toSMTPStatus(c.Session().Data(r))
+	code, enhancedCode, msg := toSMTPStatus(session.Data(r))
 	r.limited = false
 	io.Copy(ioutil.Discard, r) // Make sure all the data has been consumed
 	c.WriteResponse(code, enhancedCode, msg)
@@ -718,13 +736,19 @@ func (c *Conn) handleBdat(arg string) {
 				}
 			}()
 
+			session := c.Session()
+			if session == nil {
+				c.WriteResponse(toSMTPStatus(errPanic))
+				return
+			}
+
 			var err error
 			if !c.server.LMTP {
-				err = c.Session().Data(r)
+				err = session.Data(r)
 			} else {
-				lmtpSession, ok := c.Session().(LMTPSession)
+				lmtpSession, ok := session.(LMTPSession)
 				if !ok {
-					err = c.Session().Data(r)
+					err = session.Data(r)
 					for _, rcpt := range c.recipients {
 						c.bdatStatus.SetStatus(rcpt, err)
 					}
@@ -877,10 +901,16 @@ func (c *Conn) handleDataLMTP() {
 
 	done := make(chan bool, 1)
 
-	lmtpSession, ok := c.Session().(LMTPSession)
+	session := c.Session()
+	if session == nil {
+		c.WriteResponse(toSMTPStatus(errPanic))
+		return
+	}
+
+	lmtpSession, ok := session.(LMTPSession)
 	if !ok {
 		// Fallback to using a single status for all recipients.
-		err := c.Session().Data(r)
+		err := session.Data(r)
 		io.Copy(ioutil.Discard, r) // Make sure all the data has been consumed
 		for _, rcpt := range c.recipients {
 			status.SetStatus(rcpt, err)

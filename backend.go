@@ -5,16 +5,17 @@ import (
 )
 
 var (
-	ErrAuthRequired    = &SMTPError{
-		Code: 502,
+	ErrAuthRequired = &SMTPError{
+		Code:         502,
 		EnhancedCode: EnhancedCode{5, 7, 0},
-		Message: "Please authenticate first",
+		Message:      "Please authenticate first",
 	}
-	ErrAuthUnsupported    = &SMTPError{
-		Code: 502,
+	ErrAuthUnsupported = &SMTPError{
+		Code:         502,
 		EnhancedCode: EnhancedCode{5, 7, 0},
-		Message: "Authentication not supported",
-	})
+		Message:      "Authentication not supported",
+	}
+)
 
 // A SMTP server backend.
 type Backend interface {
