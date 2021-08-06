@@ -52,12 +52,12 @@ type Client struct {
 
 // 30 seconds was chosen as it's the
 // same duration as http.DefaultTransport's timeout.
-var defaultTimeOut = 30 * time.Second
+var defaultTimeout = 30 * time.Second
 
 // Dial returns a new Client connected to an SMTP server at addr.
 // The addr must include a port, as in "mail.example.com:smtp".
 func Dial(addr string) (*Client, error) {
-	conn, err := net.DialTimeout("tcp", addr, defaultTimeOut)
+	conn, err := net.DialTimeout("tcp", addr, defaultTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +72,7 @@ func Dial(addr string) (*Client, error) {
 func DialTLS(addr string, tlsConfig *tls.Config) (*Client, error) {
 	tlsDialer := tls.Dialer{
 		NetDialer: &net.Dialer{
-			Timeout: defaultTimeOut,
+			Timeout: defaultTimeout,
 		},
 		Config: tlsConfig,
 	}
