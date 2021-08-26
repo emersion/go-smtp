@@ -364,10 +364,7 @@ func (c *Client) Auth(a sasl.Client) error {
 		}
 		if err != nil {
 			// abort the AUTH
-			if _, _, err := c.cmd(501, "*"); err != nil {
-				// handle error and break
-				break
-			}
+			c.cmd(501, "*")
 			break
 		}
 		if resp == nil {
