@@ -139,8 +139,8 @@ func NewClientLMTP(conn net.Conn, host string) (*Client, error) {
 func (c *Client) setConn(conn net.Conn) {
 	c.conn = conn
 
-	var r io.Reader
-	var w io.Writer
+	var r io.Reader = conn
+	var w io.Writer = conn
 
 	r = &lineLimitReader{
 		R: conn,
@@ -365,7 +365,8 @@ func (c *Client) Auth(a sasl.Client) error {
 		if err != nil {
 			// abort the AUTH
 			if _, _, err := c.cmd(501, "*"); err != nil {
-				return err
+				// handle error and break
+				break
 			}
 			break
 		}
