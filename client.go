@@ -102,8 +102,15 @@ func NewClient(conn net.Conn, host string) (*Client, error) {
 	c.setConn(conn)
 
 	// Initial greeting timeout. RFC 5321 recommends 5 minutes.
-	c.conn.SetDeadline(time.Now().Add(5 * time.Minute))
-	defer c.conn.SetDeadline(time.Time{})
+	if err := c.conn.SetDeadline(time.Now().Add(5 * time.Minute)); err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		if err := c.conn.SetDeadline(time.Time{}); err != nil {
+			panic(err)
+		}
+	}()
 
 	_, _, err := c.Text.ReadResponse(220)
 	if err != nil {
@@ -132,8 +139,8 @@ func NewClientLMTP(conn net.Conn, host string) (*Client, error) {
 func (c *Client) setConn(conn net.Conn) {
 	c.conn = conn
 
-	var r io.Reader = conn
-	var w io.Writer = conn
+	var r io.Reader
+	var w io.Writer
 
 	r = &lineLimitReader{
 		R: conn,
@@ -197,8 +204,15 @@ func (c *Client) Hello(localName string) error {
 // cmd is a convenience function that sends a command and returns the response
 // textproto.Error returned by c.Text.ReadResponse is converted into SMTPError.
 func (c *Client) cmd(expectCode int, format string, args ...interface{}) (int, string, error) {
-	c.conn.SetDeadline(time.Now().Add(c.CommandTimeout))
-	defer c.conn.SetDeadline(time.Time{})
+
+	if err := c.conn.SetDeadline(time.Now().Add(c.CommandTimeout)); err != nil {
+		return 0, "", err
+	}
+	defer func() {
+		if err := c.conn.SetDeadline(time.Time{}); err != nil {
+			panic(err)
+		}
+	}()
 
 	id, err := c.Text.Cmd(format, args...)
 	if err != nil {
@@ -350,7 +364,9 @@ func (c *Client) Auth(a sasl.Client) error {
 		}
 		if err != nil {
 			// abort the AUTH
-			c.cmd(501, "*")
+			if _, _, err := c.cmd(501, "*"); err != nil {
+				return err
+			}
 			break
 		}
 		if resp == nil {
@@ -436,7 +452,12 @@ func (d *dataCloser) Close() error {
 	d.WriteCloser.Close()
 
 	d.c.conn.SetDeadline(time.Now().Add(d.c.SubmissionTimeout))
-	defer d.c.conn.SetDeadline(time.Time{})
+
+	defer func() {
+		if err := d.c.conn.SetDeadline(time.Time{}); err != nil {
+			panic(err)
+		}
+	}()
 
 	expectedResponses := len(d.c.rcpts)
 	if d.c.lmtp {
