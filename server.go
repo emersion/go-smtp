@@ -138,6 +138,19 @@ func (s *Server) handleConn(c *Conn) error {
 		s.locker.Unlock()
 	}()
 
+	if tlsConn, ok := c.conn.(*tls.Conn); ok {
+		if d := s.ReadTimeout; d != 0 {
+			c.conn.SetReadDeadline(time.Now().Add(d))
+		}
+		if d := s.WriteTimeout; d != 0 {
+			c.conn.SetWriteDeadline(time.Now().Add(d))
+		}
+		if err := tlsConn.Handshake(); err != nil {
+			s.ErrorLog.Printf("TLS handshake error for %s: %v", tlsConn.RemoteAddr(), err)
+			return err
+		}
+	}
+
 	c.greet()
 
 	for {
