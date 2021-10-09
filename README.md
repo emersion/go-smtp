@@ -69,6 +69,14 @@ func (bkd *Backend) NewSession(_ smtp.ConnectionState, _ string) (smtp.Session, 
 	return &Session{}, nil
 }
 
+func (bkd *Backend) AnonymousLogin(_ *smtp.ConnectionState) (smtp.Session, error) {
+	return &Session{}, nil
+}
+
+func (bkd *Backend) Login(_ *smtp.ConnectionState, username string, password string) (smtp.Session, error) {
+	return &Session{}, nil
+}
+
 // A Session is returned after EHLO.
 type Session struct{}
 
@@ -79,7 +87,7 @@ func (s *Session) AuthPlain(username, password string) error {
 	return nil
 }
 
-func (s *Session) Mail(from string, opts *smtp.MailOptions) error {
+func (s *Session) Mail(from string, opts smtp.MailOptions) error {
 	log.Println("Mail from:", from)
 	return nil
 }
