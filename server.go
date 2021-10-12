@@ -146,7 +146,6 @@ func (s *Server) handleConn(c *Conn) error {
 			c.conn.SetWriteDeadline(time.Now().Add(d))
 		}
 		if err := tlsConn.Handshake(); err != nil {
-			s.ErrorLog.Printf("TLS handshake error for %s: %v", tlsConn.RemoteAddr(), err)
 			return err
 		}
 	}
