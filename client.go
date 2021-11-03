@@ -502,6 +502,46 @@ func (c *Client) LMTPData(statusCb func(rcpt string, status *SMTPError)) (io.Wri
 	return &dataCloser{c, c.Text.DotWriter(), statusCb}, nil
 }
 
+// SendMail will use an existing connection to send an email from
+// address from, to addresses to, with message r.
+//
+// This function does not start TLS, nor does it perform authentication. Use
+// StartTLS and Auth before-hand if desirable.
+//
+// The addresses in the to parameter are the SMTP RCPT addresses.
+//
+// The r parameter should be an RFC 822-style email with headers
+// first, a blank line, and then the message body. The lines of r
+// should be CRLF terminated. The r headers should usually include
+// fields such as "From", "To", "Subject", and "Cc".  Sending "Bcc"
+// messages is accomplished by including an email address in the to
+// parameter but not including it in the r headers.
+func (c *Client) SendMail(from string, to []string, r io.Reader) error {
+	var err error
+
+	if err = c.Mail(from, nil); err != nil {
+		return err
+	}
+	for _, addr := range to {
+		if err = c.Rcpt(addr); err != nil {
+			return err
+		}
+	}
+	w, err := c.Data()
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(w, r)
+	if err != nil {
+		return err
+	}
+	err = w.Close()
+	if err != nil {
+		return err
+	}
+	return c.Quit()
+}
+
 var testHookStartTLS func(*tls.Config) // nil, except for tests
 
 // SendMail connects to the server at addr, switches to TLS, authenticates with
@@ -539,6 +579,7 @@ func SendMail(addr string, a sasl.Client, from string, to []string, r io.Reader)
 		return err
 	}
 	defer c.Close()
+
 	if err = c.hello(); err != nil {
 		return err
 	}
@@ -556,27 +597,7 @@ func SendMail(addr string, a sasl.Client, from string, to []string, r io.Reader)
 			return err
 		}
 	}
-	if err = c.Mail(from, nil); err != nil {
-		return err
-	}
-	for _, addr := range to {
-		if err = c.Rcpt(addr); err != nil {
-			return err
-		}
-	}
-	w, err := c.Data()
-	if err != nil {
-		return err
-	}
-	_, err = io.Copy(w, r)
-	if err != nil {
-		return err
-	}
-	err = w.Close()
-	if err != nil {
-		return err
-	}
-	return c.Quit()
+	return c.SendMail(from, to, r)
 }
 
 // Extension reports whether an extension is support by the server.

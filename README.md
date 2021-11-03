@@ -45,7 +45,40 @@ func main() {
 }
 ```
 
-If you need more control, you can use `Client` instead.
+If you need more control, you can use `Client` instead. For example, if you
+want to send an email via a server without TLS or auth support, you can do
+something like this:
+
+```go
+package main
+
+import (
+	"log"
+	"strings"
+
+	"github.com/emersion/go-smtp"
+)
+
+func main() {
+	// Setup connection to mail server, return Client instance
+	c, err := smtp.Dial("mail.example.com:25")
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+
+	// Set the sender and recipient, and send the email all in one step.
+	to := []string{"recipient@example.net"}
+	msg := strings.NewReader("To: recipient@example.net\r\n" +
+		"Subject: discount Gophers!\r\n" +
+		"\r\n" +
+		"This is the email body.\r\n")
+	err := c.SendMail("sender@example.org", to, msg)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+```
 
 ### Server
 
