@@ -28,7 +28,7 @@ import (
 )
 
 func main() {
-	// Set up authentication information.
+	// Setup authentication information.
 	auth := sasl.NewPlainClient("", "user@example.com", "password")
 
 	// Connect to the server, authenticate, set the sender and recipient,
@@ -60,8 +60,8 @@ import (
 )
 
 func main() {
-	// Setup connection to mail server, return Client instance
-	c, err := smtp.Dial("mail.example.com:25")
+	// Setup an unencrypted connection to a local mail server.
+	c, err := smtp.Dial("localhost:25")
 	if err != nil {
 		return err
 	}
