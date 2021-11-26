@@ -17,7 +17,7 @@ func init() {
 
 type backend struct{}
 
-func (bkd *backend) NewSession(c smtp.ConnectionState, hostname string) (smtp.Session, error) {
+func (bkd *backend) NewSession(c smtp.ConnectionState) (smtp.Session, error) {
 	return &session{}, nil
 }
 

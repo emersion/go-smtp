@@ -45,7 +45,7 @@ type backend struct {
 	userErr     error
 }
 
-func (be *backend) NewSession(_ smtp.ConnectionState, _ string) (smtp.Session, error) {
+func (be *backend) NewSession(_ smtp.ConnectionState) (smtp.Session, error) {
 	if be.implementLMTPData {
 		return &lmtpSession{&session{backend: be, anonymous: true}}, nil
 	}

@@ -15,8 +15,8 @@ type TransformBackend struct {
 	TransformData func(r io.Reader) (io.Reader, error)
 }
 
-func (be *TransformBackend) NewSession(c smtp.ConnectionState, hostname string) (smtp.Session, error) {
-	sess, err := be.Backend.NewSession(c, hostname)
+func (be *TransformBackend) NewSession(c smtp.ConnectionState) (smtp.Session, error) {
+	sess, err := be.Backend.NewSession(c)
 	if err != nil {
 		return nil, err
 	}
