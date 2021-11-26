@@ -21,10 +21,11 @@ import (
 const errThreshold = 3
 
 type ConnectionState struct {
-	Hostname   string
-	LocalAddr  net.Addr
-	RemoteAddr net.Addr
-	TLS        tls.ConnectionState
+	ServerDomain string
+	Hostname     string
+	LocalAddr    net.Addr
+	RemoteAddr   net.Addr
+	TLS          tls.ConnectionState
 }
 
 type Conn struct {
@@ -210,6 +211,7 @@ func (c *Conn) State() ConnectionState {
 		state.TLS = tlsState
 	}
 
+	state.ServerDomain = c.server.Domain
 	state.Hostname = c.helo
 	state.LocalAddr = c.conn.LocalAddr()
 	state.RemoteAddr = c.conn.RemoteAddr()
