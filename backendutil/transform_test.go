@@ -29,7 +29,7 @@ type backend struct {
 	userErr error
 }
 
-func (be *backend) NewSession(c smtp.ConnectionState, hostname string) (smtp.Session, error) {
+func (be *backend) NewSession(c smtp.ConnectionState) (smtp.Session, error) {
 	return &session{backend: be, anonymous: true}, nil
 }
 

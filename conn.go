@@ -243,7 +243,7 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 	}
 	c.helo = domain
 
-	sess, err := c.server.Backend.NewSession(c.State(), domain)
+	sess, err := c.server.Backend.NewSession(c.State())
 	if err != nil {
 		if smtpErr, ok := err.(*SMTPError); ok {
 			c.WriteResponse(smtpErr.Code, smtpErr.EnhancedCode, smtpErr.Message)
