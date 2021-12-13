@@ -48,6 +48,10 @@ type Client struct {
 
 	// Logger for all network activity.
 	DebugWriter io.Writer
+
+	// Last SMTP response
+	LastCode int
+	LastMsg  string
 }
 
 // 30 seconds was chosen as it's the
@@ -207,9 +211,12 @@ func (c *Client) cmd(expectCode int, format string, args ...interface{}) (int, s
 	c.Text.StartResponse(id)
 	defer c.Text.EndResponse(id)
 	code, msg, err := c.Text.ReadResponse(expectCode)
+	c.LastCode = code
+	c.LastMsg = msg
 	if err != nil {
 		if protoErr, ok := err.(*textproto.Error); ok {
 			smtpErr := toSMTPErr(protoErr)
+			c.LastMsg = smtpErr.Message
 			return code, smtpErr.Message, smtpErr
 		}
 		return code, msg, err
@@ -457,10 +464,14 @@ func (d *dataCloser) Close() error {
 		}
 		return nil
 	} else {
-		_, _, err := d.c.Text.ReadResponse(250)
+		code, msg, err := d.c.Text.ReadResponse(250)
+		d.c.LastCode = code
+		d.c.LastMsg = msg
 		if err != nil {
 			if protoErr, ok := err.(*textproto.Error); ok {
-				return toSMTPErr(protoErr)
+				smtpErr := toSMTPErr(protoErr)
+				d.c.LastMsg = smtpErr.Message
+				return smtpErr
 			}
 			return err
 		}
