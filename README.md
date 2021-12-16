@@ -80,6 +80,60 @@ func main() {
 }
 ```
 
+You can also set the timeout for the server greeting stage:
+
+```go
+package main
+
+import (
+	"log"
+	"net"
+	"strings"
+	"time"
+
+	"github.com/emersion/go-smtp"
+)
+
+var (
+	timeout = 1 * time.Second
+	addr    = "localhost:25"
+)
+
+func main() {
+	conn, err := net.DialTimeout("tcp", addr, timeout)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer conn.Close()
+
+	// Set custom timeouts
+	c := &smtp.Client{
+		CommandTimeout:    timeout,
+		SubmissionTimeout: timeout,
+	}
+	err = c.InitConn(conn)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = c.Hello("localhost")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Set the sender and recipient, and send the email all in one step.
+	to := []string{"recipient@example.net"}
+	msg := strings.NewReader("To: recipient@example.net\r\n" +
+		"Subject: discount Gophers!\r\n" +
+		"\r\n" +
+		"This is the email body.\r\n")
+	err = c.SendMail("sender@example.org", to, msg)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+```
+
 ### Server
 
 ```go
