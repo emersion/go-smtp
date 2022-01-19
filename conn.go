@@ -614,6 +614,7 @@ func (c *Conn) handleStartTLS() {
 		session.Logout()
 		c.SetSession(nil)
 	}
+	c.helo = ""
 	c.didAuth = false
 	c.reset()
 }
