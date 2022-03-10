@@ -2,6 +2,7 @@ package smtp_test
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"io"
 	"io/ioutil"
@@ -146,6 +147,57 @@ func (s *session) LMTPData(r io.Reader, collector smtp.StatusCollector) error {
 	return nil
 }
 
+type failingListener struct {
+	c      chan error
+	closed bool
+}
+
+func newFailingListener() *failingListener {
+	return &failingListener{c: make(chan error)}
+}
+
+func (l *failingListener) Send(err error) {
+	if !l.closed {
+		l.c <- err
+	}
+}
+
+func (l *failingListener) Accept() (net.Conn, error) {
+	return nil, <-l.c
+}
+
+func (l *failingListener) Close() error {
+	if !l.closed {
+		close(l.c)
+		l.closed = true
+	}
+	return nil
+}
+
+func (l *failingListener) Addr() net.Addr {
+	return &net.TCPAddr{
+		IP:   net.ParseIP("127.0.0.1"),
+		Port: 12345,
+	}
+}
+
+type mockError struct {
+	msg       string
+	temporary bool
+}
+
+func newMockError(msg string, temporary bool) *mockError {
+	return &mockError{
+		msg:       msg,
+		temporary: temporary,
+	}
+}
+
+func (m *mockError) Error() string   { return m.msg }
+func (m *mockError) String() string  { return m.msg }
+func (m *mockError) Timeout() bool   { return false }
+func (m *mockError) Temporary() bool { return m.temporary }
+
 type serverConfigureFunc func(*smtp.Server)
 
 var (
@@ -224,6 +276,37 @@ func testServerEhlo(t *testing.T, fn ...serverConfigureFunc) (be *backend, s *sm
 	}
 
 	return
+}
+
+func TestServerAcceptErrorHandling(t *testing.T) {
+	errorLog := bytes.NewBuffer(nil)
+	be := new(backend)
+	s := smtp.NewServer(be)
+	s.Domain = "localhost"
+	s.AllowInsecureAuth = true
+	s.ErrorLog = log.New(errorLog, "", 0)
+
+	l := newFailingListener()
+	var serveError error
+	go func() {
+		serveError = s.Serve(l)
+		l.Close()
+	}()
+
+	temporaryError := newMockError("temporary mock error", true)
+	l.Send(temporaryError)
+	permanentError := newMockError("permanent mock error", false)
+	l.Send(permanentError)
+	s.Close()
+
+	if serveError == nil {
+		t.Fatal("Serve had exited without an expected error")
+	} else if serveError != permanentError {
+		t.Fatal("Unexpected error:", serveError)
+	}
+	if !strings.Contains(errorLog.String(), temporaryError.String()) {
+		t.Fatal("Missing temporary error in log output:", errorLog.String())
+	}
 }
 
 func TestServer_helo(t *testing.T) {
