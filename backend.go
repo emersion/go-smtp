@@ -5,16 +5,17 @@ import (
 )
 
 var (
-	ErrAuthRequired    = &SMTPError{
-		Code: 502,
+	ErrAuthRequired = &SMTPError{
+		Code:         502,
 		EnhancedCode: EnhancedCode{5, 7, 0},
-		Message: "Please authenticate first",
+		Message:      "Please authenticate first",
 	}
-	ErrAuthUnsupported    = &SMTPError{
-		Code: 502,
+	ErrAuthUnsupported = &SMTPError{
+		Code:         502,
 		EnhancedCode: EnhancedCode{5, 7, 0},
-		Message: "Authentication not supported",
-	})
+		Message:      "Authentication not supported",
+	}
+)
 
 // A SMTP server backend.
 type Backend interface {
@@ -63,7 +64,10 @@ type MailOptions struct {
 // The methods are called when the remote client issues the matching command.
 type Session interface {
 	// Discard currently processed message.
-	Reset()
+	Reset() error
+
+	// Check that the connection to the server is okay
+	Noop() error
 
 	// Free all resources associated with session.
 	Logout() error
@@ -76,7 +80,6 @@ type Session interface {
 	// Add recipient for currently processed message.
 	Rcpt(to string) error
 	// Set currently processed message contents and send it.
-	// 
 	// r must be consumed before Data returns.
 	Data(r io.Reader) error
 }

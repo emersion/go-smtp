@@ -72,8 +72,13 @@ func (s *session) AuthPlain(username, password string) error {
 	return nil
 }
 
-func (s *session) Reset() {
+func (s *session) Reset() error {
 	s.msg = &message{}
+	return nil
+}
+
+func (s *session) Noop() error {
+	return nil
 }
 
 func (s *session) Logout() error {

@@ -29,8 +29,12 @@ type transformSession struct {
 	be *TransformBackend
 }
 
-func (s *transformSession) Reset() {
-	s.Session.Reset()
+func (s *transformSession) Reset() error {
+	return s.Session.Reset()
+}
+
+func (s *transformSession) Noop() error {
+	return s.Session.Noop()
 }
 
 func (s *transformSession) AuthPlain(username, password string) error {
