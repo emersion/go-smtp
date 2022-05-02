@@ -77,7 +77,7 @@ type Session interface {
 	// Add recipient for currently processed message.
 	Rcpt(to string) error
 	// Set currently processed message contents and send it.
-	// 
+	//
 	// r must be consumed before Data returns.
 	Data(r io.Reader) error
 }
