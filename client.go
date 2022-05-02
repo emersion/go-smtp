@@ -62,10 +62,7 @@ func Dial(addr string) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	client, err := NewClient(conn)
-	if err != nil {
-		return nil, err
-	}
+	client := NewClient(conn)
 	client.serverName, _, _ = net.SplitHostPort(addr)
 	return client, nil
 }
@@ -83,17 +80,14 @@ func DialTLS(addr string, tlsConfig *tls.Config) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	client, err := NewClient(conn)
-	if err != nil {
-		return nil, err
-	}
+	client := NewClient(conn)
 	client.serverName, _, _ = net.SplitHostPort(addr)
 	return client, nil
 }
 
 // NewClient returns a new Client using an existing connection and host as a
 // server name to be used when authenticating.
-func NewClient(conn net.Conn) (*Client, error) {
+func NewClient(conn net.Conn) *Client {
 	c := &Client{
 		localName: "localhost",
 		// As recommended by RFC 5321. For DATA command reply (3xx one) RFC
@@ -107,31 +101,15 @@ func NewClient(conn net.Conn) (*Client, error) {
 
 	c.setConn(conn)
 
-	// Initial greeting timeout. RFC 5321 recommends 5 minutes.
-	c.conn.SetDeadline(time.Now().Add(5 * time.Minute))
-	defer c.conn.SetDeadline(time.Time{})
-
-	_, _, err := c.text.ReadResponse(220)
-	if err != nil {
-		c.text.Close()
-		if protoErr, ok := err.(*textproto.Error); ok {
-			return nil, toSMTPErr(protoErr)
-		}
-		return nil, err
-	}
-
-	return c, nil
+	return c
 }
 
 // NewClientLMTP returns a new LMTP Client (as defined in RFC 2033) using an
 // existing connection and host as a server name to be used when authenticating.
-func NewClientLMTP(conn net.Conn) (*Client, error) {
-	c, err := NewClient(conn)
-	if err != nil {
-		return nil, err
-	}
+func NewClientLMTP(conn net.Conn) *Client {
+	c := NewClient(conn)
 	c.lmtp = true
-	return c, nil
+	return c
 }
 
 // setConn sets the underlying network connection for the client.
@@ -170,12 +148,30 @@ func (c *Client) Close() error {
 	return c.text.Close()
 }
 
+func (c *Client) greet() error {
+	// Initial greeting timeout. RFC 5321 recommends 5 minutes.
+	c.conn.SetDeadline(time.Now().Add(c.CommandTimeout))
+	defer c.conn.SetDeadline(time.Time{})
+
+	_, _, err := c.text.ReadResponse(220)
+	if err != nil {
+		c.text.Close()
+		if protoErr, ok := err.(*textproto.Error); ok {
+			return toSMTPErr(protoErr)
+		}
+		return err
+	}
+
+	return nil
+}
+
 // hello runs a hello exchange if needed.
 func (c *Client) hello() error {
 	if !c.didHello {
 		c.didHello = true
-		err := c.ehlo()
-		if err != nil {
+		if err := c.greet(); err != nil {
+			c.helloError = err
+		} else if err := c.ehlo(); err != nil {
 			c.helloError = c.helo()
 		}
 	}
