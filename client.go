@@ -118,7 +118,7 @@ func NewClient(conn net.Conn, host string) (*Client, error) {
 }
 
 // NewClientLMTP returns a new LMTP Client (as defined in RFC 2033) using an
-// existing connector and host as a server name to be used when authenticating.
+// existing connection and host as a server name to be used when authenticating.
 func NewClientLMTP(conn net.Conn, host string) (*Client, error) {
 	c, err := NewClient(conn, host)
 	if err != nil {
