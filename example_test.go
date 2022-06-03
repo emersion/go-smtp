@@ -33,7 +33,7 @@ func ExampleDial() {
 	}
 
 	// Send the email body.
-	wc, err := c.Data()
+	wc, err := c.Data(nil)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -429,7 +429,8 @@ func (c *Client) Rcpt(to string) error {
 type dataCloser struct {
 	c *Client
 	io.WriteCloser
-	statusCb func(rcpt string, status *SMTPError)
+	statusCb     func(status *SMTPError)
+	lmtpStatusCb func(rcpt string, status *SMTPError)
 }
 
 func (d *dataCloser) Close() error {
@@ -438,68 +439,91 @@ func (d *dataCloser) Close() error {
 	d.c.conn.SetDeadline(time.Now().Add(d.c.SubmissionTimeout))
 	defer d.c.conn.SetDeadline(time.Time{})
 
-	expectedResponses := len(d.c.rcpts)
-	if d.c.lmtp {
-		for expectedResponses > 0 {
-			rcpt := d.c.rcpts[len(d.c.rcpts)-expectedResponses]
-			if _, _, err := d.c.Text.ReadResponse(250); err != nil {
-				if protoErr, ok := err.(*textproto.Error); ok {
-					if d.statusCb != nil {
-						d.statusCb(rcpt, toSMTPErr(protoErr))
-					}
-				} else {
-					return err
-				}
-			} else if d.statusCb != nil {
-				d.statusCb(rcpt, nil)
-			}
-			expectedResponses--
-		}
-		return nil
-	} else {
-		_, _, err := d.c.Text.ReadResponse(250)
+	if !d.c.lmtp {
+		code, msg, err := d.c.Text.ReadResponse(250)
 		if err != nil {
-			if protoErr, ok := err.(*textproto.Error); ok {
-				return toSMTPErr(protoErr)
+			// negative SMTP server response
+			if err, ok := err.(*textproto.Error); ok {
+				return toSMTPErr(err)
 			}
+			// I/O error
 			return err
 		}
+
+		if d.statusCb != nil {
+			// SMTP status callback
+			resp := &textproto.Error{
+				Code: code,
+				Msg:  msg,
+			}
+			d.statusCb(toSMTPErr(resp))
+		}
+
 		return nil
 	}
+
+	// process each LMTP recipient
+	for _, rcpt := range d.c.rcpts {
+		code, msg, err := d.c.Text.ReadResponse(250)
+		if err != nil {
+			// negative SMTP server response
+			if err, ok := err.(*textproto.Error); ok {
+				if d.lmtpStatusCb != nil {
+					d.lmtpStatusCb(rcpt, toSMTPErr(err))
+				}
+				continue
+			}
+			// I/O error
+			return err
+		}
+
+		if d.lmtpStatusCb != nil {
+			// SMTP status callback
+			resp := &textproto.Error{
+				Code: code,
+				Msg:  msg,
+			}
+			d.lmtpStatusCb(rcpt, toSMTPErr(resp))
+		}
+	}
+
+	return nil
 }
 
-// Data issues a DATA command to the server and returns a writer that
-// can be used to write the mail headers and body. The caller should
-// close the writer before calling any more methods on c. A call to
-// Data must be preceded by one or more calls to Rcpt.
+// Data issues a DATA command to the server and returns a writer that can be
+// used to write the mail headers and body. It accepts a callback that will be
+// called for a positive server reply. The caller should close the writer before
+// calling any more methods on c. A call to Data must be preceded by one or more
+// calls to Rcpt.
 //
-// If server returns an error, it will be of type *SMTPError.
-func (c *Client) Data() (io.WriteCloser, error) {
+// Status callback will receive an SMTPError argument for a positive server
+// reply. I/O errors or negative server replies will not be reported using
+// callback and instead will be returned by the Close method of io.WriteCloser.
+func (c *Client) Data(statusCb func(status *SMTPError)) (io.WriteCloser, error) {
 	_, _, err := c.cmd(354, "DATA")
 	if err != nil {
 		return nil, err
 	}
-	return &dataCloser{c, c.Text.DotWriter(), nil}, nil
+	return &dataCloser{c, c.Text.DotWriter(), statusCb, nil}, nil
 }
 
-// LMTPData is the LMTP-specific version of the Data method. It accepts a callback
-// that will be called for each status response received from the server.
+// LMTPData is the LMTP-specific version of the Data method. It accepts a
+// callback that will be called for each status response received from the
+// server.
 //
-// Status callback will receive a SMTPError argument for each negative server
-// reply and nil for each positive reply. I/O errors will not be reported using
-// callback and instead will be returned by the Close method of io.WriteCloser.
-// Callback will be called for each successfull Rcpt call done before in the
-// same order.
-func (c *Client) LMTPData(statusCb func(rcpt string, status *SMTPError)) (io.WriteCloser, error) {
+// Status callback will receive an SMTPError argument for each negative or
+// positive server reply. I/O errors will not be reported using callback and
+// instead will be returned by the Close method of io.WriteCloser. Callback
+// will be called for each rcpt call in the same order.
+func (c *Client) LMTPData(lmtpStatusCb func(rcpt string, status *SMTPError)) (io.WriteCloser, error) {
 	if !c.lmtp {
 		return nil, errors.New("smtp: not a LMTP client")
 	}
-
 	_, _, err := c.cmd(354, "DATA")
 	if err != nil {
 		return nil, err
 	}
-	return &dataCloser{c, c.Text.DotWriter(), statusCb}, nil
+	return &dataCloser{c, c.Text.DotWriter(), nil, lmtpStatusCb}, nil
 }
 
 // SendMail will use an existing connection to send an email from
@@ -527,7 +551,7 @@ func (c *Client) SendMail(from string, to []string, r io.Reader) error {
 			return err
 		}
 	}
-	w, err := c.Data()
+	w, err := c.Data(nil)
 	if err != nil {
 		return err
 	}
