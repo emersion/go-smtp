@@ -40,7 +40,8 @@ type Server struct {
 	MaxLineLength     int
 	AllowInsecureAuth bool
 	Strict            bool
-	Debug             io.Writer
+	ClientDebug       io.Writer
+	ServerDebug       io.Writer
 	ErrorLog          Logger
 	ReadTimeout       time.Duration
 	WriteTimeout      time.Duration

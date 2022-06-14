@@ -76,16 +76,11 @@ func (c *Conn) init() {
 		Closer: c.conn,
 	}
 
-	if c.server.Debug != nil {
-		rwc = struct {
-			io.Reader
-			io.Writer
-			io.Closer
-		}{
-			io.TeeReader(rwc.Reader, c.server.Debug),
-			io.MultiWriter(rwc.Writer, c.server.Debug),
-			rwc.Closer,
-		}
+	if c.server.ClientDebug != nil {
+		rwc.Reader = io.TeeReader(rwc.Reader, c.server.ClientDebug)
+	}
+	if c.server.ServerDebug != nil {
+		rwc.Writer = io.MultiWriter(rwc.Writer, c.server.ServerDebug)
 	}
 
 	c.text = textproto.NewConn(rwc)
