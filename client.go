@@ -46,8 +46,10 @@ type Client struct {
 	// Time to wait for responses after final dot.
 	SubmissionTimeout time.Duration
 
-	// Logger for all network activity.
-	DebugWriter io.Writer
+	// Logger for client activity.
+	ClientDebug io.Writer
+	// Logger for server activity.
+	ServerDebug io.Writer
 }
 
 // 30 seconds was chosen as it's the
@@ -141,7 +143,7 @@ func (c *Client) setConn(conn net.Conn) {
 		LineLimit: 2000,
 	}
 
-	r = io.TeeReader(r, clientDebugWriter{c})
+	r = io.TeeReader(r, serverDebugWriter{c})
 	w = io.MultiWriter(w, clientDebugWriter{c})
 
 	rwc := struct {
@@ -707,8 +709,19 @@ type clientDebugWriter struct {
 }
 
 func (cdw clientDebugWriter) Write(b []byte) (int, error) {
-	if cdw.c.DebugWriter == nil {
+	if cdw.c.ClientDebug == nil {
 		return len(b), nil
 	}
-	return cdw.c.DebugWriter.Write(b)
+	return cdw.c.ClientDebug.Write(b)
+}
+
+type serverDebugWriter struct {
+	c *Client
+}
+
+func (cdw serverDebugWriter) Write(b []byte) (int, error) {
+	if cdw.c.ServerDebug == nil {
+		return len(b), nil
+	}
+	return cdw.c.ServerDebug.Write(b)
 }
