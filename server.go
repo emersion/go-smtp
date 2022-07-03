@@ -34,16 +34,17 @@ type Server struct {
 	// TCP listener.
 	LMTP bool
 
-	Domain            string
-	MaxRecipients     int
-	MaxMessageBytes   int
-	MaxLineLength     int
-	AllowInsecureAuth bool
-	Strict            bool
-	Debug             io.Writer
-	ErrorLog          Logger
-	ReadTimeout       time.Duration
-	WriteTimeout      time.Duration
+	Domain                   string
+	MaxConcurrentConnections uint
+	MaxRecipients            int
+	MaxMessageBytes          int
+	MaxLineLength            int
+	AllowInsecureAuth        bool
+	Strict                   bool
+	Debug                    io.Writer
+	ErrorLog                 Logger
+	ReadTimeout              time.Duration
+	WriteTimeout             time.Duration
 
 	// Advertise SMTPUTF8 (RFC 6531) capability.
 	// Should be used only if backend supports it.
@@ -77,7 +78,8 @@ type Server struct {
 func NewServer(be Backend) *Server {
 	return &Server{
 		// Doubled maximum line length per RFC 5321 (Section 4.5.3.1.6)
-		MaxLineLength: 2000,
+		MaxLineLength:            2000,
+		MaxConcurrentConnections: 0,
 
 		Backend:  be,
 		done:     make(chan struct{}, 1),
@@ -146,6 +148,10 @@ func (s *Server) Serve(l net.Listener) error {
 
 func (s *Server) handleConn(c *Conn) error {
 	s.locker.Lock()
+	if s.MaxConcurrentConnections > 0 && uint(len(s.conns)) > s.MaxConcurrentConnections {
+		c.Reject()
+		return nil
+	}
 	s.conns[c] = struct{}{}
 	s.locker.Unlock()
 

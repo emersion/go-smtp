@@ -933,7 +933,7 @@ func toSMTPStatus(err error) (code int, enchCode EnhancedCode, msg string) {
 }
 
 func (c *Conn) Reject() {
-	c.WriteResponse(421, EnhancedCode{4, 4, 5}, "Too busy. Try again later.")
+	c.WriteResponse(ErrTooManyConnections.Code, ErrTooManyConnections.EnhancedCode, ErrTooManyConnections.Message)
 	c.Close()
 }
 

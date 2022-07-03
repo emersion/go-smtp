@@ -42,6 +42,12 @@ var ErrDataTooLarge = &SMTPError{
 	Message:      "Maximum message size exceeded",
 }
 
+var ErrTooManyConnections = &SMTPError{
+	Code:         421,
+	EnhancedCode: EnhancedCode{4, 4, 5},
+	Message:      "Too many concurrent SMTP connections; please try again later.",
+}
+
 type dataReader struct {
 	r     *bufio.Reader
 	state int
