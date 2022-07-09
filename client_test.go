@@ -139,7 +139,11 @@ Subject: Hooray for Go
 Line 1
 .Leading dot line .
 Goodbye.`
-	w, err := c.Data()
+
+	var statuses []*SMTPError
+	w, err := c.Data(func(status *SMTPError) {
+		statuses = append(statuses, status)
+	})
 	if err != nil {
 		t.Fatalf("DATA failed: %s", err)
 	}
@@ -148,6 +152,12 @@ Goodbye.`
 	}
 	if err := w.Close(); err != nil {
 		t.Fatalf("Bad data response: %s", err)
+	}
+	if l := len(statuses); l != 1 {
+		t.Fatalf("Invalid amount of callback response data: %d", l)
+	}
+	if len(statuses) == 1 && statuses[0].Code != 250 {
+		t.Fatalf("Bad callback response data: %s", statuses[0])
 	}
 
 	if err := c.Quit(); err != nil {
@@ -806,7 +816,7 @@ Subject: Hooray for Go
 Line 1
 .Leading dot line .
 Goodbye.`
-	w, err := c.Data()
+	w, err := c.Data(nil)
 	if err != nil {
 		t.Fatalf("DATA failed: %s", err)
 	}
@@ -919,11 +929,14 @@ Goodbye.`
 	if len(errors) != 2 {
 		t.Fatalf("Wrong amount of status callback calls: %v", len(errors))
 	}
-	if errors[0] != nil {
+	if errors[0] == nil {
+		t.Fatalf("Unexpected nil status for the first recipient")
+	}
+	if errors[0].Code != 250 {
 		t.Fatalf("Unexpected error status for the first recipient: %v", errors[0])
 	}
 	if errors[1] == nil {
-		t.Fatalf("Unexpected success status for the second recipient")
+		t.Fatalf("Unexpected nil status for the second recipient")
 	}
 
 	if err := c.Quit(); err != nil {
