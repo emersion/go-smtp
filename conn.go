@@ -628,18 +628,27 @@ func (c *Conn) handleData(arg string) {
 	// We have recipients, go to accept data
 	c.writeResponse(354, EnhancedCode{2, 0, 0}, "Go ahead. End your data with <CR><LF>.<CR><LF>")
 
-	defer c.reset()
-
 	if c.server.LMTP {
 		c.handleDataLMTP()
+		c.reset()
 		return
 	}
 
 	r := newDataReader(c)
-	code, enhancedCode, msg := toSMTPStatus(c.Session().Data(r))
+	err := c.Session().Data(r)
+	code, enhancedCode, msg := toSMTPStatus(err)
+	if err == ErrDataTimeout {
+		// don't copy the data, write response and close the connection
+		c.writeResponse(code, enhancedCode, msg)
+		c.reset()
+		c.Close()
+		return
+	}
+
 	r.limited = false
 	io.Copy(ioutil.Discard, r) // Make sure all the data has been consumed
 	c.writeResponse(code, enhancedCode, msg)
+	c.reset()
 }
 
 func (c *Conn) handleBdat(arg string) {

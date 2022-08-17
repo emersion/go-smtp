@@ -1,8 +1,9 @@
 package smtp
 
 import (
-	"bufio"
 	"io"
+	"net"
+	"time"
 )
 
 type EnhancedCode [3]int
@@ -42,8 +43,14 @@ var ErrDataTooLarge = &SMTPError{
 	Message:      "Maximum message size exceeded",
 }
 
+var ErrDataTimeout = &SMTPError{
+	Code:         451,
+	EnhancedCode: EnhancedCode{4, 4, 2},
+	Message:      "Timeout waiting for data from client",
+}
+
 type dataReader struct {
-	r     *bufio.Reader
+	c     *Conn
 	state int
 
 	limited bool
@@ -52,7 +59,7 @@ type dataReader struct {
 
 func newDataReader(c *Conn) *dataReader {
 	dr := &dataReader{
-		r: c.text.R,
+		c: c,
 	}
 
 	if c.server.MaxMessageBytes > 0 {
@@ -87,8 +94,18 @@ func (r *dataReader) Read(b []byte) (n int, err error) {
 		stateEOF              // reached .\r\n end marker line
 	)
 	for n < len(b) && r.state != stateEOF {
+		if r.c.server.ReadTimeout != 0 {
+			err = r.c.conn.SetReadDeadline(time.Now().Add(r.c.server.ReadTimeout))
+			if err != nil {
+				break
+			}
+			if e, ok := err.(net.Error); ok && e.Timeout() {
+				r.c.server.ErrorLog.Printf("data read timeout: %w", err)
+				err = ErrDataTimeout
+			}
+		}
 		var c byte
-		c, err = r.r.ReadByte()
+		c, err = r.c.text.R.ReadByte()
 		if err != nil {
 			if err == io.EOF {
 				err = io.ErrUnexpectedEOF
