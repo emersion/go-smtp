@@ -233,9 +233,11 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 	if err != nil {
 		if smtpErr, ok := err.(*SMTPError); ok {
 			c.writeResponse(smtpErr.Code, smtpErr.EnhancedCode, smtpErr.Message)
+			c.Close()
 			return
 		}
 		c.writeResponse(451, EnhancedCode{4, 0, 0}, err.Error())
+		c.Close()
 		return
 	}
 	c.setSession(sess)
