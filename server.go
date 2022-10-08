@@ -44,6 +44,7 @@ type Server struct {
 	ErrorLog          Logger
 	ReadTimeout       time.Duration
 	WriteTimeout      time.Duration
+	SoftClose         bool
 
 	// Advertise SMTPUTF8 (RFC 6531) capability.
 	// Should be used only if backend supports it.
@@ -68,6 +69,7 @@ type Server struct {
 	auths map[string]SaslServerFactory
 	done  chan struct{}
 
+	wg        sync.WaitGroup
 	locker    sync.Mutex
 	listeners []net.Listener
 	conns     map[*Conn]struct{}
@@ -135,7 +137,9 @@ func (s *Server) Serve(l net.Listener) error {
 			}
 			return err
 		}
+		s.wg.Add(1)
 		go func() {
+			defer s.wg.Done()
 			err := s.handleConn(newConn(c, s))
 			if err != nil {
 				s.ErrorLog.Printf("handler error: %s", err)
@@ -246,7 +250,10 @@ func (s *Server) ListenAndServeTLS() error {
 	return s.Serve(l)
 }
 
-// Close immediately closes all active listeners and connections.
+// Close immediately closes all active listeners and connections by default.
+//
+// If s.SoftClose is true, Close immediately closes all active listeners and waits
+// for connections to be closed by clients.
 //
 // Close returns any error returned from closing the server's underlying
 // listener(s).
@@ -264,6 +271,10 @@ func (s *Server) Close() error {
 		if lerr := l.Close(); lerr != nil && err == nil {
 			err = lerr
 		}
+	}
+
+	if s.SoftClose {
+		s.wg.Wait()
 	}
 
 	for conn := range s.conns {
