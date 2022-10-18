@@ -433,7 +433,9 @@ type dataCloser struct {
 }
 
 func (d *dataCloser) Close() error {
-	d.WriteCloser.Close()
+	if err := d.WriteCloser.Close(); err != nil {
+		return err
+	}
 
 	d.c.conn.SetDeadline(time.Now().Add(d.c.SubmissionTimeout))
 	defer d.c.conn.SetDeadline(time.Time{})
