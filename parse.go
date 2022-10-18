@@ -37,7 +37,9 @@ func parseCmd(line string) (cmd string, arg string, err error) {
 // Takes the arguments proceeding a command and files them
 // into a map[string]string after uppercasing each key.  Sample arg
 // string:
-//		" BODY=8BITMIME SIZE=1024 SMTPUTF8"
+//
+//	" BODY=8BITMIME SIZE=1024 SMTPUTF8"
+//
 // The leading space is mandatory.
 func parseArgs(args []string) (map[string]string, error) {
 	argMap := map[string]string{}
