@@ -430,9 +430,14 @@ type dataCloser struct {
 	c *Client
 	io.WriteCloser
 	statusCb func(rcpt string, status *SMTPError)
+	closed   bool
 }
 
 func (d *dataCloser) Close() error {
+	if d.closed {
+		return fmt.Errorf("smtp: data writer closed twice")
+	}
+
 	if err := d.WriteCloser.Close(); err != nil {
 		return err
 	}
@@ -457,7 +462,6 @@ func (d *dataCloser) Close() error {
 			}
 			expectedResponses--
 		}
-		return nil
 	} else {
 		_, _, err := d.c.Text.ReadResponse(250)
 		if err != nil {
@@ -466,8 +470,10 @@ func (d *dataCloser) Close() error {
 			}
 			return err
 		}
-		return nil
 	}
+
+	d.closed = true
+	return nil
 }
 
 // Data issues a DATA command to the server and returns a writer that
@@ -481,7 +487,7 @@ func (c *Client) Data() (io.WriteCloser, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &dataCloser{c, c.Text.DotWriter(), nil}, nil
+	return &dataCloser{c: c, WriteCloser: c.Text.DotWriter()}, nil
 }
 
 // LMTPData is the LMTP-specific version of the Data method. It accepts a callback
@@ -501,7 +507,7 @@ func (c *Client) LMTPData(statusCb func(rcpt string, status *SMTPError)) (io.Wri
 	if err != nil {
 		return nil, err
 	}
-	return &dataCloser{c, c.Text.DotWriter(), statusCb}, nil
+	return &dataCloser{c: c, WriteCloser: c.Text.DotWriter(), statusCb: statusCb}, nil
 }
 
 // SendMail will use an existing connection to send an email from
