@@ -182,7 +182,7 @@ func (s *Server) handleConn(c *Conn) error {
 
 			c.handle(cmd, arg)
 		} else {
-			if err == io.EOF {
+			if err == io.EOF || errors.Is(err, net.ErrClosed) {
 				return nil
 			}
 			if err == ErrTooLongLine {
