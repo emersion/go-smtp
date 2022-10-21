@@ -88,31 +88,34 @@ package main
 import (
 	"errors"
 	"io"
-	"io/ioutil"
 	"log"
 	"time"
 
 	"github.com/emersion/go-smtp"
 )
 
-// The Backend implements SMTP server methods.
+// Backend implements SMTP server methods.
 type Backend struct{}
 
-func (bkd *Backend) NewSession(_ *smtp.Conn) (smtp.Session, error) {
+func (b *Backend) Login(state *smtp.ConnectionState, username, password string) (smtp.Session, error) {
 	return &Session{}, nil
 }
 
-// A Session is returned after EHLO.
+func (b *Backend) AnonymousLogin(state *smtp.ConnectionState) (smtp.Session, error) {
+	return &Session{}, nil
+}
+
+// Session is returned after EHLO.
 type Session struct{}
 
 func (s *Session) AuthPlain(username, password string) error {
 	if username != "username" || password != "password" {
-		return errors.New("Invalid username or password")
+		return errors.New("invalid username or password")
 	}
 	return nil
 }
 
-func (s *Session) Mail(from string, opts *smtp.MailOptions) error {
+func (s *Session) Mail(from string, opts smtp.MailOptions) error {
 	log.Println("Mail from:", from)
 	return nil
 }
@@ -123,7 +126,7 @@ func (s *Session) Rcpt(to string) error {
 }
 
 func (s *Session) Data(r io.Reader) error {
-	if b, err := ioutil.ReadAll(r); err != nil {
+	if b, err := io.ReadAll(r); err != nil {
 		return err
 	} else {
 		log.Println("Data:", string(b))
@@ -141,7 +144,6 @@ func main() {
 	be := &Backend{}
 
 	s := smtp.NewServer(be)
-
 	s.Addr = ":1025"
 	s.Domain = "localhost"
 	s.ReadTimeout = 10 * time.Second
