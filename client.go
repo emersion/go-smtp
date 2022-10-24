@@ -608,6 +608,36 @@ func SendMail(addr string, a sasl.Client, from string, to []string, r io.Reader)
 	return c.SendMail(from, to, r)
 }
 
+// SendMailTLS works like SendMail, but with implicit TLS.
+func SendMailTLS(addr string, a sasl.Client, from string, to []string, r io.Reader) error {
+	if err := validateLine(from); err != nil {
+		return err
+	}
+	for _, recp := range to {
+		if err := validateLine(recp); err != nil {
+			return err
+		}
+	}
+	c, err := DialTLS(addr, nil)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+
+	if err = c.hello(); err != nil {
+		return err
+	}
+	if a != nil && c.ext != nil {
+		if _, ok := c.ext["AUTH"]; !ok {
+			return errors.New("smtp: server doesn't support AUTH")
+		}
+		if err = c.Auth(a); err != nil {
+			return err
+		}
+	}
+	return c.SendMail(from, to, r)
+}
+
 // Extension reports whether an extension is support by the server.
 // The extension name is case-insensitive. If the extension is supported,
 // Extension also returns a string that contains any parameters the
