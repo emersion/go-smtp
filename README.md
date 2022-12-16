@@ -98,7 +98,11 @@ import (
 // The Backend implements SMTP server methods.
 type Backend struct{}
 
-func (bkd *Backend) NewSession(_ *smtp.Conn) (smtp.Session, error) {
+func (bkd *Backend) Login(state *smtp.ConnectionState, username, password string) (smtp.Session, error) {
+	return &Session{}, nil
+}
+
+func (bkd *Backend) AnonymousLogin(state *smtp.ConnectionState) (smtp.Session, error) {
 	return &Session{}, nil
 }
 
@@ -112,7 +116,7 @@ func (s *Session) AuthPlain(username, password string) error {
 	return nil
 }
 
-func (s *Session) Mail(from string, opts *smtp.MailOptions) error {
+func (s *Session) Mail(from string, opts smtp.MailOptions) error {
 	log.Println("Mail from:", from)
 	return nil
 }
