@@ -98,6 +98,16 @@ func NewServer(be Backend) *Server {
 					return sess.AuthPlain(username, password)
 				})
 			},
+			sasl.Login: func(conn *Conn) sasl.Server {
+				return sasl.NewLoginServer(func(username, password string) error {
+					sess := conn.Session()
+					if sess == nil {
+						panic("No session when AUTH is called")
+					}
+
+					return sess.AuthPlain(username, password)
+				})
+			},
 		},
 		conns: make(map[*Conn]struct{}),
 	}
