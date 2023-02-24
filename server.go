@@ -15,7 +15,6 @@ import (
 )
 
 var (
-	errTCPAndLMTP   = errors.New("smtp: cannot start LMTP server listening on a TCP socket")
 	ErrServerClosed = errors.New("smtp: server already closed")
 )
 
@@ -30,12 +29,13 @@ type Logger interface {
 
 // A SMTP server.
 type Server struct {
+	// The type of network, "tcp" or "unix".
+	Network string
 	// TCP or Unix address to listen on.
 	Addr string
 	// The server TLS configuration.
 	TLSConfig *tls.Config
-	// Enable LMTP mode, as defined in RFC 2033. LMTP mode cannot be used with a
-	// TCP listener.
+	// Enable LMTP mode, as defined in RFC 2033.
 	LMTP bool
 
 	Domain            string
@@ -214,15 +214,22 @@ func (s *Server) handleConn(c *Conn) error {
 	}
 }
 
+func (s *Server) network() string {
+	if s.Network != "" {
+		return s.Network
+	}
+	if s.LMTP {
+		return "unix"
+	}
+	return "tcp"
+}
+
 // ListenAndServe listens on the network address s.Addr and then calls Serve
 // to handle requests on incoming connections.
 //
 // If s.Addr is blank and LMTP is disabled, ":smtp" is used.
 func (s *Server) ListenAndServe() error {
-	network := "tcp"
-	if s.LMTP {
-		network = "unix"
-	}
+	network := s.network()
 
 	addr := s.Addr
 	if !s.LMTP && addr == "" {
@@ -240,18 +247,16 @@ func (s *Server) ListenAndServe() error {
 // ListenAndServeTLS listens on the TCP network address s.Addr and then calls
 // Serve to handle requests on incoming TLS connections.
 //
-// If s.Addr is blank, ":smtps" is used.
+// If s.Addr is blank and LMTP is disabled, ":smtps" is used.
 func (s *Server) ListenAndServeTLS() error {
-	if s.LMTP {
-		return errTCPAndLMTP
-	}
+	network := s.network()
 
 	addr := s.Addr
-	if addr == "" {
+	if !s.LMTP && addr == "" {
 		addr = ":smtps"
 	}
 
-	l, err := tls.Listen("tcp", addr, s.TLSConfig)
+	l, err := tls.Listen(network, addr, s.TLSConfig)
 	if err != nil {
 		return err
 	}
