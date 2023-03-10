@@ -281,7 +281,7 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 // READY state -> waiting for MAIL
 func (c *Conn) handleMail(arg string) {
 	if c.helo == "" {
-		c.writeResponse(502, EnhancedCode{2, 5, 1}, "Please introduce yourself first.")
+		c.writeResponse(502, EnhancedCode{5, 5, 1}, "Please introduce yourself first.")
 		return
 	}
 	if c.bdatPipe != nil {
@@ -467,7 +467,7 @@ func (c *Conn) handleRcpt(arg string) {
 	recipient := strings.Trim(arg[3:], "<> ")
 
 	if c.server.MaxRecipients > 0 && len(c.recipients) >= c.server.MaxRecipients {
-		c.writeResponse(552, EnhancedCode{5, 5, 3}, fmt.Sprintf("Maximum limit of %v recipients reached", c.server.MaxRecipients))
+		c.writeResponse(452, EnhancedCode{4, 5, 3}, fmt.Sprintf("Maximum limit of %v recipients reached", c.server.MaxRecipients))
 		return
 	}
 
@@ -626,7 +626,7 @@ func (c *Conn) handleData(arg string) {
 	}
 
 	// We have recipients, go to accept data
-	c.writeResponse(354, EnhancedCode{2, 0, 0}, "Go ahead. End your data with <CR><LF>.<CR><LF>")
+	c.writeResponse(354, NoEnhancedCode, "Go ahead. End your data with <CR><LF>.<CR><LF>")
 
 	defer c.reset()
 
