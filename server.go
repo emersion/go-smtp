@@ -201,11 +201,11 @@ func (s *Server) handleConn(c *Conn) error {
 			}
 
 			if neterr, ok := err.(net.Error); ok && neterr.Timeout() {
-				c.writeResponse(221, EnhancedCode{2, 4, 2}, "Idle timeout, bye bye")
+				c.writeResponse(421, EnhancedCode{4, 4, 2}, "Idle timeout, bye bye")
 				return nil
 			}
 
-			c.writeResponse(221, EnhancedCode{2, 4, 0}, "Connection error, sorry")
+			c.writeResponse(421, EnhancedCode{4, 4, 0}, "Connection error, sorry")
 			return err
 		}
 	}
