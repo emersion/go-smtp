@@ -263,7 +263,7 @@ func (s *Server) ListenAndServeTLS() error {
 func (s *Server) Close() error {
 	select {
 	case <-s.done:
-		return errors.New("smtp: server already closed")
+		return ErrServerClosed
 	default:
 		close(s.done)
 	}
