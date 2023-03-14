@@ -1243,24 +1243,25 @@ func TestServerShutdown(t *testing.T) {
 	errChan := make(chan error)
 	go func() {
 		defer close(errChan)
+
 		errChan <- s.Shutdown(ctx)
 		errChan <- s.Shutdown(ctx)
 	}()
 
 	select {
 	case err := <-errChan:
-		t.Fatal("expected no err because conn is open", err)
+		t.Fatal("Expected no err because conn is open:", err)
 	default:
 		c.Close()
 	}
 
 	errOne := <-errChan
 	if errOne != nil {
-		t.Fatal("expected err to be nil", errOne)
+		t.Fatal("Expected err to be nil:", errOne)
 	}
 
 	errTwo := <-errChan
 	if errTwo != smtp.ErrServerClosed {
-		t.Fatal("expected err to be ErrServerClosed", errTwo)
+		t.Fatal("Expected err to be ErrServerClosed:", errTwo)
 	}
 }
