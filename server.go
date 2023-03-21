@@ -301,7 +301,6 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 	var err error
 	s.locker.Lock()
-	log.Println("listners", len(s.listeners))
 	for _, l := range s.listeners {
 		if lerr := l.Close(); lerr != nil && err == nil {
 			err = lerr
