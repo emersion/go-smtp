@@ -1,6 +1,7 @@
 package smtp
 
 import (
+	"context"
 	"crypto/tls"
 	"errors"
 	"io"
@@ -13,7 +14,10 @@ import (
 	"github.com/emersion/go-sasl"
 )
 
-var errTCPAndLMTP = errors.New("smtp: cannot start LMTP server listening on a TCP socket")
+var (
+	errTCPAndLMTP   = errors.New("smtp: cannot start LMTP server listening on a TCP socket")
+	ErrServerClosed = errors.New("smtp: server already closed")
+)
 
 // A function that creates SASL servers.
 type SaslServerFactory func(conn *Conn) sasl.Server
@@ -63,6 +67,8 @@ type Server struct {
 
 	// The server backend.
 	Backend Backend
+
+	wg sync.WaitGroup
 
 	caps  []string
 	auths map[string]SaslServerFactory
@@ -135,7 +141,11 @@ func (s *Server) Serve(l net.Listener) error {
 			}
 			return err
 		}
+
+		s.wg.Add(1)
 		go func() {
+			defer s.wg.Done()
+
 			err := s.handleConn(newConn(c, s))
 			if err != nil {
 				s.ErrorLog.Printf("handler error: %s", err)
@@ -253,7 +263,7 @@ func (s *Server) ListenAndServeTLS() error {
 func (s *Server) Close() error {
 	select {
 	case <-s.done:
-		return errors.New("smtp: server already closed")
+		return ErrServerClosed
 	default:
 		close(s.done)
 	}
@@ -272,6 +282,44 @@ func (s *Server) Close() error {
 	s.locker.Unlock()
 
 	return err
+}
+
+// Shutdown gracefully shuts down the server without interrupting any
+// active connections. Shutdown works by first closing all open
+// listeners and then waiting indefinitely for connections to return to
+// idle and then shut down.
+// If the provided context expires before the shutdown is complete,
+// Shutdown returns the context's error, otherwise it returns any
+// error returned from closing the Server's underlying Listener(s).
+func (s *Server) Shutdown(ctx context.Context) error {
+	select {
+	case <-s.done:
+		return ErrServerClosed
+	default:
+		close(s.done)
+	}
+
+	var err error
+	s.locker.Lock()
+	for _, l := range s.listeners {
+		if lerr := l.Close(); lerr != nil && err == nil {
+			err = lerr
+		}
+	}
+	s.locker.Unlock()
+
+	connDone := make(chan struct{})
+	go func() {
+		defer close(connDone)
+		s.wg.Wait()
+	}()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-connDone:
+		return err
+	}
 }
 
 // EnableAuth enables an authentication mechanism on this server.

@@ -3,6 +3,7 @@ package smtp_test
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"io/ioutil"
@@ -1232,5 +1233,35 @@ func TestServer_TooLongCommand(t *testing.T) {
 	scanner.Scan()
 	if !strings.HasPrefix(scanner.Text(), "500 5.4.0 ") {
 		t.Fatal("Invalid too long MAIL response:", scanner.Text())
+	}
+}
+
+func TestServerShutdown(t *testing.T) {
+	_, s, c, _ := testServerGreeted(t)
+
+	ctx := context.Background()
+	errChan := make(chan error)
+	go func() {
+		defer close(errChan)
+
+		errChan <- s.Shutdown(ctx)
+		errChan <- s.Shutdown(ctx)
+	}()
+
+	select {
+	case err := <-errChan:
+		t.Fatal("Expected no err because conn is open:", err)
+	default:
+		c.Close()
+	}
+
+	errOne := <-errChan
+	if errOne != nil {
+		t.Fatal("Expected err to be nil:", errOne)
+	}
+
+	errTwo := <-errChan
+	if errTwo != smtp.ErrServerClosed {
+		t.Fatal("Expected err to be ErrServerClosed:", errTwo)
 	}
 }
