@@ -104,6 +104,12 @@ func (c *Conn) handle(cmd string, arg string) {
 	}
 
 	cmd = strings.ToUpper(cmd)
+	// Auth should be checked for mail, rcpt, data commands.
+	if (cmd == "MAIL" || cmd == "RCPT" || cmd == "DATA") && !c.server.AuthDisabled && !c.didAuth {
+		c.writeResponse(502, EnhancedCode{5, 7, 0}, "Please authenticate first")
+		return
+	}
+
 	switch cmd {
 	case "SEND", "SOML", "SAML", "EXPN", "HELP", "TURN":
 		// These commands are not implemented in any state
