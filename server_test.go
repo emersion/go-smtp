@@ -756,6 +756,7 @@ func TestServer_anonymousUserError(t *testing.T) {
 
 func TestServer_anonymousUserOK(t *testing.T) {
 	be, s, c, scanner, _ := testServerEhlo(t)
+	s.AuthDisabled = true
 	defer s.Close()
 	defer c.Close()
 
@@ -780,6 +781,7 @@ func TestServer_anonymousUserOK(t *testing.T) {
 
 func TestServer_authParam(t *testing.T) {
 	be, s, c, scanner, _ := testServerEhlo(t)
+	s.AuthDisabled = true
 	defer s.Close()
 	defer c.Close()
 

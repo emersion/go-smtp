@@ -282,6 +282,7 @@ func TestServer_tooLongMessage(t *testing.T) {
 
 func TestServer_anonymousUserOK(t *testing.T) {
 	be, s, c, scanner, _ := testServerEhlo(t)
+	s.AuthDisabled = true
 	defer s.Close()
 	defer c.Close()
 

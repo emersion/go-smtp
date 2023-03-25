@@ -45,6 +45,7 @@ func sendLHLO(t *testing.T, scanner *bufio.Scanner, c io.Writer) {
 func TestServer_LMTP(t *testing.T) {
 	be, s, c, scanner := testServerGreeted(t, func(s *smtp.Server) {
 		s.LMTP = true
+		s.AuthDisabled = true
 		be := s.Backend.(*backend)
 		be.implementLMTPData = true
 		be.lmtpStatus = []struct {
@@ -82,6 +83,7 @@ func TestServer_LMTP_Early(t *testing.T) {
 
 	be, s, c, scanner := testServerGreeted(t, func(s *smtp.Server) {
 		s.LMTP = true
+		s.AuthDisabled = true
 		be := s.Backend.(*backend)
 		be.implementLMTPData = true
 		be.lmtpStatusSync = lmtpStatusSync
@@ -126,6 +128,7 @@ func TestServer_LMTP_Expand(t *testing.T) {
 
 	be, s, c, scanner := testServerGreeted(t, func(s *smtp.Server) {
 		s.LMTP = true
+		s.AuthDisabled = true
 	})
 	defer s.Close()
 	defer c.Close()
@@ -149,6 +152,7 @@ func TestServer_LMTP_Expand(t *testing.T) {
 func TestServer_LMTP_DuplicatedRcpt(t *testing.T) {
 	be, s, c, scanner := testServerGreeted(t, func(s *smtp.Server) {
 		s.LMTP = true
+		s.AuthDisabled = true
 		be := s.Backend.(*backend)
 		be.implementLMTPData = true
 		be.lmtpStatus = []struct {
