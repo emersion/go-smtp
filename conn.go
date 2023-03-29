@@ -278,6 +278,54 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 	c.writeResponse(250, NoEnhancedCode, args...)
 }
 
+func findSharpBrackets(arg string) (string, string, error) {
+	if arg[0] != '<' {
+		return "", "", errors.New("must start with <")
+	}
+	for i := 1; i < len(arg); i++ {
+		if arg[i] == '>' {
+			return arg[0 : i+1], arg[i+1:], nil
+		}
+		if arg[i] == '<' {
+			sharp, _, err := findSharpBrackets(arg[i:])
+			if err != nil {
+				return "", "", err
+			}
+			// -1 because the for loop will increment i
+			i += len(sharp) - 1
+		}
+	}
+	return "", "", errors.New("must end with >")
+}
+
+func getFromAndArgs(arg string) (from string, args []string, err error) {
+	arg = strings.TrimSpace(arg)
+	args = strings.Split(arg, " ")
+
+	if arg[0] == '<' {
+		var tail string
+		from, tail, err = findSharpBrackets(arg)
+		if err != nil {
+			return
+		}
+		inklEmpty := strings.Split(strings.TrimSpace(tail), " ")
+		args = make([]string, 0, len(inklEmpty))
+		for _, arg := range inklEmpty {
+			if len(arg) != 0 {
+				args = append(args, arg)
+			}
+		}
+		if strings.HasPrefix(from, "<") && strings.HasSuffix(from, ">") {
+			from = from[1 : len(from)-1]
+		}
+	} else {
+		args = strings.Split(arg, " ")
+		from = args[0]
+		args = args[1:]
+	}
+	return
+}
+
 // READY state -> waiting for MAIL
 func (c *Conn) handleMail(arg string) {
 	if c.helo == "" {
@@ -293,27 +341,25 @@ func (c *Conn) handleMail(arg string) {
 		c.writeResponse(501, EnhancedCode{5, 5, 2}, "Was expecting MAIL arg syntax of FROM:<address>")
 		return
 	}
-	fromArgs := strings.Split(strings.Trim(arg[5:], " "), " ")
-	if c.server.Strict {
-		if !strings.HasPrefix(fromArgs[0], "<") || !strings.HasSuffix(fromArgs[0], ">") {
-			c.writeResponse(501, EnhancedCode{5, 5, 2}, "Was expecting MAIL arg syntax of FROM:<address>")
-			return
-		}
-	}
-	from := fromArgs[0]
-	if from == "" {
+
+	if c.server.Strict && !strings.HasPrefix(strings.TrimSpace(arg[5:]), "<") {
 		c.writeResponse(501, EnhancedCode{5, 5, 2}, "Was expecting MAIL arg syntax of FROM:<address>")
 		return
 	}
-	from = strings.Trim(from, "<>")
+
+	from, fromArgs, err := getFromAndArgs(arg[5:])
+	if err != nil {
+		c.writeResponse(501, EnhancedCode{5, 5, 2}, "Was expecting MAIL arg syntax of FROM:<address>")
+		return
+	}
 
 	opts := &MailOptions{}
 
 	c.binarymime = false
 	// This is where the Conn may put BODY=8BITMIME, but we already
 	// read the DATA as bytes, so it does not effect our processing.
-	if len(fromArgs) > 1 {
-		args, err := parseArgs(fromArgs[1:])
+	if len(fromArgs) > 0 {
+		args, err := parseArgs(fromArgs)
 		if err != nil {
 			c.writeResponse(501, EnhancedCode{5, 5, 4}, "Unable to parse MAIL ESMTP parameters")
 			return
@@ -413,7 +459,7 @@ func decodeXtext(val string) (string, error) {
 			replaceErr = errors.New("incomplete hexchar")
 			return ""
 		}
-		char, err := strconv.ParseInt(match, 16, 8)
+		char, err := strconv.ParseUint(match[1:], 16, 8)
 		if err != nil {
 			replaceErr = err
 			return ""
