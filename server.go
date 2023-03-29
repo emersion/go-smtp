@@ -39,6 +39,7 @@ type Server struct {
 	LMTP bool
 
 	Domain            string
+	Name              string
 	MaxRecipients     int
 	MaxMessageBytes   int
 	MaxLineLength     int

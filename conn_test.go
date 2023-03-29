@@ -261,3 +261,29 @@ func TestHandleNaturalFromDefectOptions(t *testing.T) {
 		t.Errorf("Expected 501 5.5.2 Was expecting MAIL arg syntax of FROM:<address> got %s", ret)
 	}
 }
+
+func TestHandleGreetingDefault(t *testing.T) {
+	con, tester := newTestConn()
+	con.greet()
+	if len(tester.out) != 1 {
+		t.Errorf("Expected 1 output, got %d", len(tester.out))
+	}
+	ret := string(tester.out[0])
+	if ret != "220  ESMTP Service Ready\r\n" {
+		t.Errorf("Expected 220  ESMTP Service Ready got %s", ret)
+	}
+}
+
+func TestHandleGreeting(t *testing.T) {
+	con, tester := newTestConn()
+	con.server.Name = "Name"
+	con.server.Domain = "Domain"
+	con.greet()
+	if len(tester.out) != 1 {
+		t.Errorf("Expected 1 output, got %d", len(tester.out))
+	}
+	ret := string(tester.out[0])
+	if ret != "220 Domain ESMTP Name\r\n" {
+		t.Errorf("Expected 220 Domain ESMTP Name got %s", ret)
+	}
+}
