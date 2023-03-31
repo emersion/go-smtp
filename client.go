@@ -6,6 +6,7 @@ package smtp
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -279,9 +280,6 @@ func (c *Client) StartTLS(config *tls.Config) error {
 		config = config.Clone()
 		config.ServerName = c.serverName
 	}
-	if testHookStartTLS != nil {
-		testHookStartTLS(config)
-	}
 	c.setConn(tls.Client(c.conn, config))
 	return c.ehlo()
 }
@@ -550,8 +548,6 @@ func (c *Client) SendMail(from string, to []string, r io.Reader) error {
 	return c.Quit()
 }
 
-var testHookStartTLS func(*tls.Config) // nil, except for tests
-
 // SendMail connects to the server at addr, switches to TLS, authenticates with
 // the optional SASL client, and then sends an email from address from, to
 // addresses to, with message r. The addr must include a port, as in
@@ -573,7 +569,10 @@ var testHookStartTLS func(*tls.Config) // nil, except for tests
 // mechanisms and provide no support for DKIM signing (see go-msgauth), MIME
 // attachments (see the mime/multipart package or the go-message package), or
 // other mail functionality.
-func SendMail(addr string, a sasl.Client, from string, to []string, r io.Reader) error {
+
+type SendMailOpts func(a interface{}) error
+
+func SendMail(addr string, a sasl.Client, from string, to []string, r io.Reader, opts ...SendMailOpts) error {
 	if err := validateLine(from); err != nil {
 		return err
 	}
@@ -591,11 +590,22 @@ func SendMail(addr string, a sasl.Client, from string, to []string, r io.Reader)
 	if err = c.hello(); err != nil {
 		return err
 	}
-	if ok, _ := c.Extension("STARTTLS"); !ok {
-		return errors.New("smtp: server doesn't support STARTTLS")
-	}
-	if err = c.StartTLS(nil); err != nil {
-		return err
+	if ok, _ := c.Extension("STARTTLS"); ok {
+		config := &tls.Config{ServerName: c.serverName}
+		for _, opt := range opts {
+			if err = opt(config); err != nil {
+				return err
+			}
+		}
+		if config.RootCAs == nil {
+			config.RootCAs, err = x509.SystemCertPool()
+			if err != nil {
+				return err
+			}
+		}
+		if err = c.StartTLS(config); err != nil {
+			return err
+		}
 	}
 	if a != nil && c.ext != nil {
 		if _, ok := c.ext["AUTH"]; !ok {

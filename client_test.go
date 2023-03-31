@@ -7,9 +7,18 @@ package smtp
 import (
 	"bufio"
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"fmt"
 	"io"
+	"math/big"
 	"net"
 	"net/textproto"
 	"reflect"
@@ -19,6 +28,107 @@ import (
 
 	"github.com/emersion/go-sasl"
 )
+
+func publicKey(priv interface{}) interface{} {
+	switch k := priv.(type) {
+	case *rsa.PrivateKey:
+		return &k.PublicKey
+	case *ecdsa.PrivateKey:
+		return &k.PublicKey
+	case ed25519.PrivateKey:
+		return k.Public().(ed25519.PublicKey)
+	default:
+		return nil
+	}
+}
+
+type certMaker struct {
+	derBytes []byte
+	priv     *ecdsa.PrivateKey
+}
+
+func (cm certMaker) certificate() []byte {
+	var certBuf []byte
+	certOut := bytes.NewBuffer(certBuf)
+	if err := pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: cm.derBytes}); err != nil {
+		panic(err)
+	}
+	return certOut.Bytes()
+}
+
+func (cm certMaker) privateKey() []byte {
+	privBytes, err := x509.MarshalPKCS8PrivateKey(cm.priv)
+	if err != nil {
+		panic(err)
+	}
+	var keyBuf []byte
+	keyOut := bytes.NewBuffer(keyBuf)
+	if err := pem.Encode(keyOut, &pem.Block{Type: "PRIVATE KEY", Bytes: privBytes}); err != nil {
+		panic(err)
+	}
+	return keyOut.Bytes()
+}
+
+func (cm certMaker) keyPair() tls.Certificate {
+	keypair, err := tls.X509KeyPair(cm.certificate(), cm.privateKey())
+	if err != nil {
+		panic(err)
+	}
+	return keypair
+}
+
+func (cm certMaker) certPool() *x509.CertPool {
+	cas := x509.NewCertPool()
+	cas.AppendCertsFromPEM(cm.certificate())
+	return cas
+}
+
+func newCert(organization string, hosts []string) (cm certMaker, err error) {
+	cm.priv, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return
+	}
+	keyUsage := x509.KeyUsageDigitalSignature
+	notBefore := time.Now().Add(-time.Hour)
+	// a bit funky
+	notAfter := notBefore.Add(10 * time.Hour * 24 * 365)
+
+	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	serialNumber, _ := rand.Int(rand.Reader, serialNumberLimit)
+	template := x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject: pkix.Name{
+			Organization: []string{organization},
+		},
+		NotBefore: notBefore,
+		NotAfter:  notAfter,
+
+		KeyUsage:              keyUsage,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+	}
+	for _, h := range hosts {
+		if ip := net.ParseIP(h); ip != nil {
+			template.IPAddresses = append(template.IPAddresses, ip)
+		} else {
+			template.DNSNames = append(template.DNSNames, h)
+		}
+	}
+	template.IsCA = true
+	template.KeyUsage |= x509.KeyUsageCertSign
+
+	cm.derBytes, err = x509.CreateCertificate(rand.Reader, &template, &template, publicKey(cm.priv), cm.priv)
+
+	return
+}
+
+var testCertMaker = func() certMaker {
+	cm, err := newCert("client-test", []string{"127.0.0.1", "::1", "example.com"})
+	if err != nil {
+		panic(fmt.Errorf("newCert: %v", err))
+	}
+	return cm
+}()
 
 // Issue 17794: don't send a trailing space on AUTH command when there's no password.
 func TestClientAuthTrimSpace(t *testing.T) {
@@ -633,9 +743,10 @@ func TestTLSConnState(t *testing.T) {
 			return
 		}
 		defer c.Quit()
-		cfg := &tls.Config{ServerName: "example.com"}
-		testHookStartTLS(cfg) // set the RootCAs
-		if err := c.StartTLS(cfg); err != nil {
+		if err := c.StartTLS(&tls.Config{
+			ServerName: "example.com",
+			RootCAs:    testCertMaker.certPool(),
+		}); err != nil {
 			t.Errorf("StartTLS: %v", err)
 			return
 		}
@@ -684,12 +795,7 @@ func serverHandle(c net.Conn, t *testing.T) error {
 			send("250 Ok")
 		case "STARTTLS":
 			send("220 Go ahead")
-			keypair, err := tls.X509KeyPair(localhostCert, localhostKey)
-			if err != nil {
-				return err
-			}
-			config := &tls.Config{Certificates: []tls.Certificate{keypair}}
-			c = tls.Server(c, config)
+			c = tls.Server(c, &tls.Config{Certificates: []tls.Certificate{testCertMaker.keyPair()}})
 			defer c.Close()
 			return serverHandleTLS(c, t)
 		default:
@@ -727,57 +833,16 @@ func serverHandleTLS(c net.Conn, t *testing.T) error {
 	return s.Err()
 }
 
-func init() {
-	testRootCAs := x509.NewCertPool()
-	testRootCAs.AppendCertsFromPEM(localhostCert)
-	testHookStartTLS = func(config *tls.Config) {
-		config.RootCAs = testRootCAs
-	}
-}
-
 func sendMail(hostPort string) error {
 	from := "joe1@example.com"
 	to := []string{"joe2@example.com"}
-	return SendMail(hostPort, nil, from, to, strings.NewReader("Subject: test\n\nhowdy!"))
+	return SendMail(hostPort, nil, from, to, strings.NewReader("Subject: test\n\nhowdy!"), func(_tlsCfg interface{}) error {
+		if tlsCfg, ok := _tlsCfg.(*tls.Config); ok {
+			tlsCfg.RootCAs = testCertMaker.certPool()
+		}
+		return nil
+	})
 }
-
-// localhostCert is a PEM-encoded TLS cert generated from src/crypto/tls:
-//
-//	go run generate_cert.go --rsa-bits 1024 --host 127.0.0.1,::1,example.com \
-//			--ca --start-date "Jan 1 00:00:00 1970" --duration=1000000h
-var localhostCert = []byte(`
------BEGIN CERTIFICATE-----
-MIICFDCCAX2gAwIBAgIRAK0xjnaPuNDSreeXb+z+0u4wDQYJKoZIhvcNAQELBQAw
-EjEQMA4GA1UEChMHQWNtZSBDbzAgFw03MDAxMDEwMDAwMDBaGA8yMDg0MDEyOTE2
-MDAwMFowEjEQMA4GA1UEChMHQWNtZSBDbzCBnzANBgkqhkiG9w0BAQEFAAOBjQAw
-gYkCgYEA0nFbQQuOWsjbGtejcpWz153OlziZM4bVjJ9jYruNw5n2Ry6uYQAffhqa
-JOInCmmcVe2siJglsyH9aRh6vKiobBbIUXXUU1ABd56ebAzlt0LobLlx7pZEMy30
-LqIi9E6zmL3YvdGzpYlkFRnRrqwEtWYbGBf3znO250S56CCWH2UCAwEAAaNoMGYw
-DgYDVR0PAQH/BAQDAgKkMBMGA1UdJQQMMAoGCCsGAQUFBwMBMA8GA1UdEwEB/wQF
-MAMBAf8wLgYDVR0RBCcwJYILZXhhbXBsZS5jb22HBH8AAAGHEAAAAAAAAAAAAAAA
-AAAAAAEwDQYJKoZIhvcNAQELBQADgYEAbZtDS2dVuBYvb+MnolWnCNqvw1w5Gtgi
-NmvQQPOMgM3m+oQSCPRTNGSg25e1Qbo7bgQDv8ZTnq8FgOJ/rbkyERw2JckkHpD4
-n4qcK27WkEDBtQFlPihIM8hLIuzWoi/9wygiElTy/tVL3y7fGCvY2/k1KBthtZGF
-tN8URjVmyEo=
------END CERTIFICATE-----`)
-
-// localhostKey is the private key for localhostCert.
-var localhostKey = []byte(`
------BEGIN RSA PRIVATE KEY-----
-MIICXgIBAAKBgQDScVtBC45ayNsa16NylbPXnc6XOJkzhtWMn2Niu43DmfZHLq5h
-AB9+Gpok4icKaZxV7ayImCWzIf1pGHq8qKhsFshRddRTUAF3np5sDOW3QuhsuXHu
-lkQzLfQuoiL0TrOYvdi90bOliWQVGdGurAS1ZhsYF/fOc7bnRLnoIJYfZQIDAQAB
-AoGBAMst7OgpKyFV6c3JwyI/jWqxDySL3caU+RuTTBaodKAUx2ZEmNJIlx9eudLA
-kucHvoxsM/eRxlxkhdFxdBcwU6J+zqooTnhu/FE3jhrT1lPrbhfGhyKnUrB0KKMM
-VY3IQZyiehpxaeXAwoAou6TbWoTpl9t8ImAqAMY8hlULCUqlAkEA+9+Ry5FSYK/m
-542LujIcCaIGoG1/Te6Sxr3hsPagKC2rH20rDLqXwEedSFOpSS0vpzlPAzy/6Rbb
-PHTJUhNdwwJBANXkA+TkMdbJI5do9/mn//U0LfrCR9NkcoYohxfKz8JuhgRQxzF2
-6jpo3q7CdTuuRixLWVfeJzcrAyNrVcBq87cCQFkTCtOMNC7fZnCTPUv+9q1tcJyB
-vNjJu3yvoEZeIeuzouX9TJE21/33FaeDdsXbRhQEj23cqR38qFHsF1qAYNMCQQDP
-QXLEiJoClkR2orAmqjPLVhR3t2oB3INcnEjLNSq8LHyQEfXyaFfu4U9l5+fRPL2i
-jiC0k/9L5dHUsF0XZothAkEA23ddgRs+Id/HxtojqqUT27B8MT/IGNrYsp4DvS/c
-qgkeluku4GjxRlDMBuXk94xOBEinUs+p/hwP1Alll80Tpg==
------END RSA PRIVATE KEY-----`)
 
 func TestLMTP(t *testing.T) {
 	server := strings.Join(strings.Split(lmtpServer, "\n"), "\r\n")

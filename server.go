@@ -216,7 +216,7 @@ func (s *Server) handleConn(c *Conn) error {
 // to handle requests on incoming connections.
 //
 // If s.Addr is blank and LMTP is disabled, ":smtp" is used.
-func (s *Server) ListenAndServe() error {
+func (s *Server) ListenAndServe(listenFn ...func(net.Listener)) error {
 	network := "tcp"
 	if s.LMTP {
 		network = "unix"
@@ -231,7 +231,9 @@ func (s *Server) ListenAndServe() error {
 	if err != nil {
 		return err
 	}
-
+	for _, fn := range listenFn {
+		fn(l)
+	}
 	return s.Serve(l)
 }
 
@@ -239,7 +241,7 @@ func (s *Server) ListenAndServe() error {
 // Serve to handle requests on incoming TLS connections.
 //
 // If s.Addr is blank, ":smtps" is used.
-func (s *Server) ListenAndServeTLS() error {
+func (s *Server) ListenAndServeTLS(listenFn ...func(net.Listener)) error {
 	if s.LMTP {
 		return errTCPAndLMTP
 	}
@@ -253,7 +255,9 @@ func (s *Server) ListenAndServeTLS() error {
 	if err != nil {
 		return err
 	}
-
+	for _, fn := range listenFn {
+		fn(l)
+	}
 	return s.Serve(l)
 }
 
