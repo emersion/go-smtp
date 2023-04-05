@@ -103,26 +103,38 @@ func (bkd *Backend) NewSession(_ *smtp.Conn) (smtp.Session, error) {
 }
 
 // A Session is returned after EHLO.
-type Session struct{}
+type Session struct {
+	auth bool
+}
 
 func (s *Session) AuthPlain(username, password string) error {
 	if username != "username" || password != "password" {
 		return errors.New("Invalid username or password")
 	}
+	s.auth = true
 	return nil
 }
 
 func (s *Session) Mail(from string, opts *smtp.MailOptions) error {
+	if !s.auth {
+		return ErrAuthRequired
+	}
 	log.Println("Mail from:", from)
 	return nil
 }
 
 func (s *Session) Rcpt(to string) error {
+	if !s.auth {
+		return ErrAuthRequired
+	}
 	log.Println("Rcpt to:", to)
 	return nil
 }
 
 func (s *Session) Data(r io.Reader) error {
+	if !s.auth {
+		return ErrAuthRequired
+	}
 	if b, err := ioutil.ReadAll(r); err != nil {
 		return err
 	} else {
