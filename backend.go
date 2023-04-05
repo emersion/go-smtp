@@ -5,6 +5,11 @@ import (
 )
 
 var (
+	ErrAuthFailed = &SMTPError{
+		Code:         535,
+		EnhancedCode: EnhancedCode{5, 7, 8},
+		Message:      "Authentication failed",
+	}
 	ErrAuthRequired = &SMTPError{
 		Code:         502,
 		EnhancedCode: EnhancedCode{5, 7, 0},

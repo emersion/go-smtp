@@ -107,7 +107,7 @@ type Session struct{}
 
 func (s *Session) AuthPlain(username, password string) error {
 	if username != "username" || password != "password" {
-		return errors.New("Invalid username or password")
+		return smtp.ErrAuthFailed
 	}
 	return nil
 }
