@@ -8,7 +8,10 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/user"
+	"strconv"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/emersion/go-sasl"
@@ -37,6 +40,11 @@ type Server struct {
 	// Enable LMTP mode, as defined in RFC 2033. LMTP mode cannot be used with a
 	// TCP listener.
 	LMTP bool
+
+	// Run as the other user.
+	Username string
+	// Additionally, change the group.
+	Groupname string
 
 	Domain            string
 	MaxRecipients     int
@@ -109,6 +117,89 @@ func NewServer(be Backend) *Server {
 	}
 }
 
+func (s *Server) Listen(network, addr string) (net.Listener, error) {
+	l, err := net.Listen(network, addr)
+	if err != nil {
+		return nil, err
+	}
+
+	if s.Username != "" {
+		var userUser *user.User
+
+		var uid int
+		_, err = strconv.Atoi(s.Username)
+		if err == nil {
+			userUser, err = user.LookupId(s.Username)
+		}
+		if err != nil {
+			userUser, err = user.Lookup(s.Username)
+		}
+		if err != nil {
+			return nil, err
+		}
+		uid, err = strconv.Atoi(userUser.Uid)
+		if err != nil {
+			return nil, err
+		}
+
+		var gids []int
+		if os.Getuid() == 0 {
+			groups, err := userUser.GroupIds()
+			if err != nil {
+				return nil, err
+			}
+			for _, g := range groups {
+				id, err := strconv.Atoi(g)
+				if err != nil {
+					return nil, err
+				}
+				gids = append(gids, id)
+			}
+		}
+
+		var gid int
+		if s.Groupname != "" {
+			var userGroup *user.Group
+
+			_, err = strconv.Atoi(s.Groupname)
+			if err == nil {
+				userGroup, err = user.LookupGroupId(s.Groupname)
+			}
+			if err != nil {
+				userGroup, err = user.LookupGroup(s.Groupname)
+			}
+			if err != nil {
+				return nil, err
+			}
+			gid, err = strconv.Atoi(userGroup.Gid)
+		} else {
+			gid, err = strconv.Atoi(userUser.Gid)
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		if network == "unix" {
+			if err := os.Chown(addr, uid, gid); err != nil {
+				return nil, err
+			}
+		}
+		if err := syscall.Setgid(gid); err != nil {
+			return nil, err
+		}
+		if gids != nil {
+			if err := syscall.Setgroups(gids); err != nil {
+				return nil, err
+			}
+		}
+		if err := syscall.Setuid(uid); err != nil {
+			return nil, err
+		}
+	}
+
+	return l, nil
+}
+
 // Serve accepts incoming connections on the Listener l.
 func (s *Server) Serve(l net.Listener) error {
 	s.locker.Lock()
@@ -152,6 +243,11 @@ func (s *Server) Serve(l net.Listener) error {
 			}
 		}()
 	}
+}
+
+func (s *Server) ServeTLS(l net.Listener) error {
+	tlsListener := tls.NewListener(l, s.TLSConfig)
+	return s.Serve(tlsListener)
 }
 
 func (s *Server) handleConn(c *Conn) error {
@@ -226,7 +322,7 @@ func (s *Server) ListenAndServe() error {
 		addr = ":smtp"
 	}
 
-	l, err := net.Listen(network, addr)
+	l, err := s.Listen(network, addr)
 	if err != nil {
 		return err
 	}
@@ -248,12 +344,12 @@ func (s *Server) ListenAndServeTLS() error {
 		addr = ":smtps"
 	}
 
-	l, err := tls.Listen("tcp", addr, s.TLSConfig)
+	l, err := s.Listen("tcp", addr)
 	if err != nil {
 		return err
 	}
 
-	return s.Serve(l)
+	return s.ServeTLS(l)
 }
 
 // Close immediately closes all active listeners and connections.
