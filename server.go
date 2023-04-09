@@ -45,6 +45,8 @@ type Server struct {
 	Username string
 	// Additionally, change the group.
 	Groupname string
+	// The file mode of UNIX domain socket.
+	SocketMode int
 
 	Domain            string
 	MaxRecipients     int
@@ -118,9 +120,25 @@ func NewServer(be Backend) *Server {
 }
 
 func (s *Server) Listen(network, addr string) (net.Listener, error) {
-	l, err := net.Listen(network, addr)
-	if err != nil {
-		return nil, err
+	var (
+		l   net.Listener
+		err error
+	)
+	if mode := s.SocketMode; network == "unix" && mode > 0 {
+		origUmask := syscall.Umask(-1 &^ mode)
+		l, err = net.Listen(network, addr)
+		syscall.Umask(origUmask)
+		if err != nil {
+			return nil, err
+		}
+		if err = os.Chmod(addr, os.FileMode(mode)); err != nil {
+			return nil, err
+		}
+	} else {
+		l, err = net.Listen(network, addr)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if s.Username != "" {
