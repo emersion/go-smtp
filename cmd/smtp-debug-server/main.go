@@ -53,7 +53,8 @@ func main() {
 	s.Addr = addr
 	s.Domain = "localhost"
 	s.AllowInsecureAuth = true
-	s.Debug = os.Stdout
+	s.ClientDebug = os.Stdout
+	s.ServerDebug = os.Stderr
 
 	log.Println("Starting SMTP server at", addr)
 	log.Fatal(s.ListenAndServe())
