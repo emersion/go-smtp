@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net"
+	"net/mail"
 	"net/textproto"
 	"regexp"
 	"runtime/debug"
@@ -298,11 +299,86 @@ func findSharpBrackets(arg string) (string, string, error) {
 	return "", "", errors.New("must end with >")
 }
 
-func getFromAndArgs(arg string) (from string, args []string, err error) {
-	arg = strings.TrimSpace(arg)
-	args = strings.Split(arg, " ")
+// esmtp-param    = esmtp-keyword ["=" esmtp-value]
 
-	if arg[0] == '<' {
+// esmtp-keyword  = (ALPHA / DIGIT) *(ALPHA / DIGIT / "-")
+
+// esmtp-value    = 1*(%d33-60 / %d62-126)
+//
+//	; any CHAR excluding "=", SP, and control
+//	; characters.  If this string is an email address,
+//	; i.e., a Mailbox, then the "xtext" syntax [32]
+//	; SHOULD be used.
+var reArgs = regexp.MustCompile(`\s+`)
+var reExtention = regexp.MustCompile(`^[a-zA-Z]+[a-zA-Z0-9-]*=[^\s]+$`)
+
+// abit like https://www.rfc-editor.org/rfc/rfc5321#section-4.1.2
+func parseSmtpFromArgs(arg string) (head string, args []string, err error) {
+	tokens := reArgs.Split(arg, -1)
+	for i := len(tokens) - 1; i >= 0; i-- {
+		if len(tokens[i]) == 0 {
+			continue
+		}
+		if !reExtention.MatchString(tokens[i]) {
+			head = strings.Join(tokens[:i+1], " ")
+			return
+		}
+		args = append(args, tokens[i])
+	}
+	return
+}
+
+// Path           = "<" [ A-d-l ":" ] Mailbox ">"
+// A-d-l          = At-domain *( "," At-domain )
+// 			   ; Note that this form, the so-called "source
+// 			   ; route", MUST BE accepted, SHOULD NOT be
+// 			   ; generated, and SHOULD be ignored.
+// At-domain      = "@" Domain
+// Domain         = sub-domain *("." sub-domain)
+// sub-domain     = Let-dig [Ldh-str]
+// Let-dig        = ALPHA / DIGIT
+// Ldh-str        = *( ALPHA / DIGIT / "-" ) Let-dig
+// address-literal  = "[" ( IPv4-address-literal /
+// 	IPv6-address-literal /
+// 	General-address-literal ) "]"
+// 	; See Section 4.1.3
+// Mailbox        = Local-part "@" ( Domain / address-literal )
+// Local-part     = Dot-string / Quoted-string
+//   ; MAY be case-sensitive
+// Dot-string     = Atom *("."  Atom)
+// Atom           = 1*atext
+// Quoted-string  = DQUOTE *QcontentSMTP DQUOTE
+// QcontentSMTP   = qtextSMTP / quoted-pairSMTP
+// quoted-pairSMTP  = %d92 %d32-126
+// 				; i.e., backslash followed by any ASCII
+// 				; graphic (including itself) or SPace
+// qtextSMTP      = %d32-33 / %d35-91 / %d93-126
+// 				; i.e., within a quoted string, any
+// 				; ASCII graphic or space is permitted
+// 				; without blackslash-quoting except
+// 				; double-quote and the backslash itself.
+// String         = Atom / Quoted-string
+
+func parseSmtpFrom(arg string) (from string, args []string, err error) {
+	arg = strings.TrimSpace(arg)
+	if len(arg) == 0 {
+		return
+	}
+	from, args, err = parseSmtpFromArgs(arg)
+
+	// standard and the postfix are some kind of different
+	// MAIL From: Test Name <test@bla.de
+	// 555 5.5.4 Unsupported option: Name
+	// MAIL From: <Test Name <test@bla.de>
+	// 501 5.1.7 Bad sender address syntax
+	// MAIL From: <Test Name <test@bla.de>>
+	// 250 2.1.0 Ok
+	// MAIL From: test@bla.de
+	// 250 2.1.0 Ok
+	// MAIL From: <Test Name <test#bla.de>>
+	// 250 2.1.0 Ok
+
+	if len(from) > 0 && from[0] == '<' {
 		var tail string
 		from, tail, err = findSharpBrackets(arg)
 		if err != nil {
@@ -319,9 +395,13 @@ func getFromAndArgs(arg string) (from string, args []string, err error) {
 			from = from[1 : len(from)-1]
 		}
 	} else {
-		args = strings.Split(arg, " ")
-		from = args[0]
-		args = args[1:]
+		from = strings.TrimSpace(from)
+		if len(from) > 0 {
+			_, err := mail.ParseAddress(from)
+			if err != nil {
+				return "", nil, err
+			}
+		}
 	}
 	return
 }
@@ -337,17 +417,17 @@ func (c *Conn) handleMail(arg string) {
 		return
 	}
 
-	if len(arg) < 6 || strings.ToUpper(arg[0:5]) != "FROM:" {
+	if len(arg) < 6 || strings.ToUpper(arg[0:len("from:")]) != "FROM:" {
 		c.writeResponse(501, EnhancedCode{5, 5, 2}, "Was expecting MAIL arg syntax of FROM:<address>")
 		return
 	}
 
-	if c.server.Strict && !strings.HasPrefix(strings.TrimSpace(arg[5:]), "<") {
+	if c.server.Strict && !strings.HasPrefix(strings.TrimSpace(arg[len("from:"):]), "<") {
 		c.writeResponse(501, EnhancedCode{5, 5, 2}, "Was expecting MAIL arg syntax of FROM:<address>")
 		return
 	}
 
-	from, fromArgs, err := getFromAndArgs(arg[5:])
+	from, fromArgs, err := parseSmtpFrom(arg[len("from:"):])
 	if err != nil {
 		c.writeResponse(501, EnhancedCode{5, 5, 2}, "Was expecting MAIL arg syntax of FROM:<address>")
 		return

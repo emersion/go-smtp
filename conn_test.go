@@ -127,6 +127,18 @@ func TestHandleSimpleFrom(t *testing.T) {
 	}
 }
 
+func TestHandleSimpleDefectEmailFrom(t *testing.T) {
+	con, tester := newTestConn()
+	con.handleMail("FROM: test#_bla_de")
+	if len(tester.out) != 1 {
+		t.Errorf("Expected 1 output, got %d", len(tester.out))
+	}
+	ret := string(tester.out[0])
+	if ret != "501 5.5.2 Was expecting MAIL arg syntax of FROM:<address>\r\n" {
+		t.Errorf("501 5.5.2 Was expecting MAIL arg syntax of FROM:<address>:%s", ret)
+	}
+}
+
 func TestHandleSimpleSharpFrom(t *testing.T) {
 	con, tester := newTestConn()
 	con.handleMail("FROM:<test@bla.de>")
@@ -157,14 +169,26 @@ func TestHandleNaturalFrom(t *testing.T) {
 	}
 }
 
+func TestHandleNaturalFromOkButDefect(t *testing.T) {
+	con, tester := newTestConn()
+	con.handleMail("FROM:<Test Name <test#bla.de>>")
+	if len(tester.out) != 1 {
+		t.Errorf("Expected 1 output, got %d", len(tester.out))
+	}
+	if con.session.(*dummyBackend).mailFrom != "Test Name <test#bla.de>" {
+		t.Errorf("Expected test#bla.de, got %s", con.session.(*dummyBackend).mailFrom)
+	}
+	ret := string(tester.out[0])
+	if ret != "250 2.0.0 Roger, accepting mail from <Test Name <test#bla.de>>\r\n" {
+		t.Errorf("Expected 250 2.0.0 Roger, accepting mail from <test#bla> got %s", ret)
+	}
+}
+
 func TestHandleNaturalFromDefect(t *testing.T) {
 	con, tester := newTestConn()
 	con.handleMail("FROM:<Test Name <test@bla.de>")
 	if len(tester.out) != 1 {
 		t.Errorf("Expected 1 output, got %d", len(tester.out))
-	}
-	if con.session.(*dummyBackend).mailFrom != "" {
-		t.Errorf("Expected '', got %s", con.session.(*dummyBackend).mailFrom)
 	}
 	ret := string(tester.out[0])
 	if ret != "501 5.5.2 Was expecting MAIL arg syntax of FROM:<address>\r\n" {
@@ -179,8 +203,8 @@ func TestHandleEmptyFromOptions(t *testing.T) {
 		t.Errorf("Expected 1 output, got %d", len(tester.out))
 	}
 	ret := string(tester.out[0])
-	if ret != "250 2.0.0 Roger, accepting mail from <BODY=8BITMIME>\r\n" {
-		t.Errorf("Expected 501 5.5.2 Was expecting MAIL arg syntax of FROM:<address>\r\n, got %s", ret)
+	if ret != "250 2.0.0 Roger, accepting mail from <>\r\n" {
+		t.Errorf("Expected 250 2.0.0 Roger, accepting mail from <>:%s", ret)
 	}
 }
 
@@ -259,5 +283,82 @@ func TestHandleNaturalFromDefectOptions(t *testing.T) {
 	ret := string(tester.out[0])
 	if ret != "501 5.5.2 Was expecting MAIL arg syntax of FROM:<address>\r\n" {
 		t.Errorf("Expected 501 5.5.2 Was expecting MAIL arg syntax of FROM:<address> got %s", ret)
+	}
+}
+
+func TestParseSmtpFromArgsEmpty(t *testing.T) {
+	head, args, err := parseSmtpFromArgs("     ")
+	if err != nil {
+		t.Errorf("Expected error, got nil")
+	}
+	if len(args) != 0 {
+		t.Errorf("Expected 0 args, got %v", args)
+	}
+	if head != "" {
+		t.Errorf("Expected '', got %s", head)
+	}
+}
+
+func TestParseSmtpFromArgsNoExtention(t *testing.T) {
+	str := "bla lala <dood@doof>  gurke   "
+	head, args, err := parseSmtpFromArgs(str)
+	if err != nil {
+		t.Errorf("Expected error, got nil")
+	}
+	if len(args) != 0 {
+		t.Errorf("Expected 0 args, got %v", args)
+	}
+	if head != "bla lala <dood@doof> gurke" {
+		t.Errorf("Expected [%s], got [%s]", str, head)
+	}
+}
+
+func TestParseSmtpFromArgsOneExtention(t *testing.T) {
+	str := "bla lala <dood@doof>  gurke  H-UND=KATZE   "
+	head, args, err := parseSmtpFromArgs(str)
+	if err != nil {
+		t.Errorf("Expected error, got nil")
+	}
+	if len(args) != 1 {
+		t.Errorf("Expected 0 args, got %v", args)
+	}
+	if args[0] != "H-UND=KATZE" {
+		t.Errorf("Expected H-UND=KATZE, got %s", args[0])
+	}
+	if head != "bla lala <dood@doof> gurke" {
+		t.Errorf("Expected [%s], got [%s]", str, head)
+	}
+}
+
+func TestParseSmtpFromArgsTwoExtention(t *testing.T) {
+	str := "bla lala <dood@doof>  gurke  H-UND=KATZE SIZE=4848484  "
+	head, args, err := parseSmtpFromArgs(str)
+	if err != nil {
+		t.Errorf("Expected error, got nil")
+	}
+	if len(args) != 2 {
+		t.Errorf("Expected 0 args, got %v", args)
+	}
+	if args[1] != "H-UND=KATZE" {
+		t.Errorf("Expected H-UND=KATZE, got %s", args[1])
+	}
+	if args[0] != "SIZE=4848484" {
+		t.Errorf("Expected H-UND=KATZE, got %s", args[0])
+	}
+	if head != "bla lala <dood@doof> gurke" {
+		t.Errorf("Expected [%s], got [%s]", str, head)
+	}
+}
+
+func TestGetFromAndArgsEmpty(t *testing.T) {
+	from, args, err := parseSmtpFrom("    ")
+	if err != nil {
+		t.Errorf("Expected error, got nil")
+	}
+	if len(args) != 0 {
+		t.Errorf("Expected 0 args, got %d", len(args))
+	}
+	if from != "" {
+		t.Errorf("Expected '', got %s", from)
 	}
 }
