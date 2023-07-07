@@ -117,7 +117,7 @@ func (s *Session) AuthPlain(username, password string) error {
 
 func (s *Session) Mail(from string, opts *smtp.MailOptions) error {
 	if !s.auth {
-		return ErrAuthRequired
+		return smtp.ErrAuthRequired
 	}
 	log.Println("Mail from:", from)
 	return nil
@@ -125,7 +125,7 @@ func (s *Session) Mail(from string, opts *smtp.MailOptions) error {
 
 func (s *Session) Rcpt(to string) error {
 	if !s.auth {
-		return ErrAuthRequired
+		return smtp.ErrAuthRequired
 	}
 	log.Println("Rcpt to:", to)
 	return nil
@@ -133,7 +133,7 @@ func (s *Session) Rcpt(to string) error {
 
 func (s *Session) Data(r io.Reader) error {
 	if !s.auth {
-		return ErrAuthRequired
+		return smtp.ErrAuthRequired
 	}
 	if b, err := ioutil.ReadAll(r); err != nil {
 		return err
