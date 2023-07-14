@@ -802,7 +802,7 @@ func TestServer_authParam(t *testing.T) {
 	// >extension MUST support the AUTH parameter to the MAIL FROM
 	// >command even when the client has not authenticated itself to the
 	// >server.
-	io.WriteString(c, "MAIL FROM: root@nsa.gov AUTH=<hey+3Da>\r\n")
+	io.WriteString(c, "MAIL FROM: root@nsa.gov AUTH=hey+3Da@example.com\r\n")
 	scanner.Scan()
 	if !strings.HasPrefix(scanner.Text(), "250 ") {
 		t.Fatal("Invalid MAIL response:", scanner.Text())
@@ -823,7 +823,7 @@ func TestServer_authParam(t *testing.T) {
 	if len(be.messages) != 0 || len(be.anonmsgs) != 1 {
 		t.Fatal("Invalid number of sent messages:", be.messages, be.anonmsgs)
 	}
-	if val := be.anonmsgs[0].Opts.Auth; val == nil || *val != "hey=a" {
+	if val := be.anonmsgs[0].Opts.Auth; val == nil || *val != "hey=a@example.com" {
 		t.Fatal("Invalid Auth value:", val)
 	}
 }

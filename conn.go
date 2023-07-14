@@ -362,20 +362,15 @@ func (c *Conn) handleMail(arg string) {
 				opts.Body = BodyType(value)
 			case "AUTH":
 				value, err := decodeXtext(value)
-				if err != nil {
+				if err != nil || value == "" {
 					c.writeResponse(500, EnhancedCode{5, 5, 4}, "Malformed AUTH parameter value")
 					return
 				}
-				if !strings.HasPrefix(value, "<") {
-					c.writeResponse(500, EnhancedCode{5, 5, 4}, "Missing opening angle bracket")
-					return
+				if value == "<>" {
+					value = ""
 				}
-				if !strings.HasSuffix(value, ">") {
-					c.writeResponse(500, EnhancedCode{5, 5, 4}, "Missing closing angle bracket")
-					return
-				}
-				decodedMbox := value[1 : len(value)-1]
-				opts.Auth = &decodedMbox
+				// TODO: otherwise, check mailbox syntax (RFC 2821 section 4.1.2)
+				opts.Auth = &value
 			default:
 				c.writeResponse(500, EnhancedCode{5, 5, 4}, "Unknown MAIL FROM argument")
 				return
