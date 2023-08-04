@@ -121,8 +121,16 @@ func (c *Conn) handle(cmd string, arg string) {
 		}
 		c.handleGreet(enhanced, arg)
 	case "MAIL":
+		if !c.server.AuthDisabled && !c.didAuth {
+			c.writeResponse(530, EnhancedCode{5, 7, 0}, "Authentication required")
+			return
+		}
 		c.handleMail(arg)
 	case "RCPT":
+		if !c.server.AuthDisabled && !c.didAuth {
+			c.writeResponse(530, EnhancedCode{5, 7, 0}, "Authentication required")
+			return
+		}
 		c.handleRcpt(arg)
 	case "VRFY":
 		c.writeResponse(252, EnhancedCode{2, 5, 0}, "Cannot VRFY user, but will accept message")
@@ -132,8 +140,16 @@ func (c *Conn) handle(cmd string, arg string) {
 		c.reset()
 		c.writeResponse(250, EnhancedCode{2, 0, 0}, "Session reset")
 	case "BDAT":
+		if !c.server.AuthDisabled && !c.didAuth {
+			c.writeResponse(530, EnhancedCode{5, 7, 0}, "Authentication required")
+			return
+		}
 		c.handleBdat(arg)
 	case "DATA":
+		if !c.server.AuthDisabled && !c.didAuth {
+			c.writeResponse(530, EnhancedCode{5, 7, 0}, "Authentication required")
+			return
+		}
 		c.handleData(arg)
 	case "QUIT":
 		c.writeResponse(221, EnhancedCode{2, 0, 0}, "Bye")
