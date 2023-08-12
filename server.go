@@ -93,7 +93,7 @@ func NewServer(be Backend) *Server {
 			sasl.Plain: func(conn *Conn) sasl.Server {
 				return sasl.NewPlainServer(func(identity, username, password string) error {
 					if identity != "" && identity != username {
-						return errors.New("Identities not supported")
+						return errors.New("identities not supported")
 					}
 
 					sess := conn.Session()
