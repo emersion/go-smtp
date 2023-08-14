@@ -455,10 +455,14 @@ func (c *Conn) handleRcpt(arg string) {
 		return
 	}
 
-	// TODO: This trim is probably too forgiving
-	recipient := strings.Trim(arg, "<> ")
-	if recipient == "" {
+	p := parser{s: strings.TrimSpace(arg)}
+	recipient, err := p.parsePath()
+	if err != nil {
 		c.writeResponse(501, EnhancedCode{5, 5, 2}, "Was expecting RCPT arg syntax of TO:<address>")
+		return
+	}
+	if len(strings.Fields(p.s)) > 0 {
+		c.writeResponse(501, EnhancedCode{5, 5, 2}, "RCPT parameters are not supported")
 		return
 	}
 
