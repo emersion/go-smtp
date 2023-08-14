@@ -11,8 +11,8 @@ func TestParser(t *testing.T) {
 		{"<>", "", ""},
 		{"<root@nsa.gov>", "root@nsa.gov", ""},
 		{"root@nsa.gov", "root@nsa.gov", ""},
-		{"<root@nsa.gov> AUTH=asdf", "root@nsa.gov", " AUTH=asdf"},
-		{"root@nsa.gov AUTH=asdf", "root@nsa.gov", " AUTH=asdf"},
+		{"<root@nsa.gov> AUTH=asdf@example.org", "root@nsa.gov", " AUTH=asdf@example.org"},
+		{"root@nsa.gov AUTH=asdf@example.org", "root@nsa.gov", " AUTH=asdf@example.org"},
 	}
 	for _, tc := range validReversePaths {
 		p := parser{tc.raw}

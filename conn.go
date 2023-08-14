@@ -361,8 +361,14 @@ func (c *Conn) handleMail(arg string) {
 			}
 			if value == "<>" {
 				value = ""
+			} else {
+				p := parser{s: value}
+				value, err = p.parseMailbox()
+				if err != nil || p.s != "" {
+					c.writeResponse(500, EnhancedCode{5, 5, 4}, "Malformed AUTH parameter mailbox")
+					return
+				}
 			}
-			// TODO: otherwise, check mailbox syntax (RFC 2821 section 4.1.2)
 			opts.Auth = &value
 		default:
 			c.writeResponse(500, EnhancedCode{5, 5, 4}, "Unknown MAIL FROM argument")
