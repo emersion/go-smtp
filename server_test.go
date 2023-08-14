@@ -514,6 +514,8 @@ func TestServerTooBig(t *testing.T) {
 	defer s.Close()
 	defer c.Close()
 
+	s.MaxMessageBytes = 4294967294
+
 	io.WriteString(c, "MAIL FROM:<alice@wonderland.book> SIZE=4294967295\r\n")
 	scanner.Scan()
 	if strings.HasPrefix(scanner.Text(), "250 ") {
