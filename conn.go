@@ -295,12 +295,6 @@ func (c *Conn) handleMail(arg string) {
 		return
 	}
 	fromArgs := strings.Split(strings.Trim(arg, " "), " ")
-	if c.server.Strict {
-		if !strings.HasPrefix(fromArgs[0], "<") || !strings.HasSuffix(fromArgs[0], ">") {
-			c.writeResponse(501, EnhancedCode{5, 5, 2}, "Was expecting MAIL arg syntax of FROM:<address>")
-			return
-		}
-	}
 	from := fromArgs[0]
 	if from == "" {
 		c.writeResponse(501, EnhancedCode{5, 5, 2}, "Was expecting MAIL arg syntax of FROM:<address>")
