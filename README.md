@@ -2,6 +2,7 @@
 
 [![godocs.io](https://godocs.io/github.com/emersion/go-smtp?status.svg)](https://godocs.io/github.com/emersion/go-smtp)
 [![builds.sr.ht status](https://builds.sr.ht/~emersion/go-smtp/commits.svg)](https://builds.sr.ht/~emersion/go-smtp/commits?)
+[![Codecov](http://codecov.io/github/emersion/go-smtp/coverage.svg?branch=master)](http://codecov.io/github/emersion/go-smtp?branch=master)
 
 An ESMTP client and server library written in Go.
 
