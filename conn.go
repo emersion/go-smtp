@@ -294,21 +294,22 @@ func (c *Conn) handleMail(arg string) {
 		c.writeResponse(501, EnhancedCode{5, 5, 2}, "Was expecting MAIL arg syntax of FROM:<address>")
 		return
 	}
-	fromArgs := strings.Split(strings.Trim(arg, " "), " ")
-	from := fromArgs[0]
-	if from == "" {
+
+	p := parser{s: strings.TrimSpace(arg)}
+	from, err := p.parseReversePath()
+	if err != nil {
 		c.writeResponse(501, EnhancedCode{5, 5, 2}, "Was expecting MAIL arg syntax of FROM:<address>")
 		return
 	}
-	from = strings.Trim(from, "<>")
+	fromArgs := strings.Fields(p.s)
 
 	opts := &MailOptions{}
 
 	c.binarymime = false
 	// This is where the Conn may put BODY=8BITMIME, but we already
 	// read the DATA as bytes, so it does not effect our processing.
-	if len(fromArgs) > 1 {
-		args, err := parseArgs(fromArgs[1:])
+	if len(fromArgs) > 0 {
+		args, err := parseArgs(fromArgs)
 		if err != nil {
 			c.writeResponse(501, EnhancedCode{5, 5, 4}, "Unable to parse MAIL ESMTP parameters")
 			return
