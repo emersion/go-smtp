@@ -301,76 +301,72 @@ func (c *Conn) handleMail(arg string) {
 		c.writeResponse(501, EnhancedCode{5, 5, 2}, "Was expecting MAIL arg syntax of FROM:<address>")
 		return
 	}
-	fromArgs := strings.Fields(p.s)
+	args, err := parseArgs(p.s)
+	if err != nil {
+		c.writeResponse(501, EnhancedCode{5, 5, 4}, "Unable to parse MAIL ESMTP parameters")
+		return
+	}
 
 	opts := &MailOptions{}
 
 	c.binarymime = false
 	// This is where the Conn may put BODY=8BITMIME, but we already
 	// read the DATA as bytes, so it does not effect our processing.
-	if len(fromArgs) > 0 {
-		args, err := parseArgs(fromArgs)
-		if err != nil {
-			c.writeResponse(501, EnhancedCode{5, 5, 4}, "Unable to parse MAIL ESMTP parameters")
-			return
-		}
-
-		for key, value := range args {
-			switch key {
-			case "SIZE":
-				size, err := strconv.ParseInt(value, 10, 32)
-				if err != nil {
-					c.writeResponse(501, EnhancedCode{5, 5, 4}, "Unable to parse SIZE as an integer")
-					return
-				}
-
-				if c.server.MaxMessageBytes > 0 && int(size) > c.server.MaxMessageBytes {
-					c.writeResponse(552, EnhancedCode{5, 3, 4}, "Max message size exceeded")
-					return
-				}
-
-				opts.Size = int(size)
-			case "SMTPUTF8":
-				if !c.server.EnableSMTPUTF8 {
-					c.writeResponse(504, EnhancedCode{5, 5, 4}, "SMTPUTF8 is not implemented")
-					return
-				}
-				opts.UTF8 = true
-			case "REQUIRETLS":
-				if !c.server.EnableREQUIRETLS {
-					c.writeResponse(504, EnhancedCode{5, 5, 4}, "REQUIRETLS is not implemented")
-					return
-				}
-				opts.RequireTLS = true
-			case "BODY":
-				switch value {
-				case "BINARYMIME":
-					if !c.server.EnableBINARYMIME {
-						c.writeResponse(504, EnhancedCode{5, 5, 4}, "BINARYMIME is not implemented")
-						return
-					}
-					c.binarymime = true
-				case "7BIT", "8BITMIME":
-				default:
-					c.writeResponse(500, EnhancedCode{5, 5, 4}, "Unknown BODY value")
-					return
-				}
-				opts.Body = BodyType(value)
-			case "AUTH":
-				value, err := decodeXtext(value)
-				if err != nil || value == "" {
-					c.writeResponse(500, EnhancedCode{5, 5, 4}, "Malformed AUTH parameter value")
-					return
-				}
-				if value == "<>" {
-					value = ""
-				}
-				// TODO: otherwise, check mailbox syntax (RFC 2821 section 4.1.2)
-				opts.Auth = &value
-			default:
-				c.writeResponse(500, EnhancedCode{5, 5, 4}, "Unknown MAIL FROM argument")
+	for key, value := range args {
+		switch key {
+		case "SIZE":
+			size, err := strconv.ParseInt(value, 10, 32)
+			if err != nil {
+				c.writeResponse(501, EnhancedCode{5, 5, 4}, "Unable to parse SIZE as an integer")
 				return
 			}
+
+			if c.server.MaxMessageBytes > 0 && int(size) > c.server.MaxMessageBytes {
+				c.writeResponse(552, EnhancedCode{5, 3, 4}, "Max message size exceeded")
+				return
+			}
+
+			opts.Size = int(size)
+		case "SMTPUTF8":
+			if !c.server.EnableSMTPUTF8 {
+				c.writeResponse(504, EnhancedCode{5, 5, 4}, "SMTPUTF8 is not implemented")
+				return
+			}
+			opts.UTF8 = true
+		case "REQUIRETLS":
+			if !c.server.EnableREQUIRETLS {
+				c.writeResponse(504, EnhancedCode{5, 5, 4}, "REQUIRETLS is not implemented")
+				return
+			}
+			opts.RequireTLS = true
+		case "BODY":
+			switch value {
+			case "BINARYMIME":
+				if !c.server.EnableBINARYMIME {
+					c.writeResponse(504, EnhancedCode{5, 5, 4}, "BINARYMIME is not implemented")
+					return
+				}
+				c.binarymime = true
+			case "7BIT", "8BITMIME":
+			default:
+				c.writeResponse(500, EnhancedCode{5, 5, 4}, "Unknown BODY value")
+				return
+			}
+			opts.Body = BodyType(value)
+		case "AUTH":
+			value, err := decodeXtext(value)
+			if err != nil || value == "" {
+				c.writeResponse(500, EnhancedCode{5, 5, 4}, "Malformed AUTH parameter value")
+				return
+			}
+			if value == "<>" {
+				value = ""
+			}
+			// TODO: otherwise, check mailbox syntax (RFC 2821 section 4.1.2)
+			opts.Auth = &value
+		default:
+			c.writeResponse(500, EnhancedCode{5, 5, 4}, "Unknown MAIL FROM argument")
+			return
 		}
 	}
 

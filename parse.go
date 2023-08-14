@@ -49,12 +49,9 @@ func parseCmd(line string) (cmd string, arg string, err error) {
 //	" BODY=8BITMIME SIZE=1024 SMTPUTF8"
 //
 // The leading space is mandatory.
-func parseArgs(args []string) (map[string]string, error) {
+func parseArgs(s string) (map[string]string, error) {
 	argMap := map[string]string{}
-	for _, arg := range args {
-		if arg == "" {
-			continue
-		}
+	for _, arg := range strings.Fields(s) {
 		m := strings.Split(arg, "=")
 		switch len(m) {
 		case 2:
