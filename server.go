@@ -40,7 +40,7 @@ type Server struct {
 
 	Domain            string
 	MaxRecipients     int
-	MaxMessageBytes   int
+	MaxMessageBytes   int64
 	MaxLineLength     int
 	AllowInsecureAuth bool
 	Debug             io.Writer

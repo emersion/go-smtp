@@ -384,7 +384,7 @@ func (c *Client) Mail(from string, opts *MailOptions) error {
 		cmdStr += " BODY=8BITMIME"
 	}
 	if _, ok := c.ext["SIZE"]; ok && opts != nil && opts.Size != 0 {
-		cmdStr += " SIZE=" + strconv.Itoa(opts.Size)
+		cmdStr += fmt.Sprintf(" SIZE=%v", opts.Size)
 	}
 	if opts != nil && opts.RequireTLS {
 		if _, ok := c.ext["REQUIRETLS"]; ok {

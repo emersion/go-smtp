@@ -37,7 +37,7 @@ type Conn struct {
 	bdatPipe        *io.PipeWriter
 	bdatStatus      *statusCollector // used for BDAT on LMTP
 	dataResult      chan error
-	bytesReceived   int // counts total size of chunks when BDAT is used
+	bytesReceived   int64 // counts total size of chunks when BDAT is used
 
 	fromReceived bool
 	recipients   []string
@@ -321,12 +321,12 @@ func (c *Conn) handleMail(arg string) {
 				return
 			}
 
-			if c.server.MaxMessageBytes > 0 && int(size) > c.server.MaxMessageBytes {
+			if c.server.MaxMessageBytes > 0 && size > c.server.MaxMessageBytes {
 				c.writeResponse(552, EnhancedCode{5, 3, 4}, "Max message size exceeded")
 				return
 			}
 
-			opts.Size = int(size)
+			opts.Size = size
 		case "SMTPUTF8":
 			if !c.server.EnableSMTPUTF8 {
 				c.writeResponse(504, EnhancedCode{5, 5, 4}, "SMTPUTF8 is not implemented")
@@ -676,7 +676,7 @@ func (c *Conn) handleBdat(arg string) {
 		return
 	}
 
-	if c.server.MaxMessageBytes != 0 && c.bytesReceived+int(size) > c.server.MaxMessageBytes {
+	if c.server.MaxMessageBytes != 0 && c.bytesReceived+int64(size) > c.server.MaxMessageBytes {
 		c.writeResponse(552, EnhancedCode{5, 3, 4}, "Max message size exceeded")
 
 		// Discard chunk itself without passing it to backend.
@@ -746,7 +746,7 @@ func (c *Conn) handleBdat(arg string) {
 		return
 	}
 
-	c.bytesReceived += int(size)
+	c.bytesReceived += int64(size)
 
 	if last {
 		c.lineLimitReader.LineLimit = c.server.MaxLineLength

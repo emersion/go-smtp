@@ -42,7 +42,7 @@ type MailOptions struct {
 	Body BodyType
 
 	// Size of the body. Can be 0 if not specified by client.
-	Size int
+	Size int64
 
 	// TLS is required for the message transmission.
 	//
