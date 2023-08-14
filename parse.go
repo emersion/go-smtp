@@ -5,6 +5,14 @@ import (
 	"strings"
 )
 
+// cutPrefixFold is a version of strings.CutPrefix which is case-insensitive.
+func cutPrefixFold(s, prefix string) (string, bool) {
+	if len(s) < len(prefix) || !strings.EqualFold(s[:len(prefix)], prefix) {
+		return "", false
+	}
+	return s[len(prefix):], true
+}
+
 func parseCmd(line string) (cmd string, arg string, err error) {
 	line = strings.TrimRight(line, "\r\n")
 

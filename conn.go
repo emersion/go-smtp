@@ -289,11 +289,12 @@ func (c *Conn) handleMail(arg string) {
 		return
 	}
 
-	if len(arg) < 6 || strings.ToUpper(arg[0:5]) != "FROM:" {
+	arg, ok := cutPrefixFold(arg, "FROM:")
+	if !ok {
 		c.writeResponse(501, EnhancedCode{5, 5, 2}, "Was expecting MAIL arg syntax of FROM:<address>")
 		return
 	}
-	fromArgs := strings.Split(strings.Trim(arg[5:], " "), " ")
+	fromArgs := strings.Split(strings.Trim(arg, " "), " ")
 	if c.server.Strict {
 		if !strings.HasPrefix(fromArgs[0], "<") || !strings.HasSuffix(fromArgs[0], ">") {
 			c.writeResponse(501, EnhancedCode{5, 5, 2}, "Was expecting MAIL arg syntax of FROM:<address>")
@@ -453,13 +454,18 @@ func (c *Conn) handleRcpt(arg string) {
 		return
 	}
 
-	if (len(arg) < 4) || (strings.ToUpper(arg[0:3]) != "TO:") {
+	arg, ok := cutPrefixFold(arg, "TO:")
+	if !ok {
 		c.writeResponse(501, EnhancedCode{5, 5, 2}, "Was expecting RCPT arg syntax of TO:<address>")
 		return
 	}
 
 	// TODO: This trim is probably too forgiving
-	recipient := strings.Trim(arg[3:], "<> ")
+	recipient := strings.Trim(arg, "<> ")
+	if recipient == "" {
+		c.writeResponse(501, EnhancedCode{5, 5, 2}, "Was expecting RCPT arg syntax of TO:<address>")
+		return
+	}
 
 	if c.server.MaxRecipients > 0 && len(c.recipients) >= c.server.MaxRecipients {
 		c.writeResponse(452, EnhancedCode{4, 5, 3}, fmt.Sprintf("Maximum limit of %v recipients reached", c.server.MaxRecipients))
