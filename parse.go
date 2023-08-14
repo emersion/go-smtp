@@ -37,9 +37,7 @@ func parseCmd(line string) (cmd string, arg string, err error) {
 		return "", "", fmt.Errorf("mangled command: %q", line)
 	}
 
-	// I'm not sure if we should trim the args or not, but we will for now
-	//return strings.ToUpper(line[0:4]), strings.Trim(line[5:], " "), nil
-	return strings.ToUpper(line[0:4]), strings.Trim(line[5:], " \n\r"), nil
+	return strings.ToUpper(line[0:4]), strings.TrimSpace(line[5:]), nil
 }
 
 // Takes the arguments proceeding a command and files them
