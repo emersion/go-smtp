@@ -43,7 +43,7 @@ type Session interface {
 	// Set return path for currently processed message.
 	Mail(from string, opts *MailOptions) error
 	// Add recipient for currently processed message.
-	Rcpt(to string) error
+	Rcpt(to string, opts *RcptOptions) error
 	// Set currently processed message contents and send it.
 	//
 	// r must be consumed before Data returns.

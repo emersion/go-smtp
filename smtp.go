@@ -24,8 +24,7 @@ const (
 	BodyBinaryMIME BodyType = "BINARYMIME"
 )
 
-// MailOptions contains custom arguments that were
-// passed as an argument to the MAIL command.
+// MailOptions contains parameters for the MAIL command.
 type MailOptions struct {
 	// Value of BODY= argument, 7BIT, 8BITMIME or BINARYMIME.
 	Body BodyType
@@ -52,3 +51,6 @@ type MailOptions struct {
 	// Defined in RFC 4954.
 	Auth *string
 }
+
+// RcptOptions contains parameters for the RCPT command.
+type RcptOptions struct{}
