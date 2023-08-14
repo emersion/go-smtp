@@ -750,3 +750,11 @@ func (cdw clientDebugWriter) Write(b []byte) (int, error) {
 	}
 	return cdw.c.DebugWriter.Write(b)
 }
+
+// validateLine checks to see if a line has CR or LF.
+func validateLine(line string) error {
+	if strings.ContainsAny(line, "\n\r") {
+		return errors.New("smtp: a line must not contain CR or LF")
+	}
+	return nil
+}
