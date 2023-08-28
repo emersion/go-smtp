@@ -931,3 +931,29 @@ Goodbye.`
 		t.Fatalf("QUIT failed: %s", err)
 	}
 }
+
+func TestClientXtext(t *testing.T) {
+	server := "220 hello world\r\n" +
+		"200 some more"
+	var wrote bytes.Buffer
+	var fake faker
+	fake.ReadWriter = struct {
+		io.Reader
+		io.Writer
+	}{
+		strings.NewReader(server),
+		&wrote,
+	}
+	c, err := NewClient(fake, "fake.host")
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	c.didHello = true
+	c.ext = map[string]string{"AUTH": "PLAIN"}
+	email := "e=mc2@example.com"
+	c.Mail(email, &MailOptions{Auth: &email})
+	c.Close()
+	if got, want := wrote.String(), "MAIL FROM:<e=mc2@example.com> AUTH=e+3Dmc2@example.com\r\n"; got != want {
+		t.Errorf("wrote %q; want %q", got, want)
+	}
+}
