@@ -60,6 +60,10 @@ type Server struct {
 	// Should be used only if backend supports it.
 	EnableBINARYMIME bool
 
+	// Advertise DSN (RFC 3461) capability.
+	// Should be used only if backend supports it.
+	EnableDSN bool
+
 	// If set, the AUTH command will not be advertised and authentication
 	// attempts will be rejected. This setting overrides AllowInsecureAuth.
 	AuthDisabled bool

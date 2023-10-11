@@ -10,6 +10,7 @@
 //   - REQUIRETLS (RFC 8689)
 //   - CHUNKING (RFC 3030)
 //   - BINARYMIME (RFC 3030)
+//   - DSN (RFC 3461, RFC 6533)
 //
 // LMTP (RFC 2033) is also supported.
 //
@@ -22,6 +23,13 @@ const (
 	Body7Bit       BodyType = "7BIT"
 	Body8BitMIME   BodyType = "8BITMIME"
 	BodyBinaryMIME BodyType = "BINARYMIME"
+)
+
+type DSNReturn string
+
+const (
+	DSNReturnFull    DSNReturn = "FULL"
+	DSNReturnHeaders DSNReturn = "HDRS"
 )
 
 // MailOptions contains parameters for the MAIL command.
@@ -42,6 +50,12 @@ type MailOptions struct {
 	// This flag is set by SMTPUTF8-aware (RFC 6531) client.
 	UTF8 bool
 
+	// Value of RET= argument, FULL or HDRS.
+	Return DSNReturn
+
+	// Envelope identifier set by the client.
+	EnvelopeID string
+
 	// The authorization identity asserted by the message sender in decoded
 	// form with angle brackets stripped.
 	//
@@ -52,5 +66,29 @@ type MailOptions struct {
 	Auth *string
 }
 
+type DSNNotify string
+
+const (
+	DSNNotifyNever   DSNNotify = "NEVER"
+	DSNNotifyDelayed DSNNotify = "DELAY"
+	DSNNotifyFailure DSNNotify = "FAILURE"
+	DSNNotifySuccess DSNNotify = "SUCCESS"
+)
+
+type DSNAddressType string
+
+const (
+	DSNAddressTypeRFC822 DSNAddressType = "RFC822"
+	DSNAddressTypeUTF8   DSNAddressType = "UTF-8"
+)
+
 // RcptOptions contains parameters for the RCPT command.
-type RcptOptions struct{}
+type RcptOptions struct {
+	// Value of NOTIFY= argument, NEVER or a combination of either of
+	// DELAY, FAILURE, SUCCESS.
+	Notify []DSNNotify
+
+	// Original recipient set by client.
+	OriginalRecipientType DSNAddressType
+	OriginalRecipient     string
+}

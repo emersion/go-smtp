@@ -16,10 +16,11 @@ import (
 )
 
 type message struct {
-	From string
-	To   []string
-	Data []byte
-	Opts *smtp.MailOptions
+	From     string
+	To       []string
+	RcptOpts []*smtp.RcptOptions
+	Data     []byte
+	Opts     *smtp.MailOptions
 }
 
 type backend struct {
@@ -96,6 +97,7 @@ func (s *session) Mail(from string, opts *smtp.MailOptions) error {
 
 func (s *session) Rcpt(to string, opts *smtp.RcptOptions) error {
 	s.msg.To = append(s.msg.To, to)
+	s.msg.RcptOpts = append(s.msg.RcptOpts, opts)
 	return nil
 }
 
@@ -1182,5 +1184,204 @@ func TestServerShutdown(t *testing.T) {
 	errTwo := <-errChan
 	if errTwo != smtp.ErrServerClosed {
 		t.Fatal("Expected err to be ErrServerClosed:", errTwo)
+	}
+}
+
+const (
+	dsnEnvelopeID  = "e=mc2"
+	dsnEmailRFC822 = "e=mc2@example.com"
+	dsnEmailUTF8   = "e=mc2@ドメイン名例.jp"
+)
+
+func TestServerDSN(t *testing.T) {
+	be, s, c, scanner, caps := testServerEhlo(t,
+		func(s *smtp.Server) {
+			s.EnableDSN = true
+		})
+	defer s.Close()
+	defer c.Close()
+
+	if _, ok := caps["DSN"]; !ok {
+		t.Fatal("Missing capability: DSN")
+	}
+
+	io.WriteString(c, "MAIL FROM:<e=mc2@example.com> envID=e+3Dmc2 Ret=hdrs\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid MAIL response:", scanner.Text())
+	}
+
+	io.WriteString(c, "RCPT TO:<e=mc2@example.com> ORcpt=Rfc822;e+3Dmc2@example.com Notify=Never\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid RCPT response:", scanner.Text())
+	}
+
+	io.WriteString(c, "RCPT TO:<e=mc2@example.com> orcpt=Utf-8;e\\x{3D}mc2@\\x{30C9}\\x{30E1}\\x{30A4}\\x{30F3}\\x{540D}\\x{4F8B}.jp notify=failure,delay\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid RCPT response:", scanner.Text())
+	}
+
+	// go on as usual
+	io.WriteString(c, "DATA\r\n")
+	scanner.Scan()
+	io.WriteString(c, "Hey <3\r\n")
+	io.WriteString(c, ".\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid DATA response:", scanner.Text())
+	}
+	if len(be.messages) != 0 || len(be.anonmsgs) != 1 {
+		t.Fatal("Invalid number of sent messages:", be.messages, be.anonmsgs)
+	}
+
+	if val := be.anonmsgs[0].Opts.Return; val != smtp.DSNReturnHeaders {
+		t.Fatal("Invalid RET parameter value:", val)
+	}
+	if val := be.anonmsgs[0].Opts.EnvelopeID; val != dsnEnvelopeID {
+		t.Fatal("Invalid ENVID parameter value:", val)
+	}
+
+	to := be.anonmsgs[0].To
+	if to == nil || len(to) != 2 {
+		t.Fatal("Invalid number of recipients:", to)
+	}
+	if val := to[0]; val != dsnEmailRFC822 {
+		t.Fatal("Invalid recipient:", val)
+	}
+	if val := to[1]; val != dsnEmailRFC822 {
+		t.Fatal("Invalid recipient:", val)
+	}
+
+	opts := be.anonmsgs[0].RcptOpts
+	if opts == nil || len(opts) != 2 {
+		t.Fatal("Invalid number of recipients:", opts)
+	}
+	if val := opts[0].Notify; val == nil || len(val) != 1 || val[0] != smtp.DSNNotifyNever {
+		t.Fatal("Invalid NOTIFY parameter value:", val)
+	}
+	if val := opts[0].OriginalRecipientType; val != smtp.DSNAddressTypeRFC822 {
+		t.Fatal("Invalid ORCPT address type:", val)
+	}
+	if val := opts[0].OriginalRecipient; val != dsnEmailRFC822 {
+		t.Fatal("Invalid ORCPT address:", val)
+	}
+	if val := opts[1].Notify; val == nil || len(val) != 2 || val[0] != smtp.DSNNotifyFailure || val[1] != smtp.DSNNotifyDelayed {
+		t.Fatal("Invalid NOTIFY parameter value:", val)
+	}
+	if val := opts[1].OriginalRecipientType; val != smtp.DSNAddressTypeUTF8 {
+		t.Fatal("Invalid ORCPT address type:", val)
+	}
+	if val := opts[1].OriginalRecipient; val != dsnEmailUTF8 {
+		t.Fatal("Invalid ORCPT address:", val)
+	}
+}
+
+func TestServerDSNwithSMTPUTF8(t *testing.T) {
+	be, s, c, scanner, caps := testServerEhlo(t,
+		func(s *smtp.Server) {
+			s.EnableDSN = true
+			s.EnableSMTPUTF8 = true
+		})
+	defer s.Close()
+	defer c.Close()
+
+	for _, cap := range []string{"DSN", "SMTPUTF8"} {
+		if _, ok := caps[cap]; !ok {
+			t.Fatal("Missing capability:", cap)
+		}
+	}
+
+	io.WriteString(c, "MAIL FROM:<e=mc2@example.com> ENVID=e+3Dmc2 RET=HDRS\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid MAIL response:", scanner.Text())
+	}
+
+	io.WriteString(c, "RCPT TO:<e=mc2@example.com> ORCPT=RFC822;e+3Dmc2@example.com NOTIFY=NEVER\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid RCPT response:", scanner.Text())
+	}
+
+	io.WriteString(c, "RCPT TO:<e=mc2@ドメイン名例.jp> ORCPT=UTF-8;e\\x{3D}mc2@\\x{30C9}\\x{30E1}\\x{30A4}\\x{30F3}\\x{540D}\\x{4F8B}.jp NOTIFY=FAILURE,DELAY\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid RCPT response:", scanner.Text())
+	}
+
+	io.WriteString(c, "RCPT TO:<e=mc2@ドメイン名例.jp> ORCPT=utf-8;e\\x{3D}mc2@ドメイン名例.jp NOTIFY=SUCCESS\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid RCPT response:", scanner.Text())
+	}
+
+	// go on as usual
+	io.WriteString(c, "DATA\r\n")
+	scanner.Scan()
+	io.WriteString(c, "Hey <3\r\n")
+	io.WriteString(c, ".\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid DATA response:", scanner.Text())
+	}
+	if len(be.messages) != 0 || len(be.anonmsgs) != 1 {
+		t.Fatal("Invalid number of sent messages:", be.messages, be.anonmsgs)
+	}
+
+	if val := be.anonmsgs[0].Opts.Return; val != smtp.DSNReturnHeaders {
+		t.Fatal("Invalid RET parameter value:", val)
+	}
+	if val := be.anonmsgs[0].Opts.EnvelopeID; val != dsnEnvelopeID {
+		t.Fatal("Invalid ENVID parameter value:", val)
+	}
+
+	to := be.anonmsgs[0].To
+	if to == nil || len(to) != 3 {
+		t.Fatal("Invalid number of recipients:", to)
+	}
+	if val := to[0]; val != dsnEmailRFC822 {
+		t.Fatal("Invalid recipient:", val)
+	}
+	// Non-ASCII UTF-8 is allowed in TO parameter value
+	if val := to[1]; val != dsnEmailUTF8 {
+		t.Fatal("Invalid recipient:", val)
+	}
+	if val := to[2]; val != dsnEmailUTF8 {
+		t.Fatal("Invalid recipient:", val)
+	}
+
+	opts := be.anonmsgs[0].RcptOpts
+	if opts == nil || len(opts) != 3 {
+		t.Fatal("Invalid number of recipients:", opts)
+	}
+	if val := opts[0].Notify; val == nil || len(val) != 1 || val[0] != smtp.DSNNotifyNever {
+		t.Fatal("Invalid NOTIFY parameter value:", val)
+	}
+	if val := opts[0].OriginalRecipientType; val != smtp.DSNAddressTypeRFC822 {
+		t.Fatal("Invalid ORCPT address type:", val)
+	}
+	if val := opts[0].OriginalRecipient; val != dsnEmailRFC822 {
+		t.Fatal("Invalid ORCPT address:", val)
+	}
+	if val := opts[1].Notify; val == nil || len(val) != 2 || val[0] != smtp.DSNNotifyFailure || val[1] != smtp.DSNNotifyDelayed {
+		t.Fatal("Invalid NOTIFY parameter value:", val)
+	}
+	if val := opts[1].OriginalRecipientType; val != smtp.DSNAddressTypeUTF8 {
+		t.Fatal("Invalid ORCPT address type:", val)
+	}
+	if val := opts[1].OriginalRecipient; val != dsnEmailUTF8 {
+		t.Fatal("Invalid ORCPT address:", val)
+	}
+	// utf-8-addr-unitext form is allowed in ORCPT parameter value
+	if val := opts[2].Notify; val == nil || len(val) != 1 || val[0] != smtp.DSNNotifySuccess {
+		t.Fatal("Invalid NOTIFY parameter value:", val)
+	}
+	if val := opts[2].OriginalRecipientType; val != smtp.DSNAddressTypeUTF8 {
+		t.Fatal("Invalid ORCPT address type:", val)
+	}
+	if val := opts[2].OriginalRecipient; val != dsnEmailUTF8 {
+		t.Fatal("Invalid ORCPT address:", val)
 	}
 }
