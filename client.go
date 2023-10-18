@@ -379,34 +379,54 @@ func (c *Client) Mail(from string, opts *MailOptions) error {
 	if err := c.hello(); err != nil {
 		return err
 	}
-	cmdStr := "MAIL FROM:<%s>"
+
+	var sb strings.Builder
+	// A high enough power of 2 than 510+14+26+11+9+9+39+500
+	sb.Grow(2048)
+	fmt.Fprintf(&sb, "MAIL FROM:<%s>", from)
 	if _, ok := c.ext["8BITMIME"]; ok {
-		cmdStr += " BODY=8BITMIME"
+		sb.WriteString(" BODY=8BITMIME")
 	}
 	if _, ok := c.ext["SIZE"]; ok && opts != nil && opts.Size != 0 {
-		cmdStr += fmt.Sprintf(" SIZE=%v", opts.Size)
+		fmt.Fprintf(&sb, " SIZE=%v", opts.Size)
 	}
 	if opts != nil && opts.RequireTLS {
 		if _, ok := c.ext["REQUIRETLS"]; ok {
-			cmdStr += " REQUIRETLS"
+			sb.WriteString(" REQUIRETLS")
 		} else {
 			return errors.New("smtp: server does not support REQUIRETLS")
 		}
 	}
 	if opts != nil && opts.UTF8 {
 		if _, ok := c.ext["SMTPUTF8"]; ok {
-			cmdStr += " SMTPUTF8"
+			sb.WriteString(" SMTPUTF8")
 		} else {
 			return errors.New("smtp: server does not support SMTPUTF8")
 		}
 	}
+	if _, ok := c.ext["DSN"]; ok && opts != nil {
+		switch opts.Return {
+		case DSNReturnFull, DSNReturnHeaders:
+			fmt.Fprintf(&sb, " RET=%s", string(opts.Return))
+		case "":
+			// This space is intentionally left blank
+		default:
+			return errors.New("smtp: Unknown RET parameter value")
+		}
+		if opts.EnvelopeID != "" {
+			if !isPrintableASCII(opts.EnvelopeID) {
+				return errors.New("smtp: Malformed ENVID parameter value")
+			}
+			fmt.Fprintf(&sb, " ENVID=%s", encodeXtext(opts.EnvelopeID))
+		}
+	}
 	if opts != nil && opts.Auth != nil {
 		if _, ok := c.ext["AUTH"]; ok {
-			cmdStr += " AUTH=" + encodeXtext(*opts.Auth)
+			fmt.Fprintf(&sb, " AUTH=%s", encodeXtext(*opts.Auth))
 		}
 		// We can safely discard parameter if server does not support AUTH.
 	}
-	_, _, err := c.cmd(250, cmdStr, from)
+	_, _, err := c.cmd(250, "%s", sb.String())
 	return err
 }
 
@@ -422,7 +442,45 @@ func (c *Client) Rcpt(to string, opts *RcptOptions) error {
 	if err := validateLine(to); err != nil {
 		return err
 	}
-	if _, _, err := c.cmd(25, "RCPT TO:<%s>", to); err != nil {
+
+	var sb strings.Builder
+	// A high enough power of 2 than 510+29+501
+	sb.Grow(2048)
+	fmt.Fprintf(&sb, "RCPT TO:<%s>", to)
+	if _, ok := c.ext["DSN"]; ok && opts != nil {
+		if opts.Notify != nil && len(opts.Notify) != 0 {
+			sb.WriteString(" NOTIFY=")
+			if err := checkNotifySet(opts.Notify); err != nil {
+				return errors.New("smtp: Malformed NOTIFY parameter value")
+			}
+			for i, v := range opts.Notify {
+				if i != 0 {
+					sb.WriteString(",")
+				}
+				sb.WriteString(string(v))
+			}
+		}
+		if opts.OriginalRecipient != "" {
+			var enc string
+			switch opts.OriginalRecipientType {
+			case DSNAddressTypeRFC822:
+				if !isPrintableASCII(opts.OriginalRecipient) {
+					return errors.New("smtp: Illegal address")
+				}
+				enc = encodeXtext(opts.OriginalRecipient)
+			case DSNAddressTypeUTF8:
+				if _, ok := c.ext["SMTPUTF8"]; ok {
+					enc = encodeUTF8AddrUnitext(opts.OriginalRecipient)
+				} else {
+					enc = encodeUTF8AddrXtext(opts.OriginalRecipient)
+				}
+			default:
+				return errors.New("smtp: Unknown address type")
+			}
+			fmt.Fprintf(&sb, " ORCPT=%s;%s", string(opts.OriginalRecipientType), enc)
+		}
+	}
+	if _, _, err := c.cmd(25, "%s", sb.String()); err != nil {
 		return err
 	}
 	c.rcpts = append(c.rcpts, to)
