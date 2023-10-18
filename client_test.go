@@ -932,9 +932,15 @@ Goodbye.`
 	}
 }
 
+var xtextClient = `MAIL FROM:<e=mc2@example.com> AUTH=e+3Dmc2@example.com
+RCPT TO:<e=mc2@example.com> ORCPT=UTF-8;e\x{3D}mc2@example.com
+`
+
 func TestClientXtext(t *testing.T) {
 	server := "220 hello world\r\n" +
-		"200 some more"
+		"250 ok\r\n" +
+		"250 ok"
+	client := strings.Join(strings.Split(xtextClient, "\n"), "\r\n")
 	var wrote bytes.Buffer
 	var fake faker
 	fake.ReadWriter = struct {
@@ -949,11 +955,78 @@ func TestClientXtext(t *testing.T) {
 		t.Fatalf("NewClient: %v", err)
 	}
 	c.didHello = true
-	c.ext = map[string]string{"AUTH": "PLAIN"}
+	c.ext = map[string]string{"AUTH": "PLAIN", "DSN": ""}
 	email := "e=mc2@example.com"
 	c.Mail(email, &MailOptions{Auth: &email})
+	c.Rcpt(email, &RcptOptions{
+		OriginalRecipientType: DSNAddressTypeUTF8,
+		OriginalRecipient:     email,
+	})
 	c.Close()
-	if got, want := wrote.String(), "MAIL FROM:<e=mc2@example.com> AUTH=e+3Dmc2@example.com\r\n"; got != want {
-		t.Errorf("wrote %q; want %q", got, want)
+	if got := wrote.String(); got != client {
+		t.Errorf("wrote %q; want %q", got, client)
+	}
+}
+
+const (
+	dsnEnvelopeID  = "e=mc2"
+	dsnEmailRFC822 = "e=mc2@example.com"
+	dsnEmailUTF8   = "e=mc2@ドメイン名例.jp"
+)
+
+var dsnServer = `220 hello world
+250 ok
+250 ok
+250 ok
+250 ok
+`
+
+var dsnClient = `MAIL FROM:<e=mc2@example.com> RET=HDRS ENVID=e+3Dmc2
+RCPT TO:<e=mc2@example.com> NOTIFY=NEVER ORCPT=RFC822;e+3Dmc2@example.com
+RCPT TO:<e=mc2@example.com> NOTIFY=FAILURE,DELAY ORCPT=UTF-8;e\x{3D}mc2@\x{30C9}\x{30E1}\x{30A4}\x{30F3}\x{540D}\x{4F8B}.jp
+RCPT TO:<e=mc2@ドメイン名例.jp> ORCPT=UTF-8;e\x{3D}mc2@ドメイン名例.jp
+`
+
+func TestClientDSN(t *testing.T) {
+	server := strings.Join(strings.Split(dsnServer, "\n"), "\r\n")
+	client := strings.Join(strings.Split(dsnClient, "\n"), "\r\n")
+
+	var wrote bytes.Buffer
+	var fake faker
+	fake.ReadWriter = struct {
+		io.Reader
+		io.Writer
+	}{
+		strings.NewReader(server),
+		&wrote,
+	}
+	c, err := NewClient(fake, "fake.host")
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	c.didHello = true
+	c.ext = map[string]string{"DSN": ""}
+	c.Mail(dsnEmailRFC822, &MailOptions{
+		Return:     DSNReturnHeaders,
+		EnvelopeID: dsnEnvelopeID,
+	})
+	c.Rcpt(dsnEmailRFC822, &RcptOptions{
+		OriginalRecipientType: DSNAddressTypeRFC822,
+		OriginalRecipient:     dsnEmailRFC822,
+		Notify:                []DSNNotify{DSNNotifyNever},
+	})
+	c.Rcpt(dsnEmailRFC822, &RcptOptions{
+		OriginalRecipientType: DSNAddressTypeUTF8,
+		OriginalRecipient:     dsnEmailUTF8,
+		Notify:                []DSNNotify{DSNNotifyFailure, DSNNotifyDelayed},
+	})
+	c.ext["SMTPUTF8"] = ""
+	c.Rcpt(dsnEmailUTF8, &RcptOptions{
+		OriginalRecipientType: DSNAddressTypeUTF8,
+		OriginalRecipient:     dsnEmailUTF8,
+	})
+	c.Close()
+	if actualcmds := wrote.String(); client != actualcmds {
+		t.Errorf("wrote %q; want %q", actualcmds, client)
 	}
 }
