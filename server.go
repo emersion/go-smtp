@@ -22,7 +22,7 @@ var (
 // A function that creates SASL servers.
 type SaslServerFactory func(conn *Conn) sasl.Server
 
-// A function that
+// A function that checks if a connection should be allowed.
 type AllowConnFunc func(conn *Conn) bool
 
 // Logger interface is used by Server to report unexpected internal errors.
