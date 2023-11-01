@@ -1155,6 +1155,21 @@ func TestServer_TooLongCommand(t *testing.T) {
 	}
 }
 
+func TestServer_ConnNotAllowed(t *testing.T) {
+	_, s, c, scanner := testServer(t, func(s *smtp.Server) {
+		s.AllowConn = func(conn *smtp.Conn) bool {
+			return false
+		}
+	})
+	defer s.Close()
+	defer c.Close()
+
+	ok := scanner.Scan()
+	if ok {
+		t.Fatal("Server should reject connection")
+	}
+}
+
 func TestServerShutdown(t *testing.T) {
 	_, s, c, _ := testServerGreeted(t)
 

@@ -22,6 +22,9 @@ var (
 // A function that creates SASL servers.
 type SaslServerFactory func(conn *Conn) sasl.Server
 
+// A function that
+type AllowConnFunc func(conn *Conn) bool
+
 // Logger interface is used by Server to report unexpected internal errors.
 type Logger interface {
 	Printf(format string, v ...interface{})
@@ -47,6 +50,7 @@ type Server struct {
 	ErrorLog          Logger
 	ReadTimeout       time.Duration
 	WriteTimeout      time.Duration
+	AllowConn         AllowConnFunc
 
 	// Advertise SMTPUTF8 (RFC 6531) capability.
 	// Should be used only if backend supports it.
@@ -165,6 +169,10 @@ func (s *Server) handleConn(c *Conn) error {
 		delete(s.conns, c)
 		s.locker.Unlock()
 	}()
+
+	if s.AllowConn != nil && !s.AllowConn(c) {
+		return errors.New("connection not allowed")
+	}
 
 	if tlsConn, ok := c.conn.(*tls.Conn); ok {
 		if d := s.ReadTimeout; d != 0 {
