@@ -54,6 +54,19 @@ func (s *Session) Logout() error {
 	return nil
 }
 
+// ExampleServer runs an example SMTP server.
+//
+// It can be tested manually with e.g. telnet:
+//
+//	> telnet localhost 1025
+//	EHLO localhost
+//	AUTH PLAIN
+//	AHVzZXJuYW1lAHBhc3N3b3Jk
+//	MAIL FROM:<root@nsa.gov>
+//	RCPT TO:<root@gchq.gov.uk>
+//	DATA
+//	Hey <3
+//	.
 func ExampleServer() {
 	be := &Backend{}
 
