@@ -8,7 +8,7 @@ An ESMTP client and server library written in Go.
 ## Features
 
 * ESMTP client & server implementing [RFC 5321]
-* Support for SMTP [AUTH] and [PIPELINING]
+* Support for additional SMTP extensions such as [AUTH] and [PIPELINING]
 * UTF-8 support for subject and message
 * [LMTP] support
 
