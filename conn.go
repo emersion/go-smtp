@@ -911,7 +911,7 @@ func toSMTPStatus(err error) (code int, enchCode EnhancedCode, msg string) {
 		if smtperr, ok := err.(*SMTPError); ok {
 			return smtperr.Code, smtperr.EnhancedCode, smtperr.Message
 		} else {
-			return 554, EnhancedCode{5, 0, 0}, "Error: transaction failed, blame it on the weather: " + err.Error()
+			return 554, EnhancedCode{5, 0, 0}, "Error: transaction failed: " + err.Error()
 		}
 	}
 
