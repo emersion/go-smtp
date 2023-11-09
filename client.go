@@ -21,13 +21,10 @@ import (
 
 // A Client represents a client connection to an SMTP server.
 type Client struct {
-	// Text is the textproto.Conn used by the Client. It is exported to allow for
-	// clients to add extensions.
-	Text *textproto.Conn
-
 	// keep a reference to the connection so it can be used to create a TLS
 	// connection later
 	conn net.Conn
+	text *textproto.Conn
 	// whether the Client is using TLS
 	tls        bool
 	serverName string
@@ -105,9 +102,9 @@ func NewClient(conn net.Conn, host string) (*Client, error) {
 	c.conn.SetDeadline(time.Now().Add(5 * time.Minute))
 	defer c.conn.SetDeadline(time.Time{})
 
-	_, _, err := c.Text.ReadResponse(220)
+	_, _, err := c.text.ReadResponse(220)
 	if err != nil {
-		c.Text.Close()
+		c.text.Close()
 		if protoErr, ok := err.(*textproto.Error); ok {
 			return nil, toSMTPErr(protoErr)
 		}
@@ -153,7 +150,7 @@ func (c *Client) setConn(conn net.Conn) {
 		Writer: w,
 		Closer: conn,
 	}
-	c.Text = textproto.NewConn(rwc)
+	c.text = textproto.NewConn(rwc)
 
 	_, isTLS := conn.(*tls.Conn)
 	c.tls = isTLS
@@ -161,7 +158,7 @@ func (c *Client) setConn(conn net.Conn) {
 
 // Close closes the connection.
 func (c *Client) Close() error {
-	return c.Text.Close()
+	return c.text.Close()
 }
 
 // hello runs a hello exchange if needed.
@@ -195,18 +192,18 @@ func (c *Client) Hello(localName string) error {
 }
 
 // cmd is a convenience function that sends a command and returns the response
-// textproto.Error returned by c.Text.ReadResponse is converted into SMTPError.
+// textproto.Error returned by c.text.ReadResponse is converted into SMTPError.
 func (c *Client) cmd(expectCode int, format string, args ...interface{}) (int, string, error) {
 	c.conn.SetDeadline(time.Now().Add(c.CommandTimeout))
 	defer c.conn.SetDeadline(time.Time{})
 
-	id, err := c.Text.Cmd(format, args...)
+	id, err := c.text.Cmd(format, args...)
 	if err != nil {
 		return 0, "", err
 	}
-	c.Text.StartResponse(id)
-	defer c.Text.EndResponse(id)
-	code, msg, err := c.Text.ReadResponse(expectCode)
+	c.text.StartResponse(id)
+	defer c.text.EndResponse(id)
+	code, msg, err := c.text.ReadResponse(expectCode)
 	if err != nil {
 		if protoErr, ok := err.(*textproto.Error); ok {
 			smtpErr := toSMTPErr(protoErr)
@@ -510,7 +507,7 @@ func (d *dataCloser) Close() error {
 	if d.c.lmtp {
 		for expectedResponses > 0 {
 			rcpt := d.c.rcpts[len(d.c.rcpts)-expectedResponses]
-			if _, _, err := d.c.Text.ReadResponse(250); err != nil {
+			if _, _, err := d.c.text.ReadResponse(250); err != nil {
 				if protoErr, ok := err.(*textproto.Error); ok {
 					if d.statusCb != nil {
 						d.statusCb(rcpt, toSMTPErr(protoErr))
@@ -524,7 +521,7 @@ func (d *dataCloser) Close() error {
 			expectedResponses--
 		}
 	} else {
-		_, _, err := d.c.Text.ReadResponse(250)
+		_, _, err := d.c.text.ReadResponse(250)
 		if err != nil {
 			if protoErr, ok := err.(*textproto.Error); ok {
 				return toSMTPErr(protoErr)
@@ -548,7 +545,7 @@ func (c *Client) Data() (io.WriteCloser, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &dataCloser{c: c, WriteCloser: c.Text.DotWriter()}, nil
+	return &dataCloser{c: c, WriteCloser: c.text.DotWriter()}, nil
 }
 
 // LMTPData is the LMTP-specific version of the Data method. It accepts a callback
@@ -568,7 +565,7 @@ func (c *Client) LMTPData(statusCb func(rcpt string, status *SMTPError)) (io.Wri
 	if err != nil {
 		return nil, err
 	}
-	return &dataCloser{c: c, WriteCloser: c.Text.DotWriter(), statusCb: statusCb}, nil
+	return &dataCloser{c: c, WriteCloser: c.text.DotWriter(), statusCb: statusCb}, nil
 }
 
 // SendMail will use an existing connection to send an email from
@@ -752,7 +749,7 @@ func (c *Client) Quit() error {
 	if err != nil {
 		return err
 	}
-	return c.Text.Close()
+	return c.Close()
 }
 
 func parseEnhancedCode(s string) (EnhancedCode, error) {
