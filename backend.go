@@ -53,6 +53,8 @@ type Session interface {
 // LMTPSession is an add-on interface for Session. It can be implemented by
 // LMTP servers to provide extra functionality.
 type LMTPSession interface {
+	Session
+
 	// LMTPData is the LMTP-specific version of Data method.
 	// It can be optionally implemented by the backend to provide
 	// per-recipient status information when it is used over LMTP
