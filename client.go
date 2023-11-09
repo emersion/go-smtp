@@ -604,11 +604,7 @@ func (c *Client) SendMail(from string, to []string, r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	err = w.Close()
-	if err != nil {
-		return err
-	}
-	return c.Quit()
+	return w.Close()
 }
 
 var testHookStartTLS func(*tls.Config) // nil, except for tests
@@ -666,7 +662,10 @@ func SendMail(addr string, a sasl.Client, from string, to []string, r io.Reader)
 			return err
 		}
 	}
-	return c.SendMail(from, to, r)
+	if err := c.SendMail(from, to, r); err != nil {
+		return err
+	}
+	return c.Quit()
 }
 
 // SendMailTLS works like SendMail, but with implicit TLS.
@@ -696,7 +695,10 @@ func SendMailTLS(addr string, a sasl.Client, from string, to []string, r io.Read
 			return err
 		}
 	}
-	return c.SendMail(from, to, r)
+	if err := c.SendMail(from, to, r); err != nil {
+		return err
+	}
+	return c.Quit()
 }
 
 // Extension reports whether an extension is support by the server.
