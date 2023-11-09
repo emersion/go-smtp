@@ -227,7 +227,6 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 		c.writeResponse(501, EnhancedCode{5, 5, 2}, "Domain/address argument required for HELO")
 		return
 	}
-	c.helo = domain
 
 	sess, err := c.server.Backend.NewSession(c)
 	if err != nil {
@@ -238,6 +237,8 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 		c.writeResponse(451, EnhancedCode{4, 0, 0}, err.Error())
 		return
 	}
+
+	c.helo = domain
 	c.setSession(sess)
 
 	if !enhanced {
