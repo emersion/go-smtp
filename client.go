@@ -636,6 +636,7 @@ func SendMail(addr string, a sasl.Client, from string, to []string, r io.Reader)
 			return err
 		}
 	}
+
 	c, err := Dial(addr)
 	if err != nil {
 		return err
@@ -675,6 +676,7 @@ func SendMailTLS(addr string, a sasl.Client, from string, to []string, r io.Read
 			return err
 		}
 	}
+
 	c, err := DialTLS(addr, nil)
 	if err != nil {
 		return err
