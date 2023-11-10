@@ -651,8 +651,8 @@ func SendMail(addr string, a sasl.Client, from string, to []string, r io.Reader)
 	if err = c.StartTLS(nil); err != nil {
 		return err
 	}
-	if a != nil && c.ext != nil {
-		if _, ok := c.ext["AUTH"]; !ok {
+	if a != nil {
+		if ok, _ := c.Extension("AUTH"); !ok {
 			return errors.New("smtp: server doesn't support AUTH")
 		}
 		if err = c.Auth(a); err != nil {
@@ -684,8 +684,8 @@ func SendMailTLS(addr string, a sasl.Client, from string, to []string, r io.Read
 	if err = c.hello(); err != nil {
 		return err
 	}
-	if a != nil && c.ext != nil {
-		if _, ok := c.ext["AUTH"]; !ok {
+	if a != nil {
+		if ok, _ := c.Extension("AUTH"); !ok {
 			return errors.New("smtp: server doesn't support AUTH")
 		}
 		if err = c.Auth(a); err != nil {
