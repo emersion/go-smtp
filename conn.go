@@ -127,7 +127,7 @@ func (c *Conn) handle(cmd string, arg string) {
 	case "VRFY":
 		c.writeResponse(252, EnhancedCode{2, 5, 0}, "Cannot VRFY user, but will accept message")
 	case "NOOP":
-		c.writeResponse(250, EnhancedCode{2, 0, 0}, "I have sucessfully done nothing")
+		c.writeResponse(250, EnhancedCode{2, 0, 0}, "I have successfully done nothing")
 	case "RSET": // Reset session
 		c.reset()
 		c.writeResponse(250, EnhancedCode{2, 0, 0}, "Session reset")

@@ -192,7 +192,7 @@ func TestBasic_SMTPError(t *testing.T) {
 
 	err = c.Mail("whatever", nil)
 	if err == nil {
-		t.Fatal("MAIL succeded")
+		t.Fatal("MAIL succeeded")
 	}
 	smtpErr, ok := err.(*SMTPError)
 	if !ok {
@@ -210,7 +210,7 @@ func TestBasic_SMTPError(t *testing.T) {
 
 	err = c.Mail("whatever", nil)
 	if err == nil {
-		t.Fatal("MAIL succeded")
+		t.Fatal("MAIL succeeded")
 	}
 	smtpErr, ok = err.(*SMTPError)
 	if !ok {
@@ -225,7 +225,7 @@ func TestBasic_SMTPError(t *testing.T) {
 
 	err = c.Mail("whatever", nil)
 	if err == nil {
-		t.Fatal("MAIL succeded")
+		t.Fatal("MAIL succeeded")
 	}
 	smtpErr, ok = err.(*SMTPError)
 	if !ok {
@@ -274,14 +274,14 @@ func TestClient_TooLongLine(t *testing.T) {
 
 	err = c.Mail("whatever", nil)
 	if err != ErrTooLongLine {
-		t.Fatal("MAIL succeded or returned a different error:", err)
+		t.Fatal("MAIL succeeded or returned a different error:", err)
 	}
 
 	// ErrTooLongLine is "sticky" since the connection is in broken state and
 	// the only reasonable way to recover is to close it.
 	err = c.Mail("whatever", nil)
 	if err != ErrTooLongLine {
-		t.Fatal("Second MAIL succeded or returned a different error:", err)
+		t.Fatal("Second MAIL succeeded or returned a different error:", err)
 	}
 }
 
