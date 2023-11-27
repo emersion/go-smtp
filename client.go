@@ -774,9 +774,6 @@ func parseEnhancedCode(s string) (EnhancedCode, error) {
 // toSMTPErr converts textproto.Error into SMTPError, parsing
 // enhanced status code if it is present.
 func toSMTPErr(protoErr *textproto.Error) *SMTPError {
-	if protoErr == nil {
-		return nil
-	}
 	smtpErr := &SMTPError{
 		Code:    protoErr.Code,
 		Message: protoErr.Msg,
