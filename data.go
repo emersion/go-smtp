@@ -2,6 +2,7 @@ package smtp
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 )
 
@@ -29,7 +30,11 @@ var NoEnhancedCode = EnhancedCode{-1, -1, -1}
 var EnhancedCodeNotSet = EnhancedCode{0, 0, 0}
 
 func (err *SMTPError) Error() string {
-	return err.Message
+	s := fmt.Sprintf("SMTP error %03d", err.Code)
+	if err.Message != "" {
+		s += ": " + err.Message
+	}
+	return s
 }
 
 func (err *SMTPError) Temporary() bool {
