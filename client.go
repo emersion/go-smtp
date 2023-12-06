@@ -62,8 +62,12 @@ func Dial(addr string) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	host, _, _ := net.SplitHostPort(addr)
-	return NewClient(conn, host)
+	client, err := NewClient(conn)
+	if err != nil {
+		return nil, err
+	}
+	client.serverName, _, _ = net.SplitHostPort(addr)
+	return client, nil
 }
 
 // DialTLS returns a new Client connected to an SMTP server via TLS at addr.
@@ -79,16 +83,19 @@ func DialTLS(addr string, tlsConfig *tls.Config) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	host, _, _ := net.SplitHostPort(addr)
-	return NewClient(conn, host)
+	client, err := NewClient(conn)
+	if err != nil {
+		return nil, err
+	}
+	client.serverName, _, _ = net.SplitHostPort(addr)
+	return client, nil
 }
 
 // NewClient returns a new Client using an existing connection and host as a
 // server name to be used when authenticating.
-func NewClient(conn net.Conn, host string) (*Client, error) {
+func NewClient(conn net.Conn) (*Client, error) {
 	c := &Client{
-		serverName: host,
-		localName:  "localhost",
+		localName: "localhost",
 		// As recommended by RFC 5321. For DATA command reply (3xx one) RFC
 		// recommends a slightly shorter timeout but we do not bother
 		// differentiating these.
@@ -118,8 +125,8 @@ func NewClient(conn net.Conn, host string) (*Client, error) {
 
 // NewClientLMTP returns a new LMTP Client (as defined in RFC 2033) using an
 // existing connection and host as a server name to be used when authenticating.
-func NewClientLMTP(conn net.Conn, host string) (*Client, error) {
-	c, err := NewClient(conn, host)
+func NewClientLMTP(conn net.Conn) (*Client, error) {
+	c, err := NewClient(conn)
 	if err != nil {
 		return nil, err
 	}
@@ -273,7 +280,7 @@ func (c *Client) StartTLS(config *tls.Config) error {
 	if config == nil {
 		config = &tls.Config{}
 	}
-	if config.ServerName == "" {
+	if config.ServerName == "" && c.serverName != "" {
 		// Make a copy to avoid polluting argument
 		config = config.Clone()
 		config.ServerName = c.serverName
