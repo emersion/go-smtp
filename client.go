@@ -53,8 +53,10 @@ const defaultTimeout = 30 * time.Second
 
 var defaultDialer = net.Dialer{Timeout: defaultTimeout}
 
-// Dial returns a new Client connected to an SMTP server at addr.
-// The addr must include a port, as in "mail.example.com:smtp".
+// Dial returns a new Client connected to an SMTP server at addr. The addr must
+// include a port, as in "mail.example.com:smtp".
+//
+// This function returns a plaintext connection. To enable TLS, use StartTLS.
 func Dial(addr string) (*Client, error) {
 	conn, err := defaultDialer.Dial("tcp", addr)
 	if err != nil {
