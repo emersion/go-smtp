@@ -733,6 +733,36 @@ func TestServer_tooLongMessage(t *testing.T) {
 	}
 }
 
+func TestServer_smtpSmuggling(t *testing.T) {
+	be, s, c, scanner := testServerAuthenticated(t)
+	defer s.Close()
+
+	io.WriteString(c, "MAIL FROM:<root@nsa.gov>\r\n")
+	scanner.Scan()
+	io.WriteString(c, "RCPT TO:<root@gchq.gov.uk>\r\n")
+	scanner.Scan()
+	io.WriteString(c, "DATA\r\n")
+	scanner.Scan()
+
+	io.WriteString(c, "This is a message with an SMTP smuggling dot:\r\n")
+	io.WriteString(c, ".\n")
+	io.WriteString(c, "Final dot comes after.\r\n")
+	io.WriteString(c, ".\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid DATA response, expected an error but got:", scanner.Text())
+	}
+
+	if len(be.messages) != 1 {
+		t.Fatal("Invalid number of sent messages:", len(be.messages))
+	}
+
+	msg := be.messages[0]
+	if string(msg.Data) != "This is a message with an SMTP smuggling dot:\r\n.\nFinal dot comes after.\r\n" {
+		t.Fatal("Invalid mail data:", string(msg.Data))
+	}
+}
+
 func TestServer_tooLongLine(t *testing.T) {
 	_, s, c, scanner := testServerAuthenticated(t)
 	defer s.Close()
