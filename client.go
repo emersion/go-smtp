@@ -23,10 +23,8 @@ import (
 type Client struct {
 	// keep a reference to the connection so it can be used to create a TLS
 	// connection later
-	conn net.Conn
-	text *textproto.Conn
-	// whether the Client is using TLS
-	tls        bool
+	conn       net.Conn
+	text       *textproto.Conn
 	serverName string
 	lmtp       bool
 	// map of supported extensions
@@ -138,9 +136,6 @@ func (c *Client) setConn(conn net.Conn) {
 		Closer: conn,
 	}
 	c.text = textproto.NewConn(rwc)
-
-	_, isTLS := conn.(*tls.Conn)
-	c.tls = isTLS
 }
 
 // Close closes the connection.
