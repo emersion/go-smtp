@@ -82,7 +82,7 @@ func (r *dataReader) Read(b []byte) (n int, err error) {
 	// not rewrite CRLF -> LF.
 
 	// Run data through a simple state machine to
-	// elide leading dots and detect ending .\r\n line.
+	// elide leading dots and detect End-of-Data (<CR><LF>.<CR><LF>) line.
 	const (
 		stateBeginLine = iota // beginning of line; initial state; must be zero
 		stateDot              // read . at beginning of line
@@ -128,9 +128,6 @@ func (r *dataReader) Read(b []byte) (n int, err error) {
 		case stateData:
 			if c == '\r' {
 				r.state = stateCR
-			}
-			if c == '\n' {
-				r.state = stateBeginLine
 			}
 		}
 		b[n] = c
