@@ -735,32 +735,62 @@ func TestServer_tooLongMessage(t *testing.T) {
 
 // See https://www.postfix.org/smtp-smuggling.html
 func TestServer_smtpSmuggling(t *testing.T) {
-	be, s, c, scanner := testServerAuthenticated(t)
-	defer s.Close()
-
-	io.WriteString(c, "MAIL FROM:<root@nsa.gov>\r\n")
-	scanner.Scan()
-	io.WriteString(c, "RCPT TO:<root@gchq.gov.uk>\r\n")
-	scanner.Scan()
-	io.WriteString(c, "DATA\r\n")
-	scanner.Scan()
-
-	io.WriteString(c, "This is a message with an SMTP smuggling dot:\r\n")
-	io.WriteString(c, ".\n")
-	io.WriteString(c, "Final dot comes after.\r\n")
-	io.WriteString(c, ".\r\n")
-	scanner.Scan()
-	if !strings.HasPrefix(scanner.Text(), "250 ") {
-		t.Fatal("Invalid DATA response, expected an error but got:", scanner.Text())
+	cases := []struct {
+		name     string
+		lines    []string
+		expected string
+	}{
+		{
+			name: "<CR><LF>.<LF>",
+			lines: []string{
+				"This is a message with an SMTP smuggling dot:\r\n",
+				".\n",
+				"Final dot comes after.\r\n",
+				".\r\n",
+			},
+			expected: "This is a message with an SMTP smuggling dot:\r\n\nFinal dot comes after.\r\n",
+		},
+		{
+			name: "<LF>.<CR><LF>",
+			lines: []string{
+				"This is a message with an SMTP smuggling dot:\n", // not a line on its own
+				".\r\n",
+				"Final dot comes after.\r\n",
+				".\r\n",
+			},
+			expected: "This is a message with an SMTP smuggling dot:\n.\r\nFinal dot comes after.\r\n",
+		},
 	}
 
-	if len(be.messages) != 1 {
-		t.Fatal("Invalid number of sent messages:", len(be.messages))
-	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			be, s, c, scanner := testServerAuthenticated(t)
+			defer s.Close()
 
-	msg := be.messages[0]
-	if string(msg.Data) != "This is a message with an SMTP smuggling dot:\r\n\nFinal dot comes after.\r\n" {
-		t.Fatalf("Invalid mail data: %q", string(msg.Data))
+			io.WriteString(c, "MAIL FROM:<root@nsa.gov>\r\n")
+			scanner.Scan()
+			io.WriteString(c, "RCPT TO:<root@gchq.gov.uk>\r\n")
+			scanner.Scan()
+			io.WriteString(c, "DATA\r\n")
+			scanner.Scan()
+
+			for _, line := range tc.lines {
+				io.WriteString(c, line)
+			}
+			scanner.Scan()
+			if !strings.HasPrefix(scanner.Text(), "250 ") {
+				t.Fatal("Invalid DATA response, expected an error but got:", scanner.Text())
+			}
+
+			if len(be.messages) != 1 {
+				t.Fatal("Invalid number of sent messages:", len(be.messages))
+			}
+
+			msg := be.messages[0]
+			if string(msg.Data) != tc.expected {
+				t.Fatalf("Invalid mail data: %q", string(msg.Data))
+			}
+		})
 	}
 }
 
