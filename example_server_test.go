@@ -56,9 +56,9 @@ func (s *Session) Logout() error {
 
 // ExampleServer runs an example SMTP server.
 //
-// It can be tested manually with e.g. telnet:
+// It can be tested manually with e.g. netcat:
 //
-//	> telnet localhost 1025
+//	> netcat -C localhost 1025
 //	EHLO localhost
 //	AUTH PLAIN
 //	AHVzZXJuYW1lAHBhc3N3b3Jk
