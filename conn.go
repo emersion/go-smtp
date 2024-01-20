@@ -227,9 +227,14 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 		c.writeResponse(501, EnhancedCode{5, 5, 2}, "Domain/address argument required for HELO")
 		return
 	}
+	// c.helo is populated before NewSession so
+	// NewSession can access it via Conn.Hostname.
+	c.helo = domain
 
 	sess, err := c.server.Backend.NewSession(c)
 	if err != nil {
+		c.helo = ""
+
 		if smtpErr, ok := err.(*SMTPError); ok {
 			c.writeResponse(smtpErr.Code, smtpErr.EnhancedCode, smtpErr.Message)
 			return
@@ -238,7 +243,6 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 		return
 	}
 
-	c.helo = domain
 	c.setSession(sess)
 
 	if !enhanced {
