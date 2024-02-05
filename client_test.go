@@ -568,7 +568,7 @@ func TestTLSClient(t *testing.T) {
 	defer ln.Close()
 	errc := make(chan error)
 	go func() {
-		errc <- sendMail(ln.Addr().String())
+		errc <- doSendMail(ln.Addr().String())
 	}()
 	conn, err := ln.Accept()
 	if err != nil {
@@ -706,7 +706,7 @@ func init() {
 	}
 }
 
-func sendMail(hostPort string) error {
+func doSendMail(hostPort string) error {
 	from := "joe1@example.com"
 	to := []string{"joe2@example.com"}
 	return SendMail(hostPort, nil, from, to, strings.NewReader("Subject: test\n\nhowdy!"))

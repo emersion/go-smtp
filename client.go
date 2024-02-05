@@ -633,6 +633,46 @@ func (c *Client) SendMail(from string, to []string, r io.Reader) error {
 
 var testHookStartTLS func(*tls.Config) // nil, except for tests
 
+func sendMail(addr string, implicitTLS bool, a sasl.Client, from string, to []string, r io.Reader) error {
+	if err := validateLine(from); err != nil {
+		return err
+	}
+	for _, recp := range to {
+		if err := validateLine(recp); err != nil {
+			return err
+		}
+	}
+
+	var (
+		c   *Client
+		err error
+	)
+	if implicitTLS {
+		c, err = DialTLS(addr, nil)
+	} else {
+		c, err = DialStartTLS(addr, nil)
+	}
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+
+	if a != nil {
+		if ok, _ := c.Extension("AUTH"); !ok {
+			return errors.New("smtp: server doesn't support AUTH")
+		}
+		if err = c.Auth(a); err != nil {
+			return err
+		}
+	}
+
+	if err := c.SendMail(from, to, r); err != nil {
+		return err
+	}
+
+	return c.Quit()
+}
+
 // SendMail connects to the server at addr, switches to TLS, authenticates with
 // the optional SASL client, and then sends an email from address from, to
 // addresses to, with message r. The addr must include a port, as in
@@ -655,69 +695,12 @@ var testHookStartTLS func(*tls.Config) // nil, except for tests
 // attachments (see the mime/multipart package or the go-message package), or
 // other mail functionality.
 func SendMail(addr string, a sasl.Client, from string, to []string, r io.Reader) error {
-	if err := validateLine(from); err != nil {
-		return err
-	}
-	for _, recp := range to {
-		if err := validateLine(recp); err != nil {
-			return err
-		}
-	}
-
-	c, err := DialStartTLS(addr, nil)
-	if err != nil {
-		return err
-	}
-	defer c.Close()
-
-	if a != nil {
-		if ok, _ := c.Extension("AUTH"); !ok {
-			return errors.New("smtp: server doesn't support AUTH")
-		}
-		if err = c.Auth(a); err != nil {
-			return err
-		}
-	}
-
-	if err := c.SendMail(from, to, r); err != nil {
-		return err
-	}
-
-	return c.Quit()
+	return sendMail(addr, false, a, from, to, r)
 }
 
 // SendMailTLS works like SendMail, but with implicit TLS.
 func SendMailTLS(addr string, a sasl.Client, from string, to []string, r io.Reader) error {
-	if err := validateLine(from); err != nil {
-		return err
-	}
-	for _, recp := range to {
-		if err := validateLine(recp); err != nil {
-			return err
-		}
-	}
-
-	c, err := DialTLS(addr, nil)
-	if err != nil {
-		return err
-	}
-	defer c.Close()
-
-	if err = c.hello(); err != nil {
-		return err
-	}
-	if a != nil {
-		if ok, _ := c.Extension("AUTH"); !ok {
-			return errors.New("smtp: server doesn't support AUTH")
-		}
-		if err = c.Auth(a); err != nil {
-			return err
-		}
-	}
-	if err := c.SendMail(from, to, r); err != nil {
-		return err
-	}
-	return c.Quit()
+	return sendMail(addr, true, a, from, to, r)
 }
 
 // Extension reports whether an extension is support by the server.
