@@ -83,6 +83,32 @@ func DialTLS(addr string, tlsConfig *tls.Config) (*Client, error) {
 	return client, nil
 }
 
+// DialStartTLS retruns a new Client connected to an SMTP server via STARTTLS
+// at addr. The addr must include a port, as in "mail.example.com:smtp".
+//
+// A nil tlsConfig is equivalent to a zero tls.Config.
+func DialStartTLS(addr string, tlsConfig *tls.Config) (*Client, error) {
+	c, err := Dial(addr)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = c.hello(); err != nil {
+		c.Close()
+		return nil, err
+	}
+	if ok, _ := c.Extension("STARTTLS"); !ok {
+		c.Close()
+		return nil, errors.New("smtp: server doesn't support STARTTLS")
+	}
+	if err = c.StartTLS(nil); err != nil {
+		c.Close()
+		return nil, err
+	}
+
+	return c, nil
+}
+
 // NewClient returns a new Client using an existing connection and host as a
 // server name to be used when authenticating.
 func NewClient(conn net.Conn) *Client {
