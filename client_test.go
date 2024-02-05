@@ -418,7 +418,7 @@ func TestHello(t *testing.T) {
 			}
 			err = c.Hello("customhost")
 		case 1:
-			err = c.StartTLS(nil)
+			err = c.startTLS(nil)
 			if err.Error() == "SMTP error 502: Not implemented" {
 				err = nil
 			}
@@ -602,18 +602,14 @@ func TestTLSConnState(t *testing.T) {
 	}()
 	go func() {
 		defer close(clientDone)
-		c, err := Dial(ln.Addr().String())
+		cfg := &tls.Config{ServerName: "example.com"}
+		testHookStartTLS(cfg) // set the RootCAs
+		c, err := DialStartTLS(ln.Addr().String(), cfg)
 		if err != nil {
 			t.Errorf("Client dial: %v", err)
 			return
 		}
 		defer c.Quit()
-		cfg := &tls.Config{ServerName: "example.com"}
-		testHookStartTLS(cfg) // set the RootCAs
-		if err := c.StartTLS(cfg); err != nil {
-			t.Errorf("StartTLS: %v", err)
-			return
-		}
 		cs, ok := c.TLSConnectionState()
 		if !ok {
 			t.Errorf("TLSConnectionState returned ok == false; want true")

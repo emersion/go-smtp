@@ -54,7 +54,8 @@ var defaultDialer = net.Dialer{Timeout: defaultTimeout}
 // Dial returns a new Client connected to an SMTP server at addr. The addr must
 // include a port, as in "mail.example.com:smtp".
 //
-// This function returns a plaintext connection. To enable TLS, use StartTLS.
+// This function returns a plaintext connection. To enable TLS, use
+// DialStartTLS.
 func Dial(addr string) (*Client, error) {
 	conn, err := defaultDialer.Dial("tcp", addr)
 	if err != nil {
@@ -101,7 +102,7 @@ func DialStartTLS(addr string, tlsConfig *tls.Config) (*Client, error) {
 		c.Close()
 		return nil, errors.New("smtp: server doesn't support STARTTLS")
 	}
-	if err = c.StartTLS(nil); err != nil {
+	if err = c.startTLS(nil); err != nil {
 		c.Close()
 		return nil, err
 	}
@@ -280,13 +281,13 @@ func (c *Client) ehlo() error {
 	return err
 }
 
-// StartTLS sends the STARTTLS command and encrypts all further communication.
+// startTLS sends the STARTTLS command and encrypts all further communication.
 // Only servers that advertise the STARTTLS extension support this function.
 //
 // A nil config is equivalent to a zero tls.Config.
 //
 // If server returns an error, it will be of type *SMTPError.
-func (c *Client) StartTLS(config *tls.Config) error {
+func (c *Client) startTLS(config *tls.Config) error {
 	if err := c.hello(); err != nil {
 		return err
 	}
@@ -310,7 +311,7 @@ func (c *Client) StartTLS(config *tls.Config) error {
 }
 
 // TLSConnectionState returns the client's TLS connection state.
-// The return values are their zero values if StartTLS did
+// The return values are their zero values if STARTTLS did
 // not succeed.
 func (c *Client) TLSConnectionState() (state tls.ConnectionState, ok bool) {
 	tc, ok := c.conn.(*tls.Conn)
@@ -598,7 +599,7 @@ func (c *Client) LMTPData(statusCb func(rcpt string, status *SMTPError)) (io.Wri
 // address from, to addresses to, with message r.
 //
 // This function does not start TLS, nor does it perform authentication. Use
-// StartTLS and Auth before-hand if desirable.
+// DialStartTLS and Auth before-hand if desirable.
 //
 // The addresses in the to parameter are the SMTP RCPT addresses.
 //
@@ -663,21 +664,12 @@ func SendMail(addr string, a sasl.Client, from string, to []string, r io.Reader)
 		}
 	}
 
-	c, err := Dial(addr)
+	c, err := DialStartTLS(addr, nil)
 	if err != nil {
 		return err
 	}
 	defer c.Close()
 
-	if err = c.hello(); err != nil {
-		return err
-	}
-	if ok, _ := c.Extension("STARTTLS"); !ok {
-		return errors.New("smtp: server doesn't support STARTTLS")
-	}
-	if err = c.StartTLS(nil); err != nil {
-		return err
-	}
 	if a != nil {
 		if ok, _ := c.Extension("AUTH"); !ok {
 			return errors.New("smtp: server doesn't support AUTH")
@@ -686,9 +678,11 @@ func SendMail(addr string, a sasl.Client, from string, to []string, r io.Reader)
 			return err
 		}
 	}
+
 	if err := c.SendMail(from, to, r); err != nil {
 		return err
 	}
+
 	return c.Quit()
 }
 
