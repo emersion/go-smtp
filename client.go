@@ -93,20 +93,10 @@ func DialStartTLS(addr string, tlsConfig *tls.Config) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	if err = c.hello(); err != nil {
+	if err := initStartTLS(c, tlsConfig); err != nil {
 		c.Close()
 		return nil, err
 	}
-	if ok, _ := c.Extension("STARTTLS"); !ok {
-		c.Close()
-		return nil, errors.New("smtp: server doesn't support STARTTLS")
-	}
-	if err = c.startTLS(tlsConfig); err != nil {
-		c.Close()
-		return nil, err
-	}
-
 	return c, nil
 }
 
@@ -127,6 +117,29 @@ func NewClient(conn net.Conn) *Client {
 	c.setConn(conn)
 
 	return c
+}
+
+// NewClientStartTLS creates a new Client and performs a STARTTLS command.
+func NewClientStartTLS(conn net.Conn, tlsConfig *tls.Config) (*Client, error) {
+	c := NewClient(conn)
+	if err := initStartTLS(c, tlsConfig); err != nil {
+		c.Close()
+		return nil, err
+	}
+	return c, nil
+}
+
+func initStartTLS(c *Client, tlsConfig *tls.Config) error {
+	if err := c.hello(); err != nil {
+		return err
+	}
+	if ok, _ := c.Extension("STARTTLS"); !ok {
+		return errors.New("smtp: server doesn't support STARTTLS")
+	}
+	if err := c.startTLS(tlsConfig); err != nil {
+		return err
+	}
+	return nil
 }
 
 // NewClientLMTP returns a new LMTP Client (as defined in RFC 2033) using an
