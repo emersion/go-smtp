@@ -102,7 +102,7 @@ func DialStartTLS(addr string, tlsConfig *tls.Config) (*Client, error) {
 		c.Close()
 		return nil, errors.New("smtp: server doesn't support STARTTLS")
 	}
-	if err = c.startTLS(nil); err != nil {
+	if err = c.startTLS(tlsConfig); err != nil {
 		c.Close()
 		return nil, err
 	}
