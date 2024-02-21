@@ -27,14 +27,11 @@ type Client struct {
 	text       *textproto.Conn
 	serverName string
 	lmtp       bool
-	// map of supported extensions
-	ext map[string]string
-	// supported auth mechanisms
-	auth       []string
-	localName  string   // the name to use in HELO/EHLO/LHLO
-	didHello   bool     // whether we've said HELO/EHLO/LHLO
-	helloError error    // the error from the hello
-	rcpts      []string // recipients accumulated for the current session
+	ext        map[string]string // supported extensions
+	localName  string            // the name to use in HELO/EHLO/LHLO
+	didHello   bool              // whether we've said HELO/EHLO/LHLO
+	helloError error             // the error from the hello
+	rcpts      []string          // recipients accumulated for the current session
 
 	// Time to wait for command responses (this includes 3xx reply to DATA).
 	CommandTimeout time.Duration
@@ -286,9 +283,6 @@ func (c *Client) ehlo() error {
 				ext[args[0]] = ""
 			}
 		}
-	}
-	if mechs, ok := ext["AUTH"]; ok {
-		c.auth = strings.Split(mechs, " ")
 	}
 	c.ext = ext
 	return err
