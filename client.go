@@ -723,6 +723,23 @@ func (c *Client) Extension(ext string) (bool, string) {
 	return ok, param
 }
 
+// SupportsAuth checks whether an authentication mechanism is supported.
+func (c *Client) SupportsAuth(mech string) bool {
+	if err := c.hello(); err != nil {
+		return false
+	}
+	mechs, ok := c.ext["AUTH"]
+	if !ok {
+		return false
+	}
+	for _, m := range strings.Split(mechs, " ") {
+		if strings.EqualFold(m, mech) {
+			return true
+		}
+	}
+	return false
+}
+
 // MaxMessageSize returns the maximum message size accepted by the server.
 // 0 means unlimited.
 //
