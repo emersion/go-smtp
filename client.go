@@ -732,6 +732,25 @@ func (c *Client) Extension(ext string) (bool, string) {
 	return ok, param
 }
 
+// MaxMessageSize returns the maximum message size accepted by the server.
+// 0 means unlimited.
+//
+// If the server doesn't convey this information, ok = false is returned.
+func (c *Client) MaxMessageSize() (size int, ok bool) {
+	if err := c.hello(); err != nil {
+		return 0, false
+	}
+	v := c.ext["SIZE"]
+	if v == "" {
+		return 0, false
+	}
+	size, err := strconv.Atoi(v)
+	if err != nil || size < 0 {
+		return 0, false
+	}
+	return size, true
+}
+
 // Reset sends the RSET command to the server, aborting the current mail
 // transaction.
 func (c *Client) Reset() error {

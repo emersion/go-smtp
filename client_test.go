@@ -94,6 +94,11 @@ func TestBasic(t *testing.T) {
 	if ok, _ := c.Extension("DSN"); ok {
 		t.Fatalf("Shouldn't support DSN")
 	}
+	if size, ok := c.MaxMessageSize(); !ok {
+		t.Errorf("Expected SIZE supported")
+	} else if size != 35651584 {
+		t.Errorf("Expected SIZE=35651584, got %v", size)
+	}
 
 	if err := c.Mail("user@gmail.com", nil); err == nil {
 		t.Fatalf("MAIL should require authentication")
