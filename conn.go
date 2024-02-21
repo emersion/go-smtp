@@ -250,8 +250,12 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 		return
 	}
 
-	caps := []string{}
-	caps = append(caps, c.server.caps...)
+	caps := []string{
+		"PIPELINING",
+		"8BITMIME",
+		"ENHANCEDSTATUSCODES",
+		"CHUNKING",
+	}
 	if _, isTLS := c.TLSConnectionState(); c.server.TLSConfig != nil && !isTLS {
 		caps = append(caps, "STARTTLS")
 	}
