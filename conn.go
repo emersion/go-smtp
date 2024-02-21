@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/emersion/go-sasl"
 )
 
 // Number of errors we'll tolerate per connection before closing. Defaults to 3.
@@ -261,7 +263,7 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 	}
 	if c.authAllowed() {
 		authCap := "AUTH"
-		for name := range c.server.auths {
+		for _, name := range c.authMechanisms() {
 			authCap += " " + name
 		}
 
@@ -792,13 +794,15 @@ func (c *Conn) handleAuth(arg string) {
 		}
 	}
 
-	newSasl, ok := c.server.auths[mechanism]
-	if !ok {
-		c.writeResponse(504, EnhancedCode{5, 7, 4}, "Unsupported authentication mechanism")
+	sasl, err := c.auth(mechanism)
+	if err != nil {
+		if smtpErr, ok := err.(*SMTPError); ok {
+			c.writeResponse(smtpErr.Code, smtpErr.EnhancedCode, smtpErr.Message)
+		} else {
+			c.writeResponse(454, EnhancedCode{4, 7, 0}, err.Error())
+		}
 		return
 	}
-
-	sasl := newSasl(c)
 
 	response := ir
 	for {
@@ -842,6 +846,36 @@ func (c *Conn) handleAuth(arg string) {
 
 	c.writeResponse(235, EnhancedCode{2, 0, 0}, "Authentication succeeded")
 	c.didAuth = true
+}
+
+func (c *Conn) authMechanisms() []string {
+	if authSession, ok := c.Session().(AuthSession); ok {
+		return authSession.AuthMechanisms()
+	}
+	return []string{sasl.Plain}
+}
+
+func (c *Conn) auth(mech string) (sasl.Server, error) {
+	if authSession, ok := c.Session().(AuthSession); ok {
+		return authSession.Auth(mech)
+	}
+
+	if mech != sasl.Plain {
+		return nil, ErrAuthUnknownMechanism
+	}
+
+	return sasl.NewPlainServer(func(identity, username, password string) error {
+		if identity != "" && identity != username {
+			return errors.New("identities not supported")
+		}
+
+		sess := c.Session()
+		if sess == nil {
+			panic("No session when AUTH is called")
+		}
+
+		return sess.AuthPlain(username, password)
+	}), nil
 }
 
 func (c *Conn) handleStartTLS() {

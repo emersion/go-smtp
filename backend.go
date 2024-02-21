@@ -2,6 +2,8 @@ package smtp
 
 import (
 	"io"
+
+	"github.com/emersion/go-sasl"
 )
 
 var (
@@ -19,6 +21,11 @@ var (
 		Code:         502,
 		EnhancedCode: EnhancedCode{5, 7, 0},
 		Message:      "Authentication not supported",
+	}
+	ErrAuthUnknownMechanism = &SMTPError{
+		Code:         504,
+		EnhancedCode: EnhancedCode{5, 7, 4},
+		Message:      "Unsupported authentication mechanism",
 	}
 )
 
@@ -86,4 +93,13 @@ type LMTPSession interface {
 // information.
 type StatusCollector interface {
 	SetStatus(rcptTo string, err error)
+}
+
+// AuthSession is an add-on interface for Session. It provides support for the
+// AUTH extension.
+type AuthSession interface {
+	Session
+
+	AuthMechanisms() []string
+	Auth(mech string) (sasl.Server, error)
 }
