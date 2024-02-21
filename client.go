@@ -724,9 +724,6 @@ func (c *Client) Extension(ext string) (bool, string) {
 	if err := c.hello(); err != nil {
 		return false, ""
 	}
-	if c.ext == nil {
-		return false, ""
-	}
 	ext = strings.ToUpper(ext)
 	param, ok := c.ext[ext]
 	return ok, param
