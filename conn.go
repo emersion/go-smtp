@@ -280,6 +280,9 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 	} else {
 		caps = append(caps, "SIZE")
 	}
+	if c.server.MaxRecipients > 0 {
+		caps = append(caps, fmt.Sprintf("LIMITS RCPTMAX=%v", c.server.MaxRecipients))
+	}
 
 	args := []string{"Hello " + domain}
 	args = append(args, caps...)
