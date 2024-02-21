@@ -781,6 +781,7 @@ func (c *Conn) handleAuth(arg string) {
 		var err error
 		ir, err = base64.StdEncoding.DecodeString(parts[1])
 		if err != nil {
+			c.writeResponse(454, EnhancedCode{4, 7, 0}, "Invalid base64 data")
 			return
 		}
 	}
