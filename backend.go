@@ -37,7 +37,7 @@ type Session interface {
 	// Free all resources associated with session.
 	Logout() error
 
-	// Authenticate the user using SASL PLAIN.
+	// Authenticate the user using SASL LOGIN/PLAIN mechanism.
 	AuthPlain(username, password string) error
 
 	// Set return path for currently processed message.

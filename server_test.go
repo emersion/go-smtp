@@ -327,8 +327,8 @@ func TestServer_helo(t *testing.T) {
 func testServerAuthenticated(t *testing.T) (be *backend, s *smtp.Server, c net.Conn, scanner *bufio.Scanner) {
 	be, s, c, scanner, caps := testServerEhlo(t)
 
-	if _, ok := caps["AUTH PLAIN"]; !ok {
-		t.Fatal("AUTH PLAIN capability is missing when auth is enabled")
+	if _, ok := caps["AUTH PLAIN LOGIN"]; !ok {
+		t.Fatal("AUTH PLAIN LOGIN capability is missing when auth is enabled")
 	}
 
 	io.WriteString(c, "AUTH PLAIN\r\n")
@@ -349,8 +349,8 @@ func testServerAuthenticated(t *testing.T) (be *backend, s *smtp.Server, c net.C
 func TestServerAuthTwice(t *testing.T) {
 	_, _, c, scanner, caps := testServerEhlo(t)
 
-	if _, ok := caps["AUTH PLAIN"]; !ok {
-		t.Fatal("AUTH PLAIN capability is missing when auth is enabled")
+	if _, ok := caps["AUTH PLAIN LOGIN"]; !ok {
+		t.Fatal("AUTH PLAIN LOGIN capability is missing when auth is enabled")
 	}
 
 	io.WriteString(c, "AUTH PLAIN AHVzZXJuYW1lAHBhc3N3b3Jk\r\n")
@@ -381,8 +381,8 @@ func TestServerAuthTwice(t *testing.T) {
 func TestServerCancelSASL(t *testing.T) {
 	_, _, c, scanner, caps := testServerEhlo(t)
 
-	if _, ok := caps["AUTH PLAIN"]; !ok {
-		t.Fatal("AUTH PLAIN capability is missing when auth is enabled")
+	if _, ok := caps["AUTH PLAIN LOGIN"]; !ok {
+		t.Fatal("AUTH PLAIN LOGIN capability is missing when auth is enabled")
 	}
 
 	io.WriteString(c, "AUTH PLAIN\r\n")
@@ -680,8 +680,8 @@ func TestServer_authDisabled(t *testing.T) {
 	defer s.Close()
 	defer c.Close()
 
-	if _, ok := caps["AUTH PLAIN"]; ok {
-		t.Fatal("AUTH PLAIN capability is present when auth is disabled")
+	if _, ok := caps["AUTH PLAIN LOGIN"]; ok {
+		t.Fatal("AUTH PLAIN LOGIN capability is present when auth is disabled")
 	}
 
 	io.WriteString(c, "AUTH PLAIN\r\n")

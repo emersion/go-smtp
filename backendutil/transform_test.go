@@ -185,8 +185,8 @@ func testServerEhlo(t *testing.T, fn ...serverConfigureFunc) (be *backend, s *sm
 func testServerAuthenticated(t *testing.T) (be *backend, s *smtp.Server, c net.Conn, scanner *bufio.Scanner) {
 	be, s, c, scanner, caps := testServerEhlo(t)
 
-	if _, ok := caps["AUTH PLAIN"]; !ok {
-		t.Fatal("AUTH PLAIN capability is missing when auth is enabled")
+	if _, ok := caps["AUTH PLAIN LOGIN"]; !ok {
+		t.Fatal("AUTH PLAIN LOGIN capability is missing when auth is enabled")
 	}
 
 	io.WriteString(c, "AUTH PLAIN\r\n")
