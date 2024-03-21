@@ -772,7 +772,7 @@ func (c *Conn) handleAuth(arg string) {
 		return
 	}
 
-	if _, isTLS := c.TLSConnectionState(); !isTLS && !c.server.AllowInsecureAuth {
+	if !c.authAllowed() {
 		c.writeResponse(523, EnhancedCode{5, 7, 10}, "TLS is required")
 		return
 	}
