@@ -2,6 +2,8 @@ package smtp
 
 import (
 	"io"
+
+	"github.com/emersion/go-sasl"
 )
 
 var (
@@ -19,6 +21,11 @@ var (
 		Code:         502,
 		EnhancedCode: EnhancedCode{5, 7, 0},
 		Message:      "Authentication not supported",
+	}
+	ErrAuthInvalidMechanism = &SMTPError{
+		Code:         504,
+		EnhancedCode: EnhancedCode{5, 7, 4},
+		Message:      "Unsupported authentication mechanism",
 	}
 )
 
@@ -48,9 +55,6 @@ type Session interface {
 	// Free all resources associated with session.
 	Logout() error
 
-	// Authenticate the user using SASL PLAIN.
-	AuthPlain(username, password string) error
-
 	// Set return path for currently processed message.
 	Mail(from string, opts *MailOptions) error
 	// Add recipient for currently processed message.
@@ -59,6 +63,15 @@ type Session interface {
 	//
 	// r must be consumed before Data returns.
 	Data(r io.Reader) error
+}
+
+// AuthSession is an add-on interface for Session. It provides support for the
+// AUTH extension.
+type AuthSession interface {
+	Session
+
+	AuthMechanisms() []string
+	Auth(mech string) (sasl.Server, error)
 }
 
 // LMTPSession is an add-on interface for Session. It can be implemented by

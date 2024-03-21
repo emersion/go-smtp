@@ -64,17 +64,11 @@ type Server struct {
 	// Should be used only if backend supports it.
 	EnableDSN bool
 
-	// If set, the AUTH command will not be advertised and authentication
-	// attempts will be rejected. This setting overrides AllowInsecureAuth.
-	AuthDisabled bool
-
 	// The server backend.
 	Backend Backend
 
-	wg sync.WaitGroup
-
-	auths map[string]SaslServerFactory
-	done  chan struct{}
+	wg   sync.WaitGroup
+	done chan struct{}
 
 	locker    sync.Mutex
 	listeners []net.Listener
@@ -90,23 +84,7 @@ func NewServer(be Backend) *Server {
 		Backend:  be,
 		done:     make(chan struct{}, 1),
 		ErrorLog: log.New(os.Stderr, "smtp/server ", log.LstdFlags),
-		auths: map[string]SaslServerFactory{
-			sasl.Plain: func(conn *Conn) sasl.Server {
-				return sasl.NewPlainServer(func(identity, username, password string) error {
-					if identity != "" && identity != username {
-						return errors.New("identities not supported")
-					}
-
-					sess := conn.Session()
-					if sess == nil {
-						panic("No session when AUTH is called")
-					}
-
-					return sess.AuthPlain(username, password)
-				})
-			},
-		},
-		conns: make(map[*Conn]struct{}),
+		conns:    make(map[*Conn]struct{}),
 	}
 }
 
@@ -326,12 +304,4 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	case <-connDone:
 		return err
 	}
-}
-
-// EnableAuth enables an authentication mechanism on this server.
-//
-// This function should not be called directly, it must only be used by
-// libraries implementing extensions of the SMTP protocol.
-func (s *Server) EnableAuth(name string, f SaslServerFactory) {
-	s.auths[name] = f
 }

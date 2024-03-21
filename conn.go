@@ -139,11 +139,7 @@ func (c *Conn) handle(cmd string, arg string) {
 		c.writeResponse(221, EnhancedCode{2, 0, 0}, "Bye")
 		c.Close()
 	case "AUTH":
-		if c.server.AuthDisabled {
-			c.protocolError(500, EnhancedCode{5, 5, 2}, "Syntax error, AUTH command unrecognized")
-		} else {
-			c.handleAuth(arg)
-		}
+		c.handleAuth(arg)
 	case "STARTTLS":
 		c.handleStartTLS()
 	default:
@@ -205,7 +201,7 @@ func (c *Conn) Conn() net.Conn {
 
 func (c *Conn) authAllowed() bool {
 	_, isTLS := c.TLSConnectionState()
-	return !c.server.AuthDisabled && (isTLS || c.server.AllowInsecureAuth)
+	return isTLS || c.server.AllowInsecureAuth
 }
 
 // protocolError writes errors responses and closes the connection once too many
@@ -259,13 +255,17 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 	if _, isTLS := c.TLSConnectionState(); c.server.TLSConfig != nil && !isTLS {
 		caps = append(caps, "STARTTLS")
 	}
-	if c.authAllowed() {
+	if authSession, ok := c.session.(AuthSession); ok && c.authAllowed() {
+		mechs := authSession.AuthMechanisms()
+
 		authCap := "AUTH"
-		for name := range c.server.auths {
+		for _, name := range mechs {
 			authCap += " " + name
 		}
 
-		caps = append(caps, authCap)
+		if len(mechs) > 0 {
+			caps = append(caps, authCap)
+		}
 	}
 	if c.server.EnableSMTPUTF8 {
 		caps = append(caps, "SMTPUTF8")
@@ -757,6 +757,12 @@ func checkNotifySet(values []DSNNotify) error {
 }
 
 func (c *Conn) handleAuth(arg string) {
+	authSession, ok := c.session.(AuthSession)
+	if !ok {
+		c.protocolError(500, EnhancedCode{5, 5, 2}, "Syntax error, AUTH command unrecognized")
+		return
+	}
+
 	if c.helo == "" {
 		c.writeResponse(502, EnhancedCode{5, 5, 1}, "Please introduce yourself first.")
 		return
@@ -790,13 +796,14 @@ func (c *Conn) handleAuth(arg string) {
 		}
 	}
 
-	newSasl, ok := c.server.auths[mechanism]
-	if !ok {
-		c.writeResponse(504, EnhancedCode{5, 7, 4}, "Unsupported authentication mechanism")
+	sasl, err := authSession.Auth(mechanism)
+	if err != nil {
+		if smtpErr, ok := err.(*SMTPError); ok {
+			c.writeResponse(smtpErr.Code, smtpErr.EnhancedCode, smtpErr.Message)
+		}
+		c.writeResponse(454, EnhancedCode{4, 7, 0}, err.Error())
 		return
 	}
-
-	sasl := newSasl(c)
 
 	response := ir
 	for {

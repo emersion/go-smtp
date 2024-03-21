@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
 )
 
@@ -27,6 +28,7 @@ type backend struct {
 	messages []*message
 	anonmsgs []*message
 
+	authDisabled      bool
 	implementLMTPData bool
 	lmtpStatus        []struct {
 		addr string
@@ -66,12 +68,27 @@ type session struct {
 	msg *message
 }
 
-func (s *session) AuthPlain(username, password string) error {
-	if username != "username" || password != "password" {
-		return errors.New("Invalid username or password")
+func (s *session) AuthMechanisms() []string {
+	if s.backend.authDisabled {
+		return nil
 	}
-	s.anonymous = false
-	return nil
+	return []string{sasl.Plain}
+}
+
+func (s *session) Auth(mech string) (sasl.Server, error) {
+	if s.backend.authDisabled {
+		return nil, smtp.ErrAuthUnsupported
+	}
+	return sasl.NewPlainServer(func(identity, username, password string) error {
+		if identity != "" && identity != username {
+			return errors.New("Invalid identity")
+		}
+		if username != "username" || password != "password" {
+			return errors.New("Invalid username or password")
+		}
+		s.anonymous = false
+		return nil
+	}), nil
 }
 
 func (s *session) Reset() {
@@ -202,12 +219,6 @@ func (m *mockError) Timeout() bool   { return false }
 func (m *mockError) Temporary() bool { return m.temporary }
 
 type serverConfigureFunc func(*smtp.Server)
-
-var (
-	authDisabled = func(s *smtp.Server) {
-		s.AuthDisabled = true
-	}
-)
 
 func testServer(t *testing.T, fn ...serverConfigureFunc) (be *backend, s *smtp.Server, c net.Conn, scanner *bufio.Scanner) {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
@@ -676,7 +687,9 @@ func TestServer_EmptyMessage(t *testing.T) {
 }
 
 func TestServer_authDisabled(t *testing.T) {
-	_, s, c, scanner, caps := testServerEhlo(t, authDisabled)
+	_, s, c, scanner, caps := testServerEhlo(t, func(s *smtp.Server) {
+		s.Backend.(*backend).authDisabled = true
+	})
 	defer s.Close()
 	defer c.Close()
 
@@ -686,7 +699,7 @@ func TestServer_authDisabled(t *testing.T) {
 
 	io.WriteString(c, "AUTH PLAIN\r\n")
 	scanner.Scan()
-	if scanner.Text() != "500 5.5.2 Syntax error, AUTH command unrecognized" {
+	if scanner.Text() != "502 5.7.0 Authentication not supported" {
 		t.Fatal("Invalid AUTH response with auth disabled:", scanner.Text())
 	}
 }
