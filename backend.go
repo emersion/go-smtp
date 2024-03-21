@@ -27,6 +27,17 @@ type Backend interface {
 	NewSession(c *Conn) (Session, error)
 }
 
+// BackendFunc is an adapter to allow the use of an ordinary function as a
+// Backend.
+type BackendFunc func(c *Conn) (Session, error)
+
+var _ Backend = (BackendFunc)(nil)
+
+// NewSession calls f(c).
+func (f BackendFunc) NewSession(c *Conn) (Session, error) {
+	return f(c)
+}
+
 // Session is used by servers to respond to an SMTP client.
 //
 // The methods are called when the remote client issues the matching command.
