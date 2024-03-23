@@ -468,7 +468,7 @@ func TestServer8BITMIME(t *testing.T) {
 	defer s.Close()
 	defer c.Close()
 
-	io.WriteString(c, "MAIL FROM:<alice@wonderland.book> BODY=8BITMIME\r\n")
+	io.WriteString(c, "MAIL FROM:<alice@wonderland.book> BODY=8bitMIME\r\n")
 	scanner.Scan()
 	if !strings.HasPrefix(scanner.Text(), "250 ") {
 		t.Fatal("Invalid MAIL response:", scanner.Text())

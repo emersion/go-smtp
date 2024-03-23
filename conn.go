@@ -344,16 +344,18 @@ func (c *Conn) handleMail(arg string) {
 			}
 			opts.RequireTLS = true
 		case "BODY":
-			switch value {
-			case "BINARYMIME":
+			value = strings.ToUpper(value)
+			switch BodyType(value) {
+			case BodyBinaryMIME:
 				if !c.server.EnableBINARYMIME {
 					c.writeResponse(504, EnhancedCode{5, 5, 4}, "BINARYMIME is not implemented")
 					return
 				}
 				c.binarymime = true
-			case "7BIT", "8BITMIME":
+			case Body7Bit, Body8BitMIME:
+				// This space is intentionally left blank
 			default:
-				c.writeResponse(500, EnhancedCode{5, 5, 4}, "Unknown BODY value")
+				c.writeResponse(501, EnhancedCode{5, 5, 4}, "Unknown BODY value")
 				return
 			}
 			opts.Body = BodyType(value)
