@@ -262,12 +262,16 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 		caps = append(caps, "STARTTLS")
 	}
 	if c.authAllowed() {
+		mechs := c.authMechanisms()
+
 		authCap := "AUTH"
-		for _, name := range c.authMechanisms() {
+		for _, name := range mechs {
 			authCap += " " + name
 		}
 
-		caps = append(caps, authCap)
+		if len(mechs) > 0 {
+			caps = append(caps, authCap)
+		}
 	}
 	if c.server.EnableSMTPUTF8 {
 		caps = append(caps, "SMTPUTF8")
