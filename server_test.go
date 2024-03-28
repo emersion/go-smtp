@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
 )
 
@@ -66,12 +67,23 @@ type session struct {
 	msg *message
 }
 
-func (s *session) AuthPlain(username, password string) error {
-	if username != "username" || password != "password" {
-		return errors.New("Invalid username or password")
-	}
-	s.anonymous = false
-	return nil
+var _ smtp.AuthSession = (*session)(nil)
+
+func (s *session) AuthMechanisms() []string {
+	return []string{sasl.Plain}
+}
+
+func (s *session) Auth(mech string) (sasl.Server, error) {
+	return sasl.NewPlainServer(func(identity, username, password string) error {
+		if identity != "" && identity != username {
+			return errors.New("Invalid identity")
+		}
+		if username != "username" || password != "password" {
+			return errors.New("Invalid username or password")
+		}
+		s.anonymous = false
+		return nil
+	}), nil
 }
 
 func (s *session) Reset() {

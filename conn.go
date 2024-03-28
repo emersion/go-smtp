@@ -856,30 +856,14 @@ func (c *Conn) authMechanisms() []string {
 	if authSession, ok := c.Session().(AuthSession); ok {
 		return authSession.AuthMechanisms()
 	}
-	return []string{sasl.Plain}
+	return nil
 }
 
 func (c *Conn) auth(mech string) (sasl.Server, error) {
 	if authSession, ok := c.Session().(AuthSession); ok {
 		return authSession.Auth(mech)
 	}
-
-	if mech != sasl.Plain {
-		return nil, ErrAuthUnknownMechanism
-	}
-
-	return sasl.NewPlainServer(func(identity, username, password string) error {
-		if identity != "" && identity != username {
-			return errors.New("identities not supported")
-		}
-
-		sess := c.Session()
-		if sess == nil {
-			panic("No session when AUTH is called")
-		}
-
-		return sess.AuthPlain(username, password)
-	}), nil
+	return nil, ErrAuthUnknownMechanism
 }
 
 func (c *Conn) handleStartTLS() {
