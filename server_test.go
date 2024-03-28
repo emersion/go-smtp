@@ -25,6 +25,8 @@ type message struct {
 }
 
 type backend struct {
+	authDisabled bool
+
 	messages []*message
 	anonmsgs []*message
 
@@ -70,10 +72,16 @@ type session struct {
 var _ smtp.AuthSession = (*session)(nil)
 
 func (s *session) AuthMechanisms() []string {
+	if s.backend.authDisabled {
+		return nil
+	}
 	return []string{sasl.Plain}
 }
 
 func (s *session) Auth(mech string) (sasl.Server, error) {
+	if s.backend.authDisabled {
+		return nil, smtp.ErrAuthUnsupported
+	}
 	return sasl.NewPlainServer(func(identity, username, password string) error {
 		if identity != "" && identity != username {
 			return errors.New("Invalid identity")
@@ -217,7 +225,7 @@ type serverConfigureFunc func(*smtp.Server)
 
 var (
 	authDisabled = func(s *smtp.Server) {
-		s.AuthDisabled = true
+		s.Backend.(*backend).authDisabled = true
 	}
 )
 
@@ -698,7 +706,7 @@ func TestServer_authDisabled(t *testing.T) {
 
 	io.WriteString(c, "AUTH PLAIN\r\n")
 	scanner.Scan()
-	if scanner.Text() != "500 5.5.2 Syntax error, AUTH command unrecognized" {
+	if scanner.Text() != "502 5.7.0 Authentication not supported" {
 		t.Fatal("Invalid AUTH response with auth disabled:", scanner.Text())
 	}
 }
