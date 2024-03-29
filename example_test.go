@@ -57,7 +57,7 @@ var (
 	recipients = []string{"foo@example.com"}
 )
 
-func ExampleSendMail_PlainAuth() {
+func ExampleSendMail_plainAuth() {
 	// hostname is used by PlainAuth to validate the TLS certificate.
 	hostname := "mail.example.com"
 	auth := sasl.NewPlainClient("", "user@example.com", "password")
