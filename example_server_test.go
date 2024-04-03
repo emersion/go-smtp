@@ -3,10 +3,10 @@ package smtp_test
 import (
 	"errors"
 	"io"
-	"io/ioutil"
 	"log"
 	"time"
 
+	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
 )
 
@@ -21,12 +21,20 @@ func (bkd *Backend) NewSession(c *smtp.Conn) (smtp.Session, error) {
 // A Session is returned after successful login.
 type Session struct{}
 
-// AuthPlain implements authentication using SASL PLAIN.
-func (s *Session) AuthPlain(username, password string) error {
-	if username != "username" || password != "password" {
-		return errors.New("Invalid username or password")
-	}
-	return nil
+// AuthMechanisms returns a slice of available auth mechanisms; only PLAIN is
+// supported in this example.
+func (s *Session) AuthMechanisms() []string {
+	return []string{sasl.Plain}
+}
+
+// Auth is the handler for supported authenticators.
+func (s *Session) Auth(mech string) (sasl.Server, error) {
+	return sasl.NewPlainServer(func(identity, username, password string) error {
+		if username != "username" || password != "password" {
+			return errors.New("Invalid username or password")
+		}
+		return nil
+	}), nil
 }
 
 func (s *Session) Mail(from string, opts *smtp.MailOptions) error {
@@ -40,7 +48,7 @@ func (s *Session) Rcpt(to string, opts *smtp.RcptOptions) error {
 }
 
 func (s *Session) Data(r io.Reader) error {
-	if b, err := ioutil.ReadAll(r); err != nil {
+	if b, err := io.ReadAll(r); err != nil {
 		return err
 	} else {
 		log.Println("Data:", string(b))

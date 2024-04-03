@@ -12,9 +12,7 @@ import (
 	"time"
 )
 
-var (
-	ErrServerClosed = errors.New("smtp: server already closed")
-)
+var ErrServerClosed = errors.New("smtp: server already closed")
 
 // Logger interface is used by Server to report unexpected internal errors.
 type Logger interface {
