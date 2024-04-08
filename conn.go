@@ -232,12 +232,7 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 	sess, err := c.server.Backend.NewSession(c)
 	if err != nil {
 		c.helo = ""
-
-		if smtpErr, ok := err.(*SMTPError); ok {
-			c.writeResponse(smtpErr.Code, smtpErr.EnhancedCode, smtpErr.Message)
-			return
-		}
-		c.writeResponse(451, EnhancedCode{4, 0, 0}, err.Error())
+		c.writeError(451, EnhancedCode{4, 0, 0}, err)
 		return
 	}
 
@@ -421,11 +416,7 @@ func (c *Conn) handleMail(arg string) {
 	}
 
 	if err := c.Session().Mail(from, opts); err != nil {
-		if smtpErr, ok := err.(*SMTPError); ok {
-			c.writeResponse(smtpErr.Code, smtpErr.EnhancedCode, smtpErr.Message)
-			return
-		}
-		c.writeResponse(451, EnhancedCode{4, 0, 0}, err.Error())
+		c.writeError(451, EnhancedCode{4, 0, 0}, err)
 		return
 	}
 
@@ -725,11 +716,7 @@ func (c *Conn) handleRcpt(arg string) {
 	}
 
 	if err := c.Session().Rcpt(recipient, opts); err != nil {
-		if smtpErr, ok := err.(*SMTPError); ok {
-			c.writeResponse(smtpErr.Code, smtpErr.EnhancedCode, smtpErr.Message)
-			return
-		}
-		c.writeResponse(451, EnhancedCode{4, 0, 0}, err.Error())
+		c.writeError(451, EnhancedCode{4, 0, 0}, err)
 		return
 	}
 	c.recipients = append(c.recipients, recipient)
@@ -796,11 +783,7 @@ func (c *Conn) handleAuth(arg string) {
 
 	sasl, err := c.auth(mechanism)
 	if err != nil {
-		if smtpErr, ok := err.(*SMTPError); ok {
-			c.writeResponse(smtpErr.Code, smtpErr.EnhancedCode, smtpErr.Message)
-		} else {
-			c.writeResponse(454, EnhancedCode{4, 7, 0}, err.Error())
-		}
+		c.writeError(454, EnhancedCode{4, 7, 0}, err)
 		return
 	}
 
@@ -808,11 +791,7 @@ func (c *Conn) handleAuth(arg string) {
 	for {
 		challenge, done, err := sasl.Next(response)
 		if err != nil {
-			if smtpErr, ok := err.(*SMTPError); ok {
-				c.writeResponse(smtpErr.Code, smtpErr.EnhancedCode, smtpErr.Message)
-				return
-			}
-			c.writeResponse(454, EnhancedCode{4, 7, 0}, err.Error())
+			c.writeError(454, EnhancedCode{4, 7, 0}, err)
 			return
 		}
 
@@ -1250,6 +1229,14 @@ func (c *Conn) writeResponse(code int, enhCode EnhancedCode, text ...string) {
 		c.text.PrintfLine("%d %v", code, text[len(text)-1])
 	} else {
 		c.text.PrintfLine("%d %v.%v.%v %v", code, enhCode[0], enhCode[1], enhCode[2], text[len(text)-1])
+	}
+}
+
+func (c *Conn) writeError(code int, enhCode EnhancedCode, err error) {
+	if smtpErr, ok := err.(*SMTPError); ok {
+		c.writeResponse(smtpErr.Code, smtpErr.EnhancedCode, smtpErr.Message)
+	} else {
+		c.writeResponse(code, enhCode, err.Error())
 	}
 }
 
