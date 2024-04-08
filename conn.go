@@ -909,7 +909,7 @@ func (c *Conn) handleData(arg string) {
 	}
 
 	r := newDataReader(c)
-	code, enhancedCode, msg := toSMTPStatus(c.Session().Data(r))
+	code, enhancedCode, msg := dataErrorToStatus(c.Session().Data(r))
 	r.limited = false
 	io.Copy(ioutil.Discard, r) // Make sure all the data has been consumed
 	c.writeResponse(code, enhancedCode, msg)
@@ -1006,7 +1006,7 @@ func (c *Conn) handleBdat(arg string) {
 		// the whole chunk.
 		io.Copy(ioutil.Discard, chunk)
 
-		c.writeResponse(toSMTPStatus(err))
+		c.writeResponse(dataErrorToStatus(err))
 
 		if err == errPanic {
 			c.Close()
@@ -1029,11 +1029,11 @@ func (c *Conn) handleBdat(arg string) {
 		if c.server.LMTP {
 			c.bdatStatus.fillRemaining(err)
 			for i, rcpt := range c.recipients {
-				code, enchCode, msg := toSMTPStatus(<-c.bdatStatus.status[i])
+				code, enchCode, msg := dataErrorToStatus(<-c.bdatStatus.status[i])
 				c.writeResponse(code, enchCode, "<"+rcpt+"> "+msg)
 			}
 		} else {
-			c.writeResponse(toSMTPStatus(err))
+			c.writeResponse(dataErrorToStatus(err))
 		}
 
 		if err == errPanic {
@@ -1168,7 +1168,7 @@ func (c *Conn) handleDataLMTP() {
 	}
 
 	for i, rcpt := range c.recipients {
-		code, enchCode, msg := toSMTPStatus(<-status.status[i])
+		code, enchCode, msg := dataErrorToStatus(<-status.status[i])
 		c.writeResponse(code, enchCode, "<"+rcpt+"> "+msg)
 	}
 
@@ -1179,7 +1179,7 @@ func (c *Conn) handleDataLMTP() {
 	}
 }
 
-func toSMTPStatus(err error) (code int, enchCode EnhancedCode, msg string) {
+func dataErrorToStatus(err error) (code int, enchCode EnhancedCode, msg string) {
 	if err != nil {
 		if smtperr, ok := err.(*SMTPError); ok {
 			return smtperr.Code, smtperr.EnhancedCode, smtperr.Message
