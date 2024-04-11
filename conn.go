@@ -773,11 +773,15 @@ func (c *Conn) handleAuth(arg string) {
 	// Parse client initial response if there is one
 	var ir []byte
 	if len(parts) > 1 {
-		var err error
-		ir, err = base64.StdEncoding.DecodeString(parts[1])
-		if err != nil {
-			c.writeResponse(454, EnhancedCode{4, 7, 0}, "Invalid base64 data")
-			return
+		if parts[1] == "=" {
+			ir = []byte{}
+		} else {
+			var err error
+			ir, err = base64.StdEncoding.DecodeString(parts[1])
+			if err != nil {
+				c.writeResponse(454, EnhancedCode{4, 7, 0}, "Invalid base64 data")
+				return
+			}
 		}
 	}
 
@@ -816,10 +820,14 @@ func (c *Conn) handleAuth(arg string) {
 			return
 		}
 
-		response, err = base64.StdEncoding.DecodeString(encoded)
-		if err != nil {
-			c.writeResponse(454, EnhancedCode{4, 7, 0}, "Invalid base64 data")
-			return
+		if encoded == "=" {
+			response = []byte{}
+		} else {
+			response, err = base64.StdEncoding.DecodeString(encoded)
+			if err != nil {
+				c.writeResponse(454, EnhancedCode{4, 7, 0}, "Invalid base64 data")
+				return
+			}
 		}
 	}
 
