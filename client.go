@@ -356,8 +356,13 @@ func (c *Client) Auth(a sasl.Client) error {
 	if err != nil {
 		return err
 	}
-	resp64 := make([]byte, encoding.EncodedLen(len(resp)))
-	encoding.Encode(resp64, resp)
+	var resp64 []byte
+	if len(resp) > 0 {
+		resp64 = make([]byte, encoding.EncodedLen(len(resp)))
+		encoding.Encode(resp64, resp)
+	} else if resp != nil {
+		resp64 = []byte{'='}
+	}
 	code, msg64, err := c.cmd(0, strings.TrimSpace(fmt.Sprintf("AUTH %s %s", mech, resp64)))
 	for err == nil {
 		var msg []byte
