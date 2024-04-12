@@ -20,7 +20,8 @@ import (
 	"github.com/emersion/go-sasl"
 )
 
-// Issue 17794: don't send a trailing space on AUTH command when there's no password.
+// Don't send a trailing space on AUTH command when there's no initial response:
+// https://github.com/golang/go/issues/17794
 func TestClientAuthTrimSpace(t *testing.T) {
 	server := "220 hello world\r\n" +
 		"200 some more"
@@ -35,24 +36,24 @@ func TestClientAuthTrimSpace(t *testing.T) {
 	}
 	c := NewClient(fake)
 	c.didHello = true
-	c.Auth(toServerEmptyAuth{})
+	c.Auth(toServerNoRespAuth{})
 	c.Close()
 	if got, want := wrote.String(), "AUTH FOOAUTH\r\n*\r\n"; got != want {
 		t.Errorf("wrote %q; want %q", got, want)
 	}
 }
 
-// toServerEmptyAuth is an implementation of Auth that only implements
+// toServerNoRespAuth is an implementation of Auth that only implements
 // the Start method, and returns "FOOAUTH", nil, nil. Notably, it returns
-// zero bytes for "toServer" so we can test that we don't send spaces at
-// the end of the line. See TestClientAuthTrimSpace.
-type toServerEmptyAuth struct{}
+// nil for "toServer" so we can test that we don't send spaces at the end of
+// the line. See TestClientAuthTrimSpace.
+type toServerNoRespAuth struct{}
 
-func (toServerEmptyAuth) Start() (proto string, toServer []byte, err error) {
+func (toServerNoRespAuth) Start() (proto string, toServer []byte, err error) {
 	return "FOOAUTH", nil, nil
 }
 
-func (toServerEmptyAuth) Next(fromServer []byte) (toServer []byte, err error) {
+func (toServerNoRespAuth) Next(fromServer []byte) (toServer []byte, err error) {
 	panic("unexpected call")
 }
 
