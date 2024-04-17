@@ -15,3 +15,6 @@ tasks:
   - coverage: |
       cd go-smtp
       go tool cover -html=coverage.txt -o ~/coverage.html
+  - gofmt: |
+      cd go-smtp
+      test -z $(gofmt -l .)
