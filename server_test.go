@@ -10,6 +10,7 @@ import (
 	"log"
 	"net"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/emersion/go-sasl"
@@ -173,6 +174,7 @@ func (s *session) LMTPData(r io.Reader, collector smtp.StatusCollector) error {
 type failingListener struct {
 	c      chan error
 	closed bool
+	mu     sync.Mutex
 }
 
 func newFailingListener() *failingListener {
@@ -180,6 +182,9 @@ func newFailingListener() *failingListener {
 }
 
 func (l *failingListener) Send(err error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
 	if !l.closed {
 		l.c <- err
 	}
@@ -190,6 +195,9 @@ func (l *failingListener) Accept() (net.Conn, error) {
 }
 
 func (l *failingListener) Close() error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
 	if !l.closed {
 		close(l.c)
 		l.closed = true
