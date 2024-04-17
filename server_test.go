@@ -318,9 +318,9 @@ func TestServerAcceptErrorHandling(t *testing.T) {
 	s.ErrorLog = log.New(errorLog, "", 0)
 
 	l := newFailingListener()
-	var serveError error
+	done := make(chan error, 1)
 	go func() {
-		serveError = s.Serve(l)
+		done <- s.Serve(l)
 		l.Close()
 	}()
 
@@ -330,6 +330,7 @@ func TestServerAcceptErrorHandling(t *testing.T) {
 	l.Send(permanentError)
 	s.Close()
 
+	serveError := <-done
 	if serveError == nil {
 		t.Fatal("Serve had exited without an expected error")
 	} else if serveError != permanentError {
