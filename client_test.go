@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"io"
 	"net"
 	"net/textproto"
@@ -507,6 +508,39 @@ var helloClient = []string{
 	"QUIT\n",
 	"VRFY test@example.com\n",
 	"NOOP\n",
+}
+
+var shuttingDownServerHello = `220 hello world
+421 Service not available, closing transmission channel
+`
+
+func TestHello_421Response(t *testing.T) {
+	server := strings.Join(strings.Split(shuttingDownServerHello, "\n"), "\r\n")
+	client := "EHLO customhost\r\n"
+	var cmdbuf bytes.Buffer
+	bcmdbuf := bufio.NewWriter(&cmdbuf)
+	var fake faker
+	fake.ReadWriter = bufio.NewReadWriter(bufio.NewReader(strings.NewReader(server)), bcmdbuf)
+	c := NewClient(fake)
+	defer c.Close()
+	c.serverName = "fake.host"
+	c.localName = "customhost"
+
+	err := c.Hello("customhost")
+	if err == nil {
+		t.Errorf("Expected Hello to fail")
+	}
+
+	var smtpError *SMTPError
+	if !errors.As(err, &smtpError) || smtpError.Code != 421 || smtpError.Message != "Service not available, closing transmission channel" {
+		t.Errorf("Expected error 421, got %v", err)
+	}
+
+	bcmdbuf.Flush()
+	actualcmds := cmdbuf.String()
+	if client != actualcmds {
+		t.Errorf("Got:\n%s\nExpected:\n%s", actualcmds, client)
+	}
 }
 
 var sendMailServer = `220 hello world

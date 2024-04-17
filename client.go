@@ -197,12 +197,23 @@ func (c *Client) greet() error {
 
 // hello runs a hello exchange if needed.
 func (c *Client) hello() error {
-	if !c.didHello {
-		c.didHello = true
-		if err := c.greet(); err != nil {
-			c.helloError = err
-		} else if err := c.ehlo(); err != nil {
+	if c.didHello {
+		return c.helloError
+	}
+
+	c.didHello = true
+	if err := c.greet(); err != nil {
+		c.helloError = err
+		return c.helloError
+	}
+
+	if err := c.ehlo(); err != nil {
+		var smtpError *SMTPError
+		if errors.As(err, &smtpError) && (smtpError.Code == 500 || smtpError.Code == 502) {
+			// The server doesn't support EHLO, fallback to HELO
 			c.helloError = c.helo()
+		} else {
+			c.helloError = err
 		}
 	}
 	return c.helloError
