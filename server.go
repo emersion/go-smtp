@@ -120,7 +120,7 @@ func (s *Server) Serve(l net.Listener) error {
 
 			err := s.handleConn(newConn(c, s))
 			if err != nil {
-				s.ErrorLog.Printf("handler error: %s", err)
+				s.ErrorLog.Printf("error handling %v: %s", c.RemoteAddr(), err)
 			}
 		}()
 	}
