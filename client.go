@@ -183,12 +183,9 @@ func (c *Client) greet() error {
 	c.conn.SetDeadline(time.Now().Add(c.CommandTimeout))
 	defer c.conn.SetDeadline(time.Time{})
 
-	_, _, err := c.text.ReadResponse(220)
+	_, _, err := c.readResponse(220)
 	if err != nil {
 		c.text.Close()
-		if protoErr, ok := err.(*textproto.Error); ok {
-			return toSMTPErr(protoErr)
-		}
 		return err
 	}
 
@@ -237,6 +234,14 @@ func (c *Client) Hello(localName string) error {
 	return c.hello()
 }
 
+func (c *Client) readResponse(expectCode int) (int, string, error) {
+	code, msg, err := c.text.ReadResponse(expectCode)
+	if protoErr, ok := err.(*textproto.Error); ok {
+		err = toSMTPErr(protoErr)
+	}
+	return code, msg, err
+}
+
 // cmd is a convenience function that sends a command and returns the response
 // textproto.Error returned by c.text.ReadResponse is converted into SMTPError.
 func (c *Client) cmd(expectCode int, format string, args ...interface{}) (int, string, error) {
@@ -249,15 +254,8 @@ func (c *Client) cmd(expectCode int, format string, args ...interface{}) (int, s
 	}
 	c.text.StartResponse(id)
 	defer c.text.EndResponse(id)
-	code, msg, err := c.text.ReadResponse(expectCode)
-	if err != nil {
-		if protoErr, ok := err.(*textproto.Error); ok {
-			smtpErr := toSMTPErr(protoErr)
-			return code, smtpErr.Message, smtpErr
-		}
-		return code, msg, err
-	}
-	return code, msg, nil
+
+	return c.readResponse(expectCode)
 }
 
 // helo sends the HELO greeting to the server. It should be used only when the
@@ -555,10 +553,10 @@ func (d *dataCloser) Close() error {
 	if d.c.lmtp {
 		for expectedResponses > 0 {
 			rcpt := d.c.rcpts[len(d.c.rcpts)-expectedResponses]
-			if _, _, err := d.c.text.ReadResponse(250); err != nil {
-				if protoErr, ok := err.(*textproto.Error); ok {
+			if _, _, err := d.c.readResponse(250); err != nil {
+				if smtpErr, ok := err.(*SMTPError); ok {
 					if d.statusCb != nil {
-						d.statusCb(rcpt, toSMTPErr(protoErr))
+						d.statusCb(rcpt, smtpErr)
 					}
 				} else {
 					return err
@@ -569,11 +567,8 @@ func (d *dataCloser) Close() error {
 			expectedResponses--
 		}
 	} else {
-		_, _, err := d.c.text.ReadResponse(250)
+		_, _, err := d.c.readResponse(250)
 		if err != nil {
-			if protoErr, ok := err.(*textproto.Error); ok {
-				return toSMTPErr(protoErr)
-			}
 			return err
 		}
 	}
