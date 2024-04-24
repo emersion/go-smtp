@@ -537,6 +537,61 @@ func (c *Client) Rcpt(to string, opts *RcptOptions) error {
 	return nil
 }
 
+// DataCommand is a pending DATA command. DataCommand is an io.WriteCloser.
+// See Client.Data.
+type DataCommand struct {
+	c  *Client
+	wc io.WriteCloser
+
+	closeErr error
+}
+
+var _ io.WriteCloser = (*DataCommand)(nil)
+
+// Write implements io.Writer.
+func (cmd *DataCommand) Write(b []byte) (int, error) {
+	return cmd.wc.Write(b)
+}
+
+// CloseWithResponse is equivalent to Close, but also returns the server
+// response.
+func (cmd *DataCommand) CloseWithResponse() (*DataResponse, error) {
+	if cmd.closeErr != nil {
+		return nil, cmd.closeErr
+	}
+
+	if err := cmd.wc.Close(); err != nil {
+		cmd.closeErr = err
+		return nil, err
+	}
+
+	cmd.c.conn.SetDeadline(time.Now().Add(cmd.c.SubmissionTimeout))
+	defer cmd.c.conn.SetDeadline(time.Time{})
+
+	_, msg, err := cmd.c.readResponse(250)
+	if err != nil {
+		cmd.closeErr = err
+		return nil, err
+	}
+
+	cmd.closeErr = errors.New("smtp: data writer closed twice")
+	return &DataResponse{StatusText: msg}, nil
+}
+
+// Close implements io.Closer.
+func (cmd *DataCommand) Close() error {
+	_, err := cmd.CloseWithResponse()
+	return err
+}
+
+// DataResponse is the response returned by a DATA command. See
+// DataCommand.CloseWithResponse.
+type DataResponse struct {
+	// StatusText is the status text returned by the server. It may contain
+	// tracking information.
+	StatusText string
+}
+
 type dataCloser struct {
 	c *Client
 	io.WriteCloser
@@ -590,12 +645,12 @@ func (d *dataCloser) Close() error {
 // Data must be preceded by one or more calls to Rcpt.
 //
 // If server returns an error, it will be of type *SMTPError.
-func (c *Client) Data() (io.WriteCloser, error) {
+func (c *Client) Data() (*DataCommand, error) {
 	_, _, err := c.cmd(354, "DATA")
 	if err != nil {
 		return nil, err
 	}
-	return &dataCloser{c: c, WriteCloser: c.text.DotWriter()}, nil
+	return &DataCommand{c: c, wc: c.text.DotWriter()}, nil
 }
 
 // LMTPData is the LMTP-specific version of the Data method. It accepts a callback
