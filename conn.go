@@ -773,15 +773,11 @@ func (c *Conn) handleAuth(arg string) {
 	// Parse client initial response if there is one
 	var ir []byte
 	if len(parts) > 1 {
-		if parts[1] == "=" {
-			ir = []byte{}
-		} else {
-			var err error
-			ir, err = base64.StdEncoding.DecodeString(parts[1])
-			if err != nil {
-				c.writeResponse(454, EnhancedCode{4, 7, 0}, "Invalid base64 data")
-				return
-			}
+		var err error
+		ir, err = decodeSASLResponse(parts[1])
+		if err != nil {
+			c.writeResponse(454, EnhancedCode{4, 7, 0}, "Invalid base64 data")
+			return
 		}
 	}
 
@@ -820,19 +816,22 @@ func (c *Conn) handleAuth(arg string) {
 			return
 		}
 
-		if encoded == "=" {
-			response = []byte{}
-		} else {
-			response, err = base64.StdEncoding.DecodeString(encoded)
-			if err != nil {
-				c.writeResponse(454, EnhancedCode{4, 7, 0}, "Invalid base64 data")
-				return
-			}
+		response, err = decodeSASLResponse(encoded)
+		if err != nil {
+			c.writeResponse(454, EnhancedCode{4, 7, 0}, "Invalid base64 data")
+			return
 		}
 	}
 
 	c.writeResponse(235, EnhancedCode{2, 0, 0}, "Authentication succeeded")
 	c.didAuth = true
+}
+
+func decodeSASLResponse(s string) ([]byte, error) {
+	if s == "=" {
+		return []byte{}, nil
+	}
+	return base64.StdEncoding.DecodeString(s)
 }
 
 func (c *Conn) authMechanisms() []string {
