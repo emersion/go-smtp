@@ -30,6 +30,7 @@ type Client struct {
 	ext        map[string]string // supported extensions
 	localName  string            // the name to use in HELO/EHLO/LHLO
 	didHello   bool              // whether we've said HELO/EHLO/LHLO
+	didGreet   bool              // whether we've received greeting from server
 	helloError error             // the error from the hello
 	rcpts      []string          // recipients accumulated for the current session
 
@@ -179,6 +180,10 @@ func (c *Client) Close() error {
 }
 
 func (c *Client) greet() error {
+	if c.didGreet {
+		return nil
+	}
+
 	// Initial greeting timeout. RFC 5321 recommends 5 minutes.
 	c.conn.SetDeadline(time.Now().Add(c.CommandTimeout))
 	defer c.conn.SetDeadline(time.Time{})
@@ -189,6 +194,7 @@ func (c *Client) greet() error {
 		return err
 	}
 
+	c.didGreet = true
 	return nil
 }
 
@@ -321,7 +327,8 @@ func (c *Client) startTLS(config *tls.Config) error {
 		testHookStartTLS(config)
 	}
 	c.setConn(tls.Client(c.conn, config))
-	return c.ehlo()
+	c.didHello = false
+	return nil
 }
 
 // TLSConnectionState returns the client's TLS connection state.

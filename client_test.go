@@ -653,6 +653,10 @@ func TestTLSConnState(t *testing.T) {
 			return
 		}
 		defer c.Quit()
+		if err := c.Hello("localhost"); err != nil {
+			t.Errorf("Client hello: %v", err)
+			return
+		}
 		cs, ok := c.TLSConnectionState()
 		if !ok {
 			t.Errorf("TLSConnectionState returned ok == false; want true")
