@@ -29,8 +29,9 @@ type Client struct {
 	lmtp       bool
 	ext        map[string]string // supported extensions
 	localName  string            // the name to use in HELO/EHLO/LHLO
-	didHello   bool              // whether we've said HELO/EHLO/LHLO
 	didGreet   bool              // whether we've received greeting from server
+	greetError error             // the error from the greeting
+	didHello   bool              // whether we've said HELO/EHLO/LHLO
 	helloError error             // the error from the hello
 	rcpts      []string          // recipients accumulated for the current session
 
@@ -181,21 +182,21 @@ func (c *Client) Close() error {
 
 func (c *Client) greet() error {
 	if c.didGreet {
-		return nil
+		return c.greetError
 	}
 
 	// Initial greeting timeout. RFC 5321 recommends 5 minutes.
 	c.conn.SetDeadline(time.Now().Add(c.CommandTimeout))
 	defer c.conn.SetDeadline(time.Time{})
 
+	c.didGreet = true
 	_, _, err := c.readResponse(220)
 	if err != nil {
+		c.greetError = err
 		c.text.Close()
-		return err
 	}
 
-	c.didGreet = true
-	return nil
+	return c.greetError
 }
 
 // hello runs a hello exchange if needed.
@@ -204,12 +205,11 @@ func (c *Client) hello() error {
 		return c.helloError
 	}
 
-	c.didHello = true
 	if err := c.greet(); err != nil {
-		c.helloError = err
-		return c.helloError
+		return err
 	}
 
+	c.didHello = true
 	if err := c.ehlo(); err != nil {
 		var smtpError *SMTPError
 		if errors.As(err, &smtpError) && (smtpError.Code == 500 || smtpError.Code == 502) {
