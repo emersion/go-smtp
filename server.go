@@ -57,6 +57,10 @@ type Server struct {
 	// Should be used only if backend supports it.
 	EnableDSN bool
 
+	// Advertise XOORG capability.
+	// Should be used only if backend supports it.
+	EnableXOORG bool
+
 	// The server backend.
 	Backend Backend
 
