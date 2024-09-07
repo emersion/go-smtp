@@ -784,6 +784,11 @@ func (c *Client) Reset() error {
 	if _, _, err := c.cmd(250, "RSET"); err != nil {
 		return err
 	}
+
+	// allow custom HELLO again
+	c.didHello = false
+	c.helloError = nil
+
 	c.rcpts = nil
 	return nil
 }
