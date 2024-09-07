@@ -229,14 +229,21 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 	// NewSession can access it via Conn.Hostname.
 	c.helo = domain
 
-	sess, err := c.server.Backend.NewSession(c)
-	if err != nil {
-		c.helo = ""
-		c.writeError(451, EnhancedCode{4, 0, 0}, err)
-		return
-	}
+	// RFC 5321: "An EHLO command MAY be issued by a client later in the session"
+	if c.session != nil {
+		// RFC 5321: "... the SMTP server MUST clear all buffers
+		// and reset the state exactly as if a RSET command has been issued."
+		c.reset()
+	} else {
+		sess, err := c.server.Backend.NewSession(c)
+		if err != nil {
+			c.helo = ""
+			c.writeError(451, EnhancedCode{4, 0, 0}, err)
+			return
+		}
 
-	c.setSession(sess)
+		c.setSession(sess)
+	}
 
 	if !enhanced {
 		c.writeResponse(250, EnhancedCode{2, 0, 0}, fmt.Sprintf("Hello %s", domain))
