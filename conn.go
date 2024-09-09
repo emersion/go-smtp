@@ -283,6 +283,9 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 	if c.server.EnableDSN {
 		caps = append(caps, "DSN")
 	}
+	if c.server.EnableXOORG {
+		caps = append(caps, "XOORG")
+	}
 	if c.server.MaxMessageBytes > 0 {
 		caps = append(caps, fmt.Sprintf("SIZE %v", c.server.MaxMessageBytes))
 	} else {
@@ -346,6 +349,12 @@ func (c *Conn) handleMail(arg string) {
 			}
 
 			opts.Size = int64(size)
+		case "XOORG":
+			if !c.server.EnableXOORG {
+				c.writeResponse(504, EnhancedCode{5, 5, 4}, "EnableXOORG is not implemented")
+				return
+			}
+			opts.XOORG = value
 		case "SMTPUTF8":
 			if !c.server.EnableSMTPUTF8 {
 				c.writeResponse(504, EnhancedCode{5, 5, 4}, "SMTPUTF8 is not implemented")
