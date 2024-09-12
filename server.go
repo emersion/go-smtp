@@ -32,6 +32,7 @@ type Server struct {
 	LMTP bool
 
 	Domain            string
+	MaxConnections    int
 	MaxRecipients     int
 	MaxMessageBytes   int64
 	MaxLineLength     int
@@ -149,6 +150,12 @@ func (s *Server) handleConn(c *Conn) error {
 		if err := tlsConn.Handshake(); err != nil {
 			return err
 		}
+	}
+
+	// limit connections
+	if s.MaxConnections > 0 && len(s.conns) > s.MaxConnections {
+		c.Reject()
+		return nil
 	}
 
 	c.greet()
