@@ -19,7 +19,9 @@ func (bkd *Backend) NewSession(c *smtp.Conn) (smtp.Session, error) {
 }
 
 // A Session is returned after successful login.
-type Session struct{}
+type Session struct {
+	auth bool
+}
 
 // AuthMechanisms returns a slice of available auth mechanisms; only PLAIN is
 // supported in this example.
@@ -33,21 +35,31 @@ func (s *Session) Auth(mech string) (sasl.Server, error) {
 		if username != "username" || password != "password" {
 			return errors.New("Invalid username or password")
 		}
+		s.auth = true
 		return nil
 	}), nil
 }
 
 func (s *Session) Mail(from string, opts *smtp.MailOptions) error {
+	if !s.auth {
+		return smtp.ErrAuthRequired
+	}
 	log.Println("Mail from:", from)
 	return nil
 }
 
 func (s *Session) Rcpt(to string, opts *smtp.RcptOptions) error {
+	if !s.auth {
+		return smtp.ErrAuthRequired
+	}
 	log.Println("Rcpt to:", to)
 	return nil
 }
 
 func (s *Session) Data(r io.Reader) error {
+	if !s.auth {
+		return smtp.ErrAuthRequired
+	}
 	if b, err := io.ReadAll(r); err != nil {
 		return err
 	} else {
