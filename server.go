@@ -142,23 +142,23 @@ func (s *Server) handleConn(c *Conn) error {
 		}
 	}
 
-	// limit connections
-	if s.MaxConnections > 0 {
-		s.locker.Lock()
-		nConns := len(s.conns)
-		s.locker.Unlock()
-
-		if nConns > s.MaxConnections {
-			c.writeResponse(421, EnhancedCode{4, 4, 5}, "Too busy. Try again later.")
-			return nil
-		}
-	}
-
 	// register connection
+	maxConnsExceeded := false
 	s.locker.Lock()
-	s.conns[c] = struct{}{}
+	if s.MaxConnections > 0 && len(s.conns) >= s.MaxConnections {
+		maxConnsExceeded = true
+	} else {
+		s.conns[c] = struct{}{}
+	}
 	s.locker.Unlock()
 
+	// limit connections
+	if maxConnsExceeded {
+		c.writeResponse(421, EnhancedCode{4, 4, 5}, "Too busy. Try again later.")
+		return nil
+	}
+
+	// unregister connection
 	defer func() {
 		s.locker.Lock()
 		delete(s.conns, c)
