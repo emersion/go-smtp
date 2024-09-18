@@ -14,7 +14,6 @@ import (
 	"testing"
 
 	"github.com/emersion/go-sasl"
-
 	"github.com/emersion/go-smtp"
 )
 
