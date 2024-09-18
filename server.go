@@ -128,17 +128,7 @@ func (s *Server) Serve(l net.Listener) error {
 }
 
 func (s *Server) handleConn(c *Conn) error {
-	s.locker.Lock()
-	s.conns[c] = struct{}{}
-	s.locker.Unlock()
-
-	defer func() {
-		c.Close()
-
-		s.locker.Lock()
-		delete(s.conns, c)
-		s.locker.Unlock()
-	}()
+	defer c.Close()
 
 	if tlsConn, ok := c.conn.(*tls.Conn); ok {
 		if d := s.ReadTimeout; d != 0 {
@@ -153,10 +143,27 @@ func (s *Server) handleConn(c *Conn) error {
 	}
 
 	// limit connections
-	if s.MaxConnections > 0 && len(s.conns) > s.MaxConnections {
-		c.Reject()
-		return nil
+	if s.MaxConnections > 0 {
+		s.locker.Lock()
+		nConns := len(s.conns)
+		s.locker.Unlock()
+
+		if nConns > s.MaxConnections {
+			c.writeResponse(421, EnhancedCode{4, 4, 5}, "Too busy. Try again later.")
+			return nil
+		}
 	}
+
+	// register connection
+	s.locker.Lock()
+	s.conns[c] = struct{}{}
+	s.locker.Unlock()
+
+	defer func() {
+		s.locker.Lock()
+		delete(s.conns, c)
+		s.locker.Unlock()
+	}()
 
 	c.greet()
 
