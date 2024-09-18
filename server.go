@@ -32,6 +32,7 @@ type Server struct {
 	LMTP bool
 
 	Domain            string
+	MaxConnections    int
 	MaxRecipients     int
 	MaxMessageBytes   int64
 	MaxLineLength     int
@@ -127,17 +128,7 @@ func (s *Server) Serve(l net.Listener) error {
 }
 
 func (s *Server) handleConn(c *Conn) error {
-	s.locker.Lock()
-	s.conns[c] = struct{}{}
-	s.locker.Unlock()
-
-	defer func() {
-		c.Close()
-
-		s.locker.Lock()
-		delete(s.conns, c)
-		s.locker.Unlock()
-	}()
+	defer c.Close()
 
 	if tlsConn, ok := c.conn.(*tls.Conn); ok {
 		if d := s.ReadTimeout; d != 0 {
@@ -150,6 +141,29 @@ func (s *Server) handleConn(c *Conn) error {
 			return err
 		}
 	}
+
+	// register connection
+	maxConnsExceeded := false
+	s.locker.Lock()
+	if s.MaxConnections > 0 && len(s.conns) >= s.MaxConnections {
+		maxConnsExceeded = true
+	} else {
+		s.conns[c] = struct{}{}
+	}
+	s.locker.Unlock()
+
+	// limit connections
+	if maxConnsExceeded {
+		c.writeResponse(421, EnhancedCode{4, 4, 5}, "Too busy. Try again later.")
+		return nil
+	}
+
+	// unregister connection
+	defer func() {
+		s.locker.Lock()
+		delete(s.conns, c)
+		s.locker.Unlock()
+	}()
 
 	c.greet()
 

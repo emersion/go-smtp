@@ -1514,3 +1514,49 @@ func TestServerDSNwithSMTPUTF8(t *testing.T) {
 		t.Fatal("Invalid ORCPT address:", val)
 	}
 }
+
+func TestServer_MaxConnections(t *testing.T) {
+	cases := []struct {
+		name           string
+		maxConnections int
+		expected       string
+	}{
+		// 0 = unlimited; all connections should be accepted
+		{name: "MaxConnections set to 0", maxConnections: 0, expected: "220 localhost ESMTP Service Ready"},
+		// 1 = only one connection is allowed; the second connection should be rejected
+		{name: "MaxConnections set to 1", maxConnections: 1, expected: "421 4.4.5 Too busy. Try again later."},
+		// 2 = two connections are allowed; the second connection should be accepted
+		{name: "MaxConnections set to 2", maxConnections: 2, expected: "220 localhost ESMTP Service Ready"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// create server with limited allowed connections
+			_, s, c, scanner1 := testServer(t, func(s *smtp.Server) {
+				s.MaxConnections = tc.maxConnections
+			})
+			defer s.Close()
+
+			// there is already be one connection registered
+			// and we can read the greeting from it (see testServerGreeted())
+			scanner1.Scan()
+			if scanner1.Text() != "220 localhost ESMTP Service Ready" {
+				t.Fatal("Invalid first greeting:", scanner1.Text())
+			}
+
+			// now we create a second connection
+			c2, err := net.Dial("tcp", c.RemoteAddr().String())
+			if err != nil {
+				t.Fatal("Error creating second connection:", err)
+			}
+
+			// we should get an appropriate greeting now
+			scanner2 := bufio.NewScanner(c2)
+			scanner2.Scan()
+			if scanner2.Text() != tc.expected {
+				t.Fatal("Invalid second greeting:", scanner2.Text())
+			}
+		})
+	}
+
+}
