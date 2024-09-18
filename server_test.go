@@ -1550,7 +1550,7 @@ func TestServer_MaxConnections(t *testing.T) {
 				t.Fatal("Error creating second connection:", err)
 			}
 
-			// we should get an 421 error greeting now
+			// we should get an appropriate greeting now
 			scanner2 := bufio.NewScanner(c2)
 			scanner2.Scan()
 			if scanner2.Text() != tc.expected {
