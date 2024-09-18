@@ -1531,7 +1531,7 @@ func TestServer_MaxConnections(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			// create server with a single allowed connection
+			// create server with limited allowed connections
 			_, s, c, scanner1 := testServer(t, func(s *smtp.Server) {
 				s.MaxConnections = tc.maxConnections
 			})
