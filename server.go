@@ -1,3 +1,5 @@
+// Package smtp implements the base structs and functions for SMTP
+// servers and clients.
 package smtp
 
 import (
@@ -12,6 +14,7 @@ import (
 	"time"
 )
 
+// ErrServerClosed reports a server closed error.
 var ErrServerClosed = errors.New("smtp: server already closed")
 
 // Logger interface is used by Server to report unexpected internal errors.
@@ -20,7 +23,12 @@ type Logger interface {
 	Println(v ...interface{})
 }
 
-// A SMTP server.
+// StatusLogger interface is used by Server to report status codes.
+type StatusLogger interface {
+	LogCode(code int, enhCode EnhancedCode, text ...string)
+}
+
+// Server is the base struct for an SMTP server.
 type Server struct {
 	// The type of network, "tcp" or "unix".
 	Network string
@@ -38,6 +46,7 @@ type Server struct {
 	AllowInsecureAuth bool
 	Debug             io.Writer
 	ErrorLog          Logger
+	StatusLog         StatusLogger
 	ReadTimeout       time.Duration
 	WriteTimeout      time.Duration
 
