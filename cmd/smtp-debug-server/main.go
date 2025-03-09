@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/emersion/go-smtp"
+	"github.com/jsuto/go-smtp"
 )
 
 var addr = "127.0.0.1:1025"
