@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/emersion/go-smtp"
+	"github.com/jsuto/go-smtp"
 )
 
 func testServerGreetedLMTP(t *testing.T, fn ...serverConfigureFunc) (be *backend, s *smtp.Server, c net.Conn, scanner *bufio.Scanner) {
