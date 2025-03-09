@@ -63,6 +63,8 @@ type Session interface {
 	//
 	// r must be consumed before Data returns.
 	Data(r io.Reader) error
+
+        Xforward(opts *XforwardOptions) error
 }
 
 // LMTPSession is an add-on interface for Session. It can be implemented by

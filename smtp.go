@@ -66,6 +66,13 @@ type MailOptions struct {
 	Auth *string
 }
 
+type XforwardOptions struct {
+    Name string
+    Addr string
+    Proto string
+    Helo string
+}
+
 type DSNNotify string
 
 const (

@@ -106,6 +106,7 @@ func (c *Conn) handle(cmd string, arg string) {
 	}
 
 	cmd = strings.ToUpper(cmd)
+
 	switch cmd {
 	case "SEND", "SOML", "SAML", "EXPN", "HELP", "TURN":
 		// These commands are not implemented in any state
@@ -144,6 +145,8 @@ func (c *Conn) handle(cmd string, arg string) {
 		c.handleAuth(arg)
 	case "STARTTLS":
 		c.handleStartTLS()
+        case "XFORWARD":
+                c.handleXforward(arg)
 	default:
 		msg := fmt.Sprintf("Syntax errors, %v command unrecognized", cmd)
 		c.protocolError(500, EnhancedCode{5, 5, 2}, msg)
@@ -1059,6 +1062,47 @@ func (c *Conn) handleBdat(arg string) {
 	} else {
 		c.writeResponse(250, EnhancedCode{2, 0, 0}, "Continue")
 	}
+}
+
+func (c *Conn) handleXforward(arg string) {
+    if c.helo == "" {
+        c.writeResponse(502, EnhancedCode{5, 5, 1}, "Please introduce yourself first.")
+        return
+    }
+    if c.bdatPipe != nil {
+         c.writeResponse(502, EnhancedCode{5, 5, 1}, "XFORWARD not allowed during message transfer")
+        return
+    }
+
+    p := parser{s: strings.TrimSpace(arg)}
+
+    args, err := parseArgs(p.s)
+    if err != nil {
+        c.writeResponse(501, EnhancedCode{5, 5, 4}, "Unable to parse XFORWARD parameters")
+        return
+    }
+
+    opts := &XforwardOptions{}
+
+    for key, value := range args {
+        switch key {
+        case "NAME":
+            opts.Name = value
+        case "ADDR":
+            opts.Addr = value
+        case "PROTO":
+            opts.Proto = value
+        case "HELO":
+            opts.Helo = value
+        }
+    }
+
+    if err := c.Session().Xforward(opts); err != nil {
+        c.writeError(501, EnhancedCode{5, 0, 1}, err)
+        return
+    }
+
+    c.SendResponse(250, "OK")
 }
 
 // ErrDataReset is returned by Reader pased to Data function if client does not

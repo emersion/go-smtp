@@ -20,6 +20,8 @@ func parseCmd(line string) (cmd string, arg string, err error) {
 	switch {
 	case strings.HasPrefix(strings.ToUpper(line), "STARTTLS"):
 		return "STARTTLS", "", nil
+        case strings.HasPrefix(strings.ToUpper(line), "XFORWARD"):
+                return "XFORWARD", strings.TrimSpace(line[8:]), nil
 	case l == 0:
 		return "", "", nil
 	case l < 4:
