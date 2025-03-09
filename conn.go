@@ -1246,32 +1246,9 @@ func (c *Conn) writeResponse(code int, enhCode EnhancedCode, text ...string) {
 	}
 }
 
-func (c *Conn) WriteResponse(code int, enhCode EnhancedCode, text ...string) {
-        // TODO: error handling
-        if c.server.WriteTimeout != 0 {
-                c.conn.SetWriteDeadline(time.Now().Add(c.server.WriteTimeout))
-        }
-
-        // All responses must include an enhanced code, if it is missing - use
-        // a generic code X.0.0.
-        if enhCode == EnhancedCodeNotSet {
-                cat := code / 100
-                switch cat {
-                case 2, 4, 5:
-                        enhCode = EnhancedCode{cat, 0, 0}
-                default:
-                        enhCode = NoEnhancedCode
-                }
-        }
-
-        for i := 0; i < len(text)-1; i++ {
-                c.text.PrintfLine("%d-%v", code, text[i])
-        }
-        if enhCode == NoEnhancedCode {
-                c.text.PrintfLine("%d %v", code, text[len(text)-1])
-        } else {
-                c.text.PrintfLine("%d %v.%v.%v %v", code, enhCode[0], enhCode[1], enhCode[2], text[len(text)-1])
-        }
+func (c *Conn) AbortConnection() {
+        c.writeResponse(550, EnhancedCode{5, 5, 0}, "Denied by policy")
+        c.Close()
 }
 
 func (c *Conn) writeError(code int, enhCode EnhancedCode, err error) {
