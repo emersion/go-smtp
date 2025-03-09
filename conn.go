@@ -1246,9 +1246,16 @@ func (c *Conn) writeResponse(code int, enhCode EnhancedCode, text ...string) {
 	}
 }
 
-func (c *Conn) AbortConnection() {
-        c.writeResponse(550, EnhancedCode{5, 5, 0}, "Denied by policy")
-        c.Close()
+func (c *Conn) SendResponse(code int, text ...string) {
+    if c.server.WriteTimeout != 0 {
+        c.conn.SetWriteDeadline(time.Now().Add(c.server.WriteTimeout))
+    }
+
+    for i := 0; i < len(text)-1; i++ {
+        c.text.PrintfLine("%d-%v", code, text[i])
+    }
+
+    c.text.PrintfLine("%d %v", code, text[len(text)-1])
 }
 
 func (c *Conn) writeError(code int, enhCode EnhancedCode, err error) {
