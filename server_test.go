@@ -1514,3 +1514,47 @@ func TestServerDSNwithSMTPUTF8(t *testing.T) {
 		t.Fatal("Invalid ORCPT address:", val)
 	}
 }
+
+func TestServerXOORG(t *testing.T) {
+	be, s, c, scanner, caps := testServerEhlo(t,
+		func(s *smtp.Server) {
+			s.EnableXOORG = true
+		})
+	defer s.Close()
+	defer c.Close()
+
+	for _, cap := range []string{"XOORG"} {
+		if _, ok := caps[cap]; !ok {
+			t.Fatal("Missing capability:", cap)
+		}
+	}
+
+	io.WriteString(c, "MAIL FROM:<e=mc2@example.com> XOORG=test.com\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid MAIL response:", scanner.Text())
+	}
+
+	io.WriteString(c, "RCPT TO:<e=mc2@example.com>\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid RCPT response:", scanner.Text())
+	}
+
+	// go on as usual
+	io.WriteString(c, "DATA\r\n")
+	scanner.Scan()
+	io.WriteString(c, "Hey <3\r\n")
+	io.WriteString(c, ".\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid DATA response:", scanner.Text())
+	}
+	if len(be.messages) != 0 || len(be.anonmsgs) != 1 {
+		t.Fatal("Invalid number of sent messages:", be.messages, be.anonmsgs)
+	}
+
+	if val := be.anonmsgs[0].Opts.XOORG; val != "test.com" {
+		t.Fatal("Invalid XOORG parameter value:", val)
+	}
+}

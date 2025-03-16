@@ -56,6 +56,9 @@ type MailOptions struct {
 	// Envelope identifier set by the client.
 	EnvelopeID string
 
+	// Accepted Domain from Exchange Online, e.g. from OutgoingConnector
+	XOORG string
+
 	// The authorization identity asserted by the message sender in decoded
 	// form with angle brackets stripped.
 	//
