@@ -537,6 +537,46 @@ func (c *Client) Rcpt(to string, opts *RcptOptions) error {
 	return nil
 }
 
+type DataCommand struct {
+	c  *Client
+	wc io.WriteCloser
+
+	closeErr   error
+	statusText string
+}
+
+func (cmd *DataCommand) Write(b []byte) (int, error) {
+	return cmd.wc.Write(b)
+}
+
+func (cmd *DataCommand) Close() error {
+	if cmd.closeErr != nil {
+		return cmd.closeErr
+	}
+
+	if err := cmd.wc.Close(); err != nil {
+		cmd.closeErr = err
+		return err
+	}
+
+	cmd.c.conn.SetDeadline(time.Now().Add(cmd.c.SubmissionTimeout))
+	defer cmd.c.conn.SetDeadline(time.Time{})
+
+	_, msg, err := cmd.c.readResponse(250)
+	if err != nil {
+		cmd.closeErr = err
+		return err
+	}
+
+	cmd.statusText = msg
+	cmd.closeErr = errors.New("smtp: data writer closed twice")
+	return nil
+}
+
+func (cmd *DataCommand) StatusText() string {
+	return cmd.statusText
+}
+
 type dataCloser struct {
 	c *Client
 	io.WriteCloser
@@ -590,12 +630,12 @@ func (d *dataCloser) Close() error {
 // Data must be preceded by one or more calls to Rcpt.
 //
 // If server returns an error, it will be of type *SMTPError.
-func (c *Client) Data() (io.WriteCloser, error) {
+func (c *Client) Data() (*DataCommand, error) {
 	_, _, err := c.cmd(354, "DATA")
 	if err != nil {
 		return nil, err
 	}
-	return &dataCloser{c: c, WriteCloser: c.text.DotWriter()}, nil
+	return &DataCommand{c: c, wc: c.text.DotWriter()}, nil
 }
 
 // LMTPData is the LMTP-specific version of the Data method. It accepts a callback
