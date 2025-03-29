@@ -1236,7 +1236,7 @@ func (c *Conn) writeResponse(code int, enhCode EnhancedCode, text ...string) {
 		}
 	}
 
-	// transform each single line with \n, into seperate lines
+	// transform each single line with \n, into separate lines
 	text = strings.Split(strings.Join(text, "\n"), "\n")
 
 	textLen := len(text) - 1
