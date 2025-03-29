@@ -64,6 +64,8 @@ type MailOptions struct {
 	//
 	// Defined in RFC 4954.
 	Auth *string
+
+        QueueId string
 }
 
 type XforwardOptions struct {
