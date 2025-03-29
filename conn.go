@@ -1236,13 +1236,17 @@ func (c *Conn) writeResponse(code int, enhCode EnhancedCode, text ...string) {
 		}
 	}
 
-	for i := 0; i < len(text)-1; i++ {
+	// transform each single line with \n, into seperate lines
+	text = strings.Split(strings.Join(text, "\n"), "\n")
+
+	textLen := len(text) - 1
+	for i := 0; i < textLen; i++ {
 		c.text.PrintfLine("%d-%v", code, text[i])
 	}
 	if enhCode == NoEnhancedCode {
-		c.text.PrintfLine("%d %v", code, text[len(text)-1])
+		c.text.PrintfLine("%d %v", code, text[textLen])
 	} else {
-		c.text.PrintfLine("%d %v.%v.%v %v", code, enhCode[0], enhCode[1], enhCode[2], text[len(text)-1])
+		c.text.PrintfLine("%d %v.%v.%v %v", code, enhCode[0], enhCode[1], enhCode[2], text[textLen])
 	}
 }
 
