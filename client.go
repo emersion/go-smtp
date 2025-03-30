@@ -592,14 +592,14 @@ type DataResponse struct {
 	StatusText string
 }
 
-type dataCloser struct {
+type lmtpDataCloser struct {
 	c *Client
 	io.WriteCloser
 	statusCb func(rcpt string, status *SMTPError)
 	closed   bool
 }
 
-func (d *dataCloser) Close() error {
+func (d *lmtpDataCloser) Close() error {
 	if d.closed {
 		return fmt.Errorf("smtp: data writer closed twice")
 	}
@@ -612,27 +612,20 @@ func (d *dataCloser) Close() error {
 	defer d.c.conn.SetDeadline(time.Time{})
 
 	expectedResponses := len(d.c.rcpts)
-	if d.c.lmtp {
-		for expectedResponses > 0 {
-			rcpt := d.c.rcpts[len(d.c.rcpts)-expectedResponses]
-			if _, _, err := d.c.readResponse(250); err != nil {
-				if smtpErr, ok := err.(*SMTPError); ok {
-					if d.statusCb != nil {
-						d.statusCb(rcpt, smtpErr)
-					}
-				} else {
-					return err
+	for expectedResponses > 0 {
+		rcpt := d.c.rcpts[len(d.c.rcpts)-expectedResponses]
+		if _, _, err := d.c.readResponse(250); err != nil {
+			if smtpErr, ok := err.(*SMTPError); ok {
+				if d.statusCb != nil {
+					d.statusCb(rcpt, smtpErr)
 				}
-			} else if d.statusCb != nil {
-				d.statusCb(rcpt, nil)
+			} else {
+				return err
 			}
-			expectedResponses--
+		} else if d.statusCb != nil {
+			d.statusCb(rcpt, nil)
 		}
-	} else {
-		_, _, err := d.c.readResponse(250)
-		if err != nil {
-			return err
-		}
+		expectedResponses--
 	}
 
 	d.closed = true
@@ -670,7 +663,7 @@ func (c *Client) LMTPData(statusCb func(rcpt string, status *SMTPError)) (io.Wri
 	if err != nil {
 		return nil, err
 	}
-	return &dataCloser{c: c, WriteCloser: c.text.DotWriter(), statusCb: statusCb}, nil
+	return &lmtpDataCloser{c: c, WriteCloser: c.text.DotWriter(), statusCb: statusCb}, nil
 }
 
 // SendMail will use an existing connection to send an email from
