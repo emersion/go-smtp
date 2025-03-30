@@ -44,6 +44,29 @@ type Client struct {
 	DebugWriter io.Writer
 }
 
+// Options used when creating an SMTP client. If a field is left to its zero
+// value, the default will be used instead.
+type ClientOptions struct {
+	// the name to use in HELO/EHLO/LHLO (default: "localhost")
+	LocalName string
+	// Time to wait for command responses (this includes 3xx reply to DATA)
+	// (default: 5 minutes)
+	CommandTimeout time.Duration
+	// Time to wait for responses after final dot (default 12 minutes).
+	SubmissionTimeout time.Duration
+}
+
+const (
+	DefaultLocalName = "localhost"
+	// As recommended by RFC 5321. For DATA command reply (3xx one) RFC
+	// recommends a slightly shorter timeout but we do not bother
+	// differentiating these.
+	DefaultCommandTimeout = 5 * time.Minute
+	// 10 minutes + 2 minute buffer in case the server is doing transparent
+	// forwarding and also follows recommended timeouts.
+	DefaultSubmissionTimeout = 12 * time.Minute
+)
+
 // 30 seconds was chosen as it's the same duration as http.DefaultTransport's
 // timeout.
 var defaultDialer = net.Dialer{Timeout: 30 * time.Second}
@@ -54,11 +77,17 @@ var defaultDialer = net.Dialer{Timeout: 30 * time.Second}
 // This function returns a plaintext connection. To enable TLS, use
 // DialStartTLS.
 func Dial(addr string) (*Client, error) {
+	return DialWithOptions(addr, nil)
+}
+
+// DialWithOpts returns a new Client connected to an SMTP server at addr using
+// custom options instead of the defaults.
+func DialWithOptions(addr string, opts *ClientOptions) (*Client, error) {
 	conn, err := defaultDialer.Dial("tcp", addr)
 	if err != nil {
 		return nil, err
 	}
-	client := NewClient(conn)
+	client := NewClientWithOptions(conn, opts)
 	client.serverName, _, _ = net.SplitHostPort(addr)
 	return client, nil
 }
@@ -68,6 +97,14 @@ func Dial(addr string) (*Client, error) {
 //
 // A nil tlsConfig is equivalent to a zero tls.Config.
 func DialTLS(addr string, tlsConfig *tls.Config) (*Client, error) {
+	return DialTLSWithOptions(addr, tlsConfig, nil)
+}
+
+// DialTLSWithOpts returns a new Client connected to an SMTP server via TLS at
+// addr using custom options instead of the defaults.
+func DialTLSWithOptions(
+	addr string, tlsConfig *tls.Config, opts *ClientOptions,
+) (*Client, error) {
 	tlsDialer := tls.Dialer{
 		NetDialer: &defaultDialer,
 		Config:    tlsConfig,
@@ -76,7 +113,7 @@ func DialTLS(addr string, tlsConfig *tls.Config) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	client := NewClient(conn)
+	client := NewClientWithOptions(conn, opts)
 	client.serverName, _, _ = net.SplitHostPort(addr)
 	return client, nil
 }
@@ -86,7 +123,15 @@ func DialTLS(addr string, tlsConfig *tls.Config) (*Client, error) {
 //
 // A nil tlsConfig is equivalent to a zero tls.Config.
 func DialStartTLS(addr string, tlsConfig *tls.Config) (*Client, error) {
-	c, err := Dial(addr)
+	return DialStartTLSWithOptions(addr, tlsConfig, nil)
+}
+
+// DialStartTLSWithOpts retruns a new Client connected to an SMTP server via
+// STARTTLS at addr using custom options instead of the defaults.
+func DialStartTLSWithOptions(
+	addr string, tlsConfig *tls.Config, opts *ClientOptions,
+) (*Client, error) {
+	c, err := DialWithOptions(addr, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -100,17 +145,29 @@ func DialStartTLS(addr string, tlsConfig *tls.Config) (*Client, error) {
 // NewClient returns a new Client using an existing connection and host as a
 // server name to be used when authenticating.
 func NewClient(conn net.Conn) *Client {
-	c := &Client{
-		localName: "localhost",
-		// As recommended by RFC 5321. For DATA command reply (3xx one) RFC
-		// recommends a slightly shorter timeout but we do not bother
-		// differentiating these.
-		CommandTimeout: 5 * time.Minute,
-		// 10 minutes + 2 minute buffer in case the server is doing transparent
-		// forwarding and also follows recommended timeouts.
-		SubmissionTimeout: 12 * time.Minute,
-	}
+	return NewClientWithOptions(conn, nil)
+}
 
+// NewClient returns a new Client using an existing connection using custom
+// options instead of the defaults.
+func NewClientWithOptions(conn net.Conn, opts *ClientOptions) *Client {
+	if opts == nil {
+		opts = new(ClientOptions)
+	}
+	c := &Client{
+		localName:         opts.LocalName,
+		CommandTimeout:    opts.CommandTimeout,
+		SubmissionTimeout: opts.SubmissionTimeout,
+	}
+	if c.localName == "" {
+		c.localName = DefaultLocalName
+	}
+	if c.CommandTimeout == 0 {
+		c.CommandTimeout = DefaultCommandTimeout
+	}
+	if c.SubmissionTimeout == 0 {
+		c.SubmissionTimeout = DefaultSubmissionTimeout
+	}
 	c.setConn(conn)
 
 	return c
@@ -118,7 +175,15 @@ func NewClient(conn net.Conn) *Client {
 
 // NewClientStartTLS creates a new Client and performs a STARTTLS command.
 func NewClientStartTLS(conn net.Conn, tlsConfig *tls.Config) (*Client, error) {
-	c := NewClient(conn)
+	return NewClientStartTLSWithOptions(conn, tlsConfig, nil)
+}
+
+// NewClientStartTLS creates a new Client and performs a STARTTLS command.
+// It allows using custom options instead of the defaults.
+func NewClientStartTLSWithOptions(
+	conn net.Conn, tlsConfig *tls.Config, opts *ClientOptions,
+) (*Client, error) {
+	c := NewClientWithOptions(conn, opts)
 	if err := initStartTLS(c, tlsConfig); err != nil {
 		c.Close()
 		return nil, err
@@ -142,7 +207,13 @@ func initStartTLS(c *Client, tlsConfig *tls.Config) error {
 // NewClientLMTP returns a new LMTP Client (as defined in RFC 2033) using an
 // existing connection and host as a server name to be used when authenticating.
 func NewClientLMTP(conn net.Conn) *Client {
-	c := NewClient(conn)
+	return NewClientLMTPWithOptions(conn, nil)
+}
+
+// NewClientLMTP returns a new LMTP Client (as defined in RFC 2033) using
+// custom options instead of the defaults.
+func NewClientLMTPWithOptions(conn net.Conn, opts *ClientOptions) *Client {
+	c := NewClientWithOptions(conn, opts)
 	c.lmtp = true
 	return c
 }
