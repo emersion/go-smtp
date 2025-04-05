@@ -81,7 +81,7 @@ func DialTLS(addr string, tlsConfig *tls.Config) (*Client, error) {
 	return client, nil
 }
 
-// DialStartTLS retruns a new Client connected to an SMTP server via STARTTLS
+// DialStartTLS returns a new Client connected to an SMTP server via STARTTLS
 // at addr. The addr must include a port, as in "mail.example.com:smtp".
 //
 // A nil tlsConfig is equivalent to a zero tls.Config.
@@ -528,6 +528,11 @@ func (c *Client) Rcpt(to string, opts *RcptOptions) error {
 				return errors.New("smtp: Unknown address type")
 			}
 			fmt.Fprintf(&sb, " ORCPT=%s;%s", string(opts.OriginalRecipientType), enc)
+		}
+	}
+	if _, ok := c.ext["RRVS"]; ok && opts != nil {
+		if !opts.RequireRecipientValidSince.Equal(time.Time{}) {
+			sb.WriteString(fmt.Sprintf(" RRVS=%s", opts.RequireRecipientValidSince.Format(time.RFC3339)))
 		}
 	}
 	if _, _, err := c.cmd(25, "%s", sb.String()); err != nil {
