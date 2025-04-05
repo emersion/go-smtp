@@ -17,6 +17,8 @@
 // Additional extensions may be handled by other packages.
 package smtp
 
+import "time"
+
 type BodyType string
 
 const (
@@ -91,4 +93,8 @@ type RcptOptions struct {
 	// Original recipient set by client.
 	OriginalRecipientType DSNAddressType
 	OriginalRecipient     string
+
+	// Time value of the RRVS= argument
+	// default time.Time value (Jan 1 1970) if not set by client
+	RRVS time.Time
 }

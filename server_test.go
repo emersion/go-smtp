@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
@@ -1512,5 +1514,69 @@ func TestServerDSNwithSMTPUTF8(t *testing.T) {
 	}
 	if val := opts[2].OriginalRecipient; val != dsnEmailUTF8 {
 		t.Fatal("Invalid ORCPT address:", val)
+	}
+}
+
+func TestServerRRVS(t *testing.T) {
+	be, s, c, scanner, caps := testServerEhlo(t,
+		func(s *smtp.Server) {
+			s.EnableRRVS = true
+		})
+	defer s.Close()
+	defer c.Close()
+
+	if _, ok := caps["RRVS"]; !ok {
+		t.Fatal("Missing capability: RRVS")
+	}
+
+	io.WriteString(c, "MAIL FROM:<root@nsa.gov>\r\n")
+	scanner.Scan()
+
+	io.WriteString(c, "RCPT TO:<root@gchq.gov.uk> RRVS=\r\n")
+	scanner.Scan()
+
+	if !strings.HasPrefix(scanner.Text(), "501 5.5.4") {
+		t.Fatal("Unexpected res on malformed RRVS parameter value:", scanner.Text())
+	}
+
+	io.WriteString(c, "RCPT TO:<root@gchq.gov.uk> RRVS=1234\r\n")
+	scanner.Scan()
+
+	if !strings.HasPrefix(scanner.Text(), "501 5.5.4 ") {
+		t.Fatal("Unexpected res on malformed RRVS parameter value:", scanner.Text())
+	}
+
+	io.WriteString(c, "RCPT TO:<root@gchq.gov.uk> RRVS=2014-04-03T23:01:00Z\r\n")
+	scanner.Scan()
+
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid RRVS parameter value:", scanner.Text())
+	}
+
+	io.WriteString(c, "RCPT TO:<root@bnd.bund.de> RRVS=2020-03-19T11:13:00Z;ign0r3.th1s;othr_stuff\r\n")
+	scanner.Scan()
+
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid RRVS parameter value:", scanner.Text())
+	}
+
+	// complete the transaction
+	io.WriteString(c, "DATA\r\n")
+	scanner.Scan()
+	io.WriteString(c, "Hey <3\r\n")
+	io.WriteString(c, ".\r\n")
+	scanner.Scan()
+
+	opts := be.anonmsgs[0].RcptOpts
+	if opts == nil || len(opts) != 2 {
+		t.Fatal("Invalid number of recipients:", opts)
+	}
+
+	if !opts[0].RRVS.Equal(time.Date(2014, time.April, 3, 23, 1, 0, 0, time.UTC)) {
+		t.Fatal("Invalid RRVS parameter value:", fmt.Sprintf("%#v", opts[0].RRVS))
+	}
+
+	if !opts[1].RRVS.Equal(time.Date(2020, time.March, 19, 11, 13, 0, 0, time.UTC)) {
+		t.Fatal("Invalid RRVS parameter value:", fmt.Sprintf("%#v", opts[1].RRVS))
 	}
 }
