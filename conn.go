@@ -732,7 +732,7 @@ func (c *Conn) handleRcpt(arg string) {
 				c.writeResponse(501, EnhancedCode{5, 5, 4}, "Malformed RRVS parameter value")
 				return
 			}
-			opts.RRVS = rrvsTime
+			opts.RequireRecipientValidSince = rrvsTime
 		default:
 			c.writeResponse(500, EnhancedCode{5, 5, 4}, "Unknown RCPT TO argument")
 			return

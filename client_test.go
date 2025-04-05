@@ -1044,3 +1044,38 @@ func TestClientDSN(t *testing.T) {
 		t.Errorf("wrote %q; want %q", actualcmds, client)
 	}
 }
+
+var rrvsServer = `220 hello world
+250 ok
+250 ok
+`
+
+var rrvsClient = `RCPT TO:<root@nsa.gov> RRVS=2014-04-03T23:01:00Z
+RCPT TO:<root@gchq.gov.uk>
+`
+
+func TestClientRRVS(t *testing.T) {
+	server := strings.Join(strings.Split(rrvsServer, "\n"), "\r\n")
+	client := strings.Join(strings.Split(rrvsClient, "\n"), "\r\n")
+
+	var wrote bytes.Buffer
+	var fake faker
+	fake.ReadWriter = struct {
+		io.Reader
+		io.Writer
+	}{
+		strings.NewReader(server),
+		&wrote,
+	}
+	c := NewClient(fake)
+	c.didHello = true
+	c.ext = map[string]string{"RRVS": ""}
+	c.Rcpt("root@nsa.gov", &RcptOptions{
+		RequireRecipientValidSince: time.Date(2014, time.April, 3, 23, 1, 0, 0, time.UTC),
+	})
+	c.Rcpt("root@gchq.gov.uk", &RcptOptions{})
+	c.Close()
+	if actualcmds := wrote.String(); client != actualcmds {
+		t.Errorf("wrote %q; want %q", actualcmds, client)
+	}
+}

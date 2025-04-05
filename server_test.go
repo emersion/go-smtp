@@ -1572,11 +1572,11 @@ func TestServerRRVS(t *testing.T) {
 		t.Fatal("Invalid number of recipients:", opts)
 	}
 
-	if !opts[0].RRVS.Equal(time.Date(2014, time.April, 3, 23, 1, 0, 0, time.UTC)) {
-		t.Fatal("Invalid RRVS parameter value:", fmt.Sprintf("%#v", opts[0].RRVS))
+	if !opts[0].RequireRecipientValidSince.Equal(time.Date(2014, time.April, 3, 23, 1, 0, 0, time.UTC)) {
+		t.Fatal("Invalid RRVS parameter value:", fmt.Sprintf("%#v", opts[0].RequireRecipientValidSince))
 	}
 
-	if !opts[1].RRVS.Equal(time.Date(2020, time.March, 19, 11, 13, 0, 0, time.UTC)) {
-		t.Fatal("Invalid RRVS parameter value:", fmt.Sprintf("%#v", opts[1].RRVS))
+	if !opts[1].RequireRecipientValidSince.Equal(time.Date(2020, time.March, 19, 11, 13, 0, 0, time.UTC)) {
+		t.Fatal("Invalid RRVS parameter value:", fmt.Sprintf("%#v", opts[1].RequireRecipientValidSince))
 	}
 }

@@ -96,5 +96,5 @@ type RcptOptions struct {
 
 	// Time value of the RRVS= argument
 	// default time.Time value (Jan 1 1970) if not set by client
-	RRVS time.Time
+	RequireRecipientValidSince time.Time
 }
