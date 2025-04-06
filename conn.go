@@ -724,9 +724,7 @@ func (c *Conn) handleRcpt(arg string) {
 				c.writeResponse(504, EnhancedCode{5, 5, 4}, "RRVS is not implemented")
 				return
 			}
-			if dateTimeEnd := strings.Index(value, ";"); dateTimeEnd != -1 {
-				value = value[:strings.Index(value, ";")]
-			}
+			value, _, _ = strings.Cut(value, ";") // discard the no-support action
 			rrvsTime, err := time.Parse(time.RFC3339, value)
 			if err != nil {
 				c.writeResponse(501, EnhancedCode{5, 5, 4}, "Malformed RRVS parameter value")

@@ -530,10 +530,8 @@ func (c *Client) Rcpt(to string, opts *RcptOptions) error {
 			fmt.Fprintf(&sb, " ORCPT=%s;%s", string(opts.OriginalRecipientType), enc)
 		}
 	}
-	if _, ok := c.ext["RRVS"]; ok && opts != nil {
-		if !opts.RequireRecipientValidSince.Equal(time.Time{}) {
-			sb.WriteString(fmt.Sprintf(" RRVS=%s", opts.RequireRecipientValidSince.Format(time.RFC3339)))
-		}
+	if _, ok := c.ext["RRVS"]; ok && opts != nil && !opts.RequireRecipientValidSince.IsZero() {
+		sb.WriteString(fmt.Sprintf(" RRVS=%s", opts.RequireRecipientValidSince.Format(time.RFC3339)))
 	}
 	if _, _, err := c.cmd(25, "%s", sb.String()); err != nil {
 		return err
