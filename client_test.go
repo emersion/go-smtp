@@ -150,8 +150,10 @@ Goodbye.`
 	if _, err := w.Write([]byte(msg)); err != nil {
 		t.Fatalf("Data write failed: %s", err)
 	}
-	if err := w.Close(); err != nil {
+	if resp, err := w.CloseWithResponse(); err != nil {
 		t.Fatalf("Bad data response: %s", err)
+	} else if want := "Data OK"; resp.StatusText != want {
+		t.Errorf("Bad data status text: got %q, want %q", resp.StatusText, want)
 	}
 
 	if err := c.Quit(); err != nil {
