@@ -57,6 +57,10 @@ type Server struct {
 	// Should be used only if backend supports it.
 	EnableDSN bool
 
+	// Advertise RRVS (RFC 7293) capability.
+	// Should be used only if backend supports it.
+	EnableRRVS bool
+
 	// The server backend.
 	Backend Backend
 

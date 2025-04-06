@@ -291,6 +291,9 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 	if c.server.MaxRecipients > 0 {
 		caps = append(caps, fmt.Sprintf("LIMITS RCPTMAX=%v", c.server.MaxRecipients))
 	}
+	if c.server.EnableRRVS {
+		caps = append(caps, "RRVS")
+	}
 
 	args := []string{"Hello " + domain}
 	args = append(args, caps...)
@@ -716,6 +719,18 @@ func (c *Conn) handleRcpt(arg string) {
 			}
 			opts.OriginalRecipientType = aType
 			opts.OriginalRecipient = aAddr
+		case "RRVS":
+			if !c.server.EnableRRVS {
+				c.writeResponse(504, EnhancedCode{5, 5, 4}, "RRVS is not implemented")
+				return
+			}
+			value, _, _ = strings.Cut(value, ";") // discard the no-support action
+			rrvsTime, err := time.Parse(time.RFC3339, value)
+			if err != nil {
+				c.writeResponse(501, EnhancedCode{5, 5, 4}, "Malformed RRVS parameter value")
+				return
+			}
+			opts.RequireRecipientValidSince = rrvsTime
 		default:
 			c.writeResponse(500, EnhancedCode{5, 5, 4}, "Unknown RCPT TO argument")
 			return
