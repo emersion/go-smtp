@@ -150,8 +150,10 @@ Goodbye.`
 	if _, err := w.Write([]byte(msg)); err != nil {
 		t.Fatalf("Data write failed: %s", err)
 	}
-	if err := w.Close(); err != nil {
+	if resp, err := w.CloseWithResponse(); err != nil {
 		t.Fatalf("Bad data response: %s", err)
+	} else if want := "Data OK"; resp.StatusText != want {
+		t.Errorf("Bad data status text: got %q, want %q", resp.StatusText, want)
 	}
 
 	if err := c.Quit(); err != nil {
@@ -916,35 +918,33 @@ Line 1
 .Leading dot line .
 Goodbye.`
 
-	rcpts := []string{}
-	errors := []*SMTPError{}
-
-	w, err := c.LMTPData(func(rcpt string, status *SMTPError) {
-		rcpts = append(rcpts, rcpt)
-		errors = append(errors, status)
-	})
+	w, err := c.Data()
 	if err != nil {
 		t.Fatalf("DATA failed: %s", err)
 	}
 	if _, err := w.Write([]byte(msg)); err != nil {
 		t.Fatalf("Data write failed: %s", err)
 	}
-	if err := w.Close(); err != nil {
-		t.Fatalf("Bad data response: %s", err)
+	resp, err := w.CloseWithLMTPResponse()
+
+	var lmtpErr LMTPDataError
+	if !errors.As(err, &lmtpErr) {
+		t.Fatalf("Want error of type LMTPDataError")
 	}
 
-	if !reflect.DeepEqual(rcpts, []string{"golang-nuts@googlegroups.com", "golang-not-nuts@googlegroups.com"}) {
-		t.Fatal("Status callbacks called for wrong recipients:", rcpts)
+	wantResp := map[string]*DataResponse{
+		"golang-nuts@googlegroups.com": {StatusText: "This recipient is fine"},
 	}
 
-	if len(errors) != 2 {
-		t.Fatalf("Wrong amount of status callback calls: %v", len(errors))
+	if !reflect.DeepEqual(resp, wantResp) {
+		t.Fatalf("resp = %v, want %v", resp, wantResp)
 	}
-	if errors[0] != nil {
-		t.Fatalf("Unexpected error status for the first recipient: %v", errors[0])
+
+	if len(lmtpErr) != 1 {
+		t.Fatalf("len(lmtpErr) = %v, want 1", len(lmtpErr))
 	}
-	if errors[1] == nil {
-		t.Fatalf("Unexpected success status for the second recipient")
+	if lmtpErr["golang-not-nuts@googlegroups.com"] == nil {
+		t.Fatalf("Want error for second recipient")
 	}
 
 	if err := c.Quit(); err != nil {
