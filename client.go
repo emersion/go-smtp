@@ -534,6 +534,18 @@ func (c *Client) Rcpt(to string, opts *RcptOptions) error {
 	if _, ok := c.ext["RRVS"]; ok && opts != nil && !opts.RequireRecipientValidSince.IsZero() {
 		sb.WriteString(fmt.Sprintf(" RRVS=%s", opts.RequireRecipientValidSince.Format(time.RFC3339)))
 	}
+	if _, ok := c.ext["DELIVERBY"]; ok && opts != nil && opts.DeliverBy != nil {
+		if opts.DeliverBy.ByMode == DeliverByReturn {
+			if opts.DeliverBy.ByTime < 1 {
+				return errors.New("smtp: DELIVERBY mode must be greater than zero with return mode")
+			}
+		}
+		arg := fmt.Sprintf(" BY=%d;%s", opts.DeliverBy.ByTime, opts.DeliverBy.ByMode)
+		if opts.DeliverBy.ByTrace {
+			arg += "T"
+		}
+		sb.WriteString(arg)
+	}
 	if _, _, err := c.cmd(25, "%s", sb.String()); err != nil {
 		return err
 	}

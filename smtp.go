@@ -3,21 +3,25 @@
 // It also implements the following extensions:
 //
 //   - 8BITMIME (RFC 1652)
-//   - AUTH (RFC 2554)
-//   - STARTTLS (RFC 3207)
 //   - ENHANCEDSTATUSCODES (RFC 2034)
-//   - SMTPUTF8 (RFC 6531)
-//   - REQUIRETLS (RFC 8689)
+//   - AUTH (RFC 2554)
+//   - DELIVERBY (RFC 2852)
 //   - CHUNKING (RFC 3030)
 //   - BINARYMIME (RFC 3030)
+//   - STARTTLS (RFC 3207)
 //   - DSN (RFC 3461, RFC 6533)
+//   - SMTPUTF8 (RFC 6531)
+//   - RRVS (RFC 7293)
+//   - REQUIRETLS (RFC 8689)
 //
 // LMTP (RFC 2033) is also supported.
 //
 // Additional extensions may be handled by other packages.
 package smtp
 
-import "time"
+import (
+	"time"
+)
 
 type BodyType string
 
@@ -84,6 +88,19 @@ const (
 	DSNAddressTypeUTF8   DSNAddressType = "UTF-8"
 )
 
+type DeliverByMode string
+
+const (
+	DeliverByNotify DeliverByMode = "N"
+	DeliverByReturn DeliverByMode = "R"
+)
+
+type DeliverByOptions struct {
+	ByTime  int64
+	ByMode  DeliverByMode
+	ByTrace bool
+}
+
 // RcptOptions contains parameters for the RCPT command.
 type RcptOptions struct {
 	// Value of NOTIFY= argument, NEVER or a combination of either of
@@ -95,6 +112,9 @@ type RcptOptions struct {
 	OriginalRecipient     string
 
 	// Time value of the RRVS= argument
-	// Left as the zero time if unset.
+	// or the zero time if unset.
 	RequireRecipientValidSince time.Time
+
+	// Value of BY= argument or nil if unset.
+	DeliverBy *DeliverByOptions
 }

@@ -1079,3 +1079,39 @@ func TestClientRRVS(t *testing.T) {
 		t.Errorf("wrote %q; want %q", actualcmds, client)
 	}
 }
+
+var deliverByServer = `220 hello world
+250 ok
+`
+
+var deliverByClient = `RCPT TO:<root@nsa.gov> BY=100;RT
+`
+
+func TestClientDELIVERBY(t *testing.T) {
+	server := strings.Join(strings.Split(deliverByServer, "\n"), "\r\n")
+	client := strings.Join(strings.Split(deliverByClient, "\n"), "\r\n")
+
+	var wrote bytes.Buffer
+	var fake faker
+	fake.ReadWriter = struct {
+		io.Reader
+		io.Writer
+	}{
+		strings.NewReader(server),
+		&wrote,
+	}
+	c := NewClient(fake)
+	c.didHello = true
+	c.ext = map[string]string{"DELIVERBY": ""}
+	c.Rcpt("root@nsa.gov", &RcptOptions{
+		DeliverBy: &DeliverByOptions{
+			ByTime:  100,
+			ByMode:  DeliverByReturn,
+			ByTrace: true,
+		},
+	})
+	c.Close()
+	if actualcmds := wrote.String(); client != actualcmds {
+		t.Errorf("wrote %q; want %q", actualcmds, client)
+	}
+}

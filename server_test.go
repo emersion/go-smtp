@@ -1580,3 +1580,73 @@ func TestServerRRVS(t *testing.T) {
 		t.Fatal("Invalid RRVS parameter value:", fmt.Sprintf("%#v", opts[1].RequireRecipientValidSince))
 	}
 }
+
+func TestServerDELIVERBY(t *testing.T) {
+	be, s, c, scanner, caps := testServerEhlo(t,
+		func(s *smtp.Server) {
+			s.EnableDELIVERBY = true
+			s.MinimumDeliverByTime = 50
+		})
+	defer s.Close()
+	defer c.Close()
+
+	if _, ok := caps["DELIVERBY 50"]; !ok {
+		t.Fatal("Missing capability: DELIVERBY")
+	}
+
+	io.WriteString(c, "MAIL FROM:<root@nsa.gov>\r\n")
+	scanner.Scan()
+
+	malformedMsgs := []string{
+		"RCPT TO:<root@gchq.gov.uk> BY=",
+		"RCPT TO:<root@gchq.gov.uk> BY=1234",
+		"RCPT TO:<root@gchq.gov.uk> BY=123;RT;",
+		"RCPT TO:<root@gchq.gov.uk> BY=0;R",
+		"RCPT TO:<root@gchq.gov.uk> BY=49;NT",
+	}
+
+	for _, msg := range malformedMsgs {
+		io.WriteString(c, msg+"\r\n")
+		scanner.Scan()
+		if !strings.HasPrefix(scanner.Text(), "501 5.5.4") {
+			t.Fatal("Unexpected res on malformed BY parameter value:", scanner.Text())
+		}
+	}
+
+	io.WriteString(c, "RCPT TO:<root@gchq.gov.uk> BY=100;NT\r\n")
+	scanner.Scan()
+
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid BY parameter value:", scanner.Text())
+	}
+
+	// complete the transaction
+	io.WriteString(c, "DATA\r\n")
+	scanner.Scan()
+	io.WriteString(c, "Hey <3\r\n")
+	io.WriteString(c, ".\r\n")
+	scanner.Scan()
+
+	opts := be.anonmsgs[0].RcptOpts
+	if opts == nil || len(opts) != 1 {
+		t.Fatal("Invalid number of recipients:", opts)
+	}
+
+	deliverByOpts := opts[0].DeliverBy
+
+	if deliverByOpts == nil {
+		t.Fatal("Deliver by options is nil:", opts)
+	}
+
+	expectedDeliverByOpts := smtp.DeliverByOptions{
+		ByTime:  100,
+		ByMode:  smtp.DeliverByNotify,
+		ByTrace: true,
+	}
+
+	if deliverByOpts.ByTime != expectedDeliverByOpts.ByTime ||
+		deliverByOpts.ByMode != expectedDeliverByOpts.ByMode ||
+		deliverByOpts.ByTrace != expectedDeliverByOpts.ByTrace {
+		t.Fatal("Incorrect BY parameter value:", fmt.Sprintf("expected %#v, got %#v", expectedDeliverByOpts, deliverByOpts))
+	}
+}

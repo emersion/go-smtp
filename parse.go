@@ -2,6 +2,7 @@ package smtp
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -72,6 +73,32 @@ func parseHelloArgument(arg string) (string, error) {
 		return "", fmt.Errorf("invalid domain")
 	}
 	return domain, nil
+}
+
+// Parses the BY argument defined in RFC2852 section 4.
+// Returns pointer to options or nil if invalid.
+func parseDeliverByArgument(arg string) *DeliverByOptions {
+	secondsStr, modeStr, ok := strings.Cut(arg, ";")
+	if !ok {
+		return nil
+	}
+	traceValue := strings.HasSuffix(modeStr, "T")
+	if traceValue {
+		modeStr = strings.TrimSuffix(modeStr, "T")
+	}
+	if modeStr != string(DeliverByNotify) && modeStr != string(DeliverByReturn) {
+		return nil
+	}
+	modeValue := DeliverByMode(modeStr)
+	secondsValue, err := strconv.ParseInt(secondsStr, 10, 64)
+	if err != nil || (modeValue == DeliverByReturn && secondsValue < 1) {
+		return nil
+	}
+	return &DeliverByOptions{
+		ByTime:  secondsValue,
+		ByMode:  modeValue,
+		ByTrace: traceValue,
+	}
 }
 
 // parser parses command arguments defined in RFC 5321 section 4.1.2.
