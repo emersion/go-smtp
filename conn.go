@@ -295,10 +295,10 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 		caps = append(caps, "RRVS")
 	}
 	if c.server.EnableDELIVERBY {
-		if c.server.MinimumDeliverByTime == 0 {
+		if c.server.MinimumDeliverByTime == nil {
 			caps = append(caps, "DELIVERBY")
 		} else {
-			caps = append(caps, fmt.Sprintf("DELIVERBY %d", c.server.MinimumDeliverByTime))
+			caps = append(caps, fmt.Sprintf("DELIVERBY %d", int(c.server.MinimumDeliverByTime.Seconds())))
 		}
 	}
 
@@ -748,7 +748,9 @@ func (c *Conn) handleRcpt(arg string) {
 				c.writeResponse(501, EnhancedCode{5, 5, 4}, "Malformed BY parameter value")
 				return
 			}
-			if c.server.MinimumDeliverByTime != 0 && deliverBy.ByTime < c.server.MinimumDeliverByTime {
+			if c.server.MinimumDeliverByTime != nil &&
+				deliverBy.Mode == DeliverByReturn &&
+				deliverBy.Time < *c.server.MinimumDeliverByTime {
 				c.writeResponse(501, EnhancedCode{5, 5, 4}, "BY parameter is below server minimum")
 				return
 			}

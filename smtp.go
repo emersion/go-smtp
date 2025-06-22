@@ -96,9 +96,9 @@ const (
 )
 
 type DeliverByOptions struct {
-	ByTime  int64
-	ByMode  DeliverByMode
-	ByTrace bool
+	Time  time.Duration
+	Mode  DeliverByMode
+	Trace bool
 }
 
 // RcptOptions contains parameters for the RCPT command.

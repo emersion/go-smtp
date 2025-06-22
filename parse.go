@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // cutPrefixFold is a version of strings.CutPrefix which is case-insensitive.
@@ -82,22 +83,19 @@ func parseDeliverByArgument(arg string) *DeliverByOptions {
 	if !ok {
 		return nil
 	}
-	traceValue := strings.HasSuffix(modeStr, "T")
-	if traceValue {
-		modeStr = strings.TrimSuffix(modeStr, "T")
-	}
+	modeStr, traceValue := strings.CutSuffix(modeStr, "T")
 	if modeStr != string(DeliverByNotify) && modeStr != string(DeliverByReturn) {
 		return nil
 	}
 	modeValue := DeliverByMode(modeStr)
-	secondsValue, err := strconv.ParseInt(secondsStr, 10, 64)
+	secondsValue, err := strconv.Atoi(secondsStr)
 	if err != nil || (modeValue == DeliverByReturn && secondsValue < 1) {
 		return nil
 	}
 	return &DeliverByOptions{
-		ByTime:  secondsValue,
-		ByMode:  modeValue,
-		ByTrace: traceValue,
+		Time:  time.Duration(secondsValue) * time.Second,
+		Mode:  modeValue,
+		Trace: traceValue,
 	}
 }
 

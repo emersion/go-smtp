@@ -1582,10 +1582,11 @@ func TestServerRRVS(t *testing.T) {
 }
 
 func TestServerDELIVERBY(t *testing.T) {
+	minDeliverByTime := time.Duration(50) * time.Second
 	be, s, c, scanner, caps := testServerEhlo(t,
 		func(s *smtp.Server) {
 			s.EnableDELIVERBY = true
-			s.MinimumDeliverByTime = 50
+			s.MinimumDeliverByTime = &minDeliverByTime
 		})
 	defer s.Close()
 	defer c.Close()
@@ -1602,7 +1603,7 @@ func TestServerDELIVERBY(t *testing.T) {
 		"RCPT TO:<root@gchq.gov.uk> BY=1234",
 		"RCPT TO:<root@gchq.gov.uk> BY=123;RT;",
 		"RCPT TO:<root@gchq.gov.uk> BY=0;R",
-		"RCPT TO:<root@gchq.gov.uk> BY=49;NT",
+		"RCPT TO:<root@gchq.gov.uk> BY=49;RT",
 	}
 
 	for _, msg := range malformedMsgs {
@@ -1639,14 +1640,14 @@ func TestServerDELIVERBY(t *testing.T) {
 	}
 
 	expectedDeliverByOpts := smtp.DeliverByOptions{
-		ByTime:  100,
-		ByMode:  smtp.DeliverByNotify,
-		ByTrace: true,
+		Time:  time.Duration(100) * time.Second,
+		Mode:  smtp.DeliverByNotify,
+		Trace: true,
 	}
 
-	if deliverByOpts.ByTime != expectedDeliverByOpts.ByTime ||
-		deliverByOpts.ByMode != expectedDeliverByOpts.ByMode ||
-		deliverByOpts.ByTrace != expectedDeliverByOpts.ByTrace {
+	if deliverByOpts.Time != expectedDeliverByOpts.Time ||
+		deliverByOpts.Mode != expectedDeliverByOpts.Mode ||
+		deliverByOpts.Trace != expectedDeliverByOpts.Trace {
 		t.Fatal("Incorrect BY parameter value:", fmt.Sprintf("expected %#v, got %#v", expectedDeliverByOpts, deliverByOpts))
 	}
 }
