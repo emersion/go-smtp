@@ -66,9 +66,9 @@ type Server struct {
 	EnableDELIVERBY bool
 	// The minimum time, with seconds precision, that a client
 	// may specify in the BY argument with return mode.
-	// A nil value indicates no set minimum.
+	// A zero value indicates no set minimum.
 	// Only use if DELIVERBY is enabled.
-	MinimumDeliverByTime *time.Duration
+	MinimumDeliverByTime time.Duration
 
 	// The server backend.
 	Backend Backend

@@ -1105,7 +1105,7 @@ func TestClientDELIVERBY(t *testing.T) {
 	c.ext = map[string]string{"DELIVERBY": ""}
 	c.Rcpt("root@nsa.gov", &RcptOptions{
 		DeliverBy: &DeliverByOptions{
-			Time:  time.Duration(100) * time.Second,
+			Time:  100 * time.Second,
 			Mode:  DeliverByReturn,
 			Trace: true,
 		},

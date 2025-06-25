@@ -1582,11 +1582,10 @@ func TestServerRRVS(t *testing.T) {
 }
 
 func TestServerDELIVERBY(t *testing.T) {
-	minDeliverByTime := time.Duration(50) * time.Second
 	be, s, c, scanner, caps := testServerEhlo(t,
 		func(s *smtp.Server) {
 			s.EnableDELIVERBY = true
-			s.MinimumDeliverByTime = &minDeliverByTime
+			s.MinimumDeliverByTime = 50 * time.Second
 		})
 	defer s.Close()
 	defer c.Close()
@@ -1640,7 +1639,7 @@ func TestServerDELIVERBY(t *testing.T) {
 	}
 
 	expectedDeliverByOpts := smtp.DeliverByOptions{
-		Time:  time.Duration(100) * time.Second,
+		Time:  100 * time.Second,
 		Mode:  smtp.DeliverByNotify,
 		Trace: true,
 	}
