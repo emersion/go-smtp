@@ -294,6 +294,13 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 	if c.server.EnableRRVS {
 		caps = append(caps, "RRVS")
 	}
+	if c.server.EnableDELIVERBY {
+		if c.server.MinimumDeliverByTime == 0 {
+			caps = append(caps, "DELIVERBY")
+		} else {
+			caps = append(caps, fmt.Sprintf("DELIVERBY %d", int(c.server.MinimumDeliverByTime.Seconds())))
+		}
+	}
 
 	args := []string{"Hello " + domain}
 	args = append(args, caps...)
@@ -731,6 +738,23 @@ func (c *Conn) handleRcpt(arg string) {
 				return
 			}
 			opts.RequireRecipientValidSince = rrvsTime
+		case "BY":
+			if !c.server.EnableDELIVERBY {
+				c.writeResponse(504, EnhancedCode{5, 5, 4}, "DELIVERBY is not implemented")
+				return
+			}
+			deliverBy := parseDeliverByArgument(value)
+			if deliverBy == nil {
+				c.writeResponse(501, EnhancedCode{5, 5, 4}, "Malformed BY parameter value")
+				return
+			}
+			if c.server.MinimumDeliverByTime != 0 &&
+				deliverBy.Mode == DeliverByReturn &&
+				deliverBy.Time < c.server.MinimumDeliverByTime {
+				c.writeResponse(501, EnhancedCode{5, 5, 4}, "BY parameter is below server minimum")
+				return
+			}
+			opts.DeliverBy = deliverBy
 		default:
 			c.writeResponse(500, EnhancedCode{5, 5, 4}, "Unknown RCPT TO argument")
 			return

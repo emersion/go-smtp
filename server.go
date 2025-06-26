@@ -61,6 +61,15 @@ type Server struct {
 	// Should be used only if backend supports it.
 	EnableRRVS bool
 
+	// Advertise DELIVERBY (RFC 2852) capability.
+	// Should be used only if backend supports it.
+	EnableDELIVERBY bool
+	// The minimum time, with seconds precision, that a client
+	// may specify in the BY argument with return mode.
+	// A zero value indicates no set minimum.
+	// Only use if DELIVERBY is enabled.
+	MinimumDeliverByTime time.Duration
+
 	// The server backend.
 	Backend Backend
 

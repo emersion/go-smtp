@@ -2,7 +2,9 @@ package smtp
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // cutPrefixFold is a version of strings.CutPrefix which is case-insensitive.
@@ -72,6 +74,29 @@ func parseHelloArgument(arg string) (string, error) {
 		return "", fmt.Errorf("invalid domain")
 	}
 	return domain, nil
+}
+
+// Parses the BY argument defined in RFC2852 section 4.
+// Returns pointer to options or nil if invalid.
+func parseDeliverByArgument(arg string) *DeliverByOptions {
+	secondsStr, modeStr, ok := strings.Cut(arg, ";")
+	if !ok {
+		return nil
+	}
+	modeStr, traceValue := strings.CutSuffix(modeStr, "T")
+	if modeStr != string(DeliverByNotify) && modeStr != string(DeliverByReturn) {
+		return nil
+	}
+	modeValue := DeliverByMode(modeStr)
+	secondsValue, err := strconv.Atoi(secondsStr)
+	if err != nil || (modeValue == DeliverByReturn && secondsValue < 1) {
+		return nil
+	}
+	return &DeliverByOptions{
+		Time:  time.Duration(secondsValue) * time.Second,
+		Mode:  modeValue,
+		Trace: traceValue,
+	}
 }
 
 // parser parses command arguments defined in RFC 5321 section 4.1.2.
