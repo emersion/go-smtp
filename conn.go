@@ -41,9 +41,10 @@ type Conn struct {
 	dataResult      chan error
 	bytesReceived   int64 // counts total size of chunks when BDAT is used
 
-	fromReceived bool
-	recipients   []string
-	didAuth      bool
+	fromReceived    bool
+	recipients      []string
+	didAuth         bool
+	hasReceivedData bool // tracks if connection has sent any SMTP data
 }
 
 func newConn(c net.Conn, s *Server) *Conn {
@@ -1305,7 +1306,11 @@ func (c *Conn) readLine() (string, error) {
 		}
 	}
 
-	return c.text.ReadLine()
+	line, err := c.text.ReadLine()
+	if err == nil {
+		c.hasReceivedData = true // Mark that connection sent data
+	}
+	return line, err
 }
 
 func (c *Conn) reset() {

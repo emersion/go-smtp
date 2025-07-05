@@ -131,8 +131,9 @@ func (s *Server) Serve(l net.Listener) error {
 		go func() {
 			defer s.wg.Done()
 
-			err := s.handleConn(newConn(c, s))
-			if err != nil {
+			conn := newConn(c, s)
+			err := s.handleConn(conn)
+			if err != nil && conn.hasReceivedData {
 				s.ErrorLog.Printf("error handling %v: %s", c.RemoteAddr(), err)
 			}
 		}()

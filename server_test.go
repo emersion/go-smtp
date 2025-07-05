@@ -1650,3 +1650,106 @@ func TestServerDELIVERBY(t *testing.T) {
 		t.Fatal("Incorrect BY parameter value:", fmt.Sprintf("expected %#v, got %#v", expectedDeliverByOpts, deliverByOpts))
 	}
 }
+
+func TestZeroByteConnectionLogging(t *testing.T) {
+	// Test for Issue #236: https://github.com/emersion/go-smtp/issues/236
+	// Zero-byte connections (health checks) should not generate error logs
+	
+	t.Run("HealthCheckNoLogging", func(t *testing.T) {
+		// Capture error logs
+		var logBuffer bytes.Buffer
+		l, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer l.Close()
+
+		be := new(backend)
+		s := smtp.NewServer(be)
+		s.Domain = "localhost"
+		s.ErrorLog = log.New(&logBuffer, "", 0)
+
+		done := make(chan error, 1)
+		go func() {
+			done <- s.Serve(l)
+		}()
+
+		// Simulate health check: connect and immediately close (no data sent)
+		conn, err := net.Dial("tcp", l.Addr().String())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Wait just enough for server to start processing, then force close
+		time.Sleep(10 * time.Millisecond)
+		if tcpConn, ok := conn.(*net.TCPConn); ok {
+			tcpConn.SetLinger(0) // Force RST to trigger "connection reset by peer"
+		}
+		conn.Close()
+
+		// Wait for server to process the connection reset
+		time.Sleep(100 * time.Millisecond)
+
+		s.Close()
+		<-done
+
+		// Verify no error logs for zero-byte connection
+		logOutput := logBuffer.String()
+		if logOutput != "" {
+			t.Errorf("Expected no error logs for health check, but got: %s", logOutput)
+		}
+	})
+
+	t.Run("NormalErrorLogging", func(t *testing.T) {
+		// Verify that normal SMTP errors are still logged when data was sent
+		var logBuffer bytes.Buffer
+		l, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer l.Close()
+
+		be := new(backend)
+		s := smtp.NewServer(be)
+		s.Domain = "localhost"
+		s.ErrorLog = log.New(&logBuffer, "", 0)
+
+		done := make(chan error, 1)
+		go func() {
+			done <- s.Serve(l)
+		}()
+
+		// Connect and send some SMTP data, then abruptly close
+		conn, err := net.Dial("tcp", l.Addr().String())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Read greeting
+		buffer := make([]byte, 1024)
+		conn.SetReadDeadline(time.Now().Add(1 * time.Second))
+		conn.Read(buffer)
+
+		// Send EHLO command (this marks the connection as having received data)
+		conn.Write([]byte("EHLO test\r\n"))
+
+		// Wait for response and then abruptly close
+		time.Sleep(50 * time.Millisecond)
+		if tcpConn, ok := conn.(*net.TCPConn); ok {
+			tcpConn.SetLinger(0) // Force RST
+		}
+		conn.Close()
+
+		// Wait for server to process the connection reset
+		time.Sleep(100 * time.Millisecond)
+
+		s.Close()
+		<-done
+
+		// Verify that error was logged (connection had sent data)
+		logOutput := logBuffer.String()
+		if !strings.Contains(logOutput, "error handling") {
+			t.Errorf("Expected error log for connection with data, but got: %s", logOutput)
+		}
+	})
+}
