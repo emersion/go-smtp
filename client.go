@@ -544,6 +544,12 @@ func (c *Client) Rcpt(to string, opts *RcptOptions) error {
 		}
 		sb.WriteString(arg)
 	}
+	if _, ok := c.ext["MT-PRIORITY"]; ok && opts != nil && opts.MTPriority != nil {
+		if *opts.MTPriority < -9 || *opts.MTPriority > 9 {
+			return errors.New("smtp: MT-PRIORITY must be between -9 and 9")
+		}
+		sb.WriteString(fmt.Sprintf(" MT-PRIORITY=%d", *opts.MTPriority))
+	}
 	if _, _, err := c.cmd(25, "%s", sb.String()); err != nil {
 		return err
 	}

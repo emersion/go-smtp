@@ -301,6 +301,13 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 			caps = append(caps, fmt.Sprintf("DELIVERBY %d", int(c.server.MinimumDeliverByTime.Seconds())))
 		}
 	}
+	if c.server.EnableMTPRIORITY {
+		if c.server.MtPriorityProfile == PriorityUnspecified {
+			caps = append(caps, "MT-PRIORITY")
+		} else {
+			caps = append(caps, fmt.Sprintf("MT-PRIORITY %s", c.server.MtPriorityProfile))
+		}
+	}
 
 	args := []string{"Hello " + domain}
 	args = append(args, caps...)
@@ -755,6 +762,21 @@ func (c *Conn) handleRcpt(arg string) {
 				return
 			}
 			opts.DeliverBy = deliverBy
+		case "MT-PRIORITY":
+			if !c.server.EnableMTPRIORITY {
+				c.writeResponse(504, EnhancedCode{5, 5, 4}, "MT-PRIORITY is not implemented")
+				return
+			}
+			mtPriority, err := strconv.Atoi(value)
+			if err != nil {
+				c.writeResponse(501, EnhancedCode{5, 5, 4}, "Malformed MT-PRIORITY parameter value")
+				return
+			}
+			if mtPriority < -9 || mtPriority > 9 {
+				c.writeResponse(501, EnhancedCode{5, 5, 4}, "MT-PRIORITY is outside valid range")
+				return
+			}
+			opts.MTPriority = &mtPriority
 		default:
 			c.writeResponse(500, EnhancedCode{5, 5, 4}, "Unknown RCPT TO argument")
 			return
