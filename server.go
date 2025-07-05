@@ -20,6 +20,44 @@ type Logger interface {
 	Println(v ...interface{})
 }
 
+// ConnState represents the state of a client connection to a server.
+type ConnState int
+
+const (
+	// StateNew represents a new connection that is expected to
+	// send SMTP commands immediately.
+	StateNew ConnState = iota
+	
+	// StateActive represents a connection that has sent the initial
+	// greeting and is actively processing SMTP commands.
+	StateActive
+	
+	// StateAuth represents a connection during SASL authentication handshake.
+	StateAuth
+	
+	// StateData represents a connection receiving message data (DATA command).
+	StateData
+	
+	// StateStartTLS represents a connection during TLS handshake.
+	StateStartTLS
+	
+	// StateReset represents a connection after RSET command, cleaning up session.
+	StateReset
+	
+	// StateIdle represents a connection that has finished handling
+	// the current SMTP transaction but remains open.
+	StateIdle
+	
+	// StateError represents a connection in error state.
+	StateError
+	
+	// StateClosed represents a closed connection.
+	StateClosed
+)
+
+// ConnStateCallback is called when a client connection changes state.
+type ConnStateCallback func(conn net.Conn, state ConnState)
+
 // A SMTP server.
 type Server struct {
 	// The type of network, "tcp" or "unix".
@@ -40,6 +78,10 @@ type Server struct {
 	ErrorLog          Logger
 	ReadTimeout       time.Duration
 	WriteTimeout      time.Duration
+	
+	// ConnState specifies an optional callback function that is
+	// called when a client connection changes state.
+	ConnState ConnStateCallback
 
 	// Advertise SMTPUTF8 (RFC 6531) capability.
 	// Should be used only if backend supports it.
@@ -131,8 +173,15 @@ func (s *Server) Serve(l net.Listener) error {
 		go func() {
 			defer s.wg.Done()
 
-			err := s.handleConn(newConn(c, s))
-			if err != nil {
+			conn := newConn(c, s)
+			
+			// Notify new connection state
+			if s.ConnState != nil {
+				s.ConnState(c, StateNew)
+			}
+			
+			err := s.handleConn(conn)
+			if err != nil && conn.hasReceivedData {
 				s.ErrorLog.Printf("error handling %v: %s", c.RemoteAddr(), err)
 			}
 		}()
@@ -150,6 +199,11 @@ func (s *Server) handleConn(c *Conn) error {
 		s.locker.Lock()
 		delete(s.conns, c)
 		s.locker.Unlock()
+		
+		// Notify connection closed
+		if s.ConnState != nil {
+			s.ConnState(c.conn, StateClosed)
+		}
 	}()
 
 	if tlsConn, ok := c.conn.(*tls.Conn); ok {
@@ -165,6 +219,11 @@ func (s *Server) handleConn(c *Conn) error {
 	}
 
 	c.greet()
+	
+	// Notify connection is active after greeting
+	if s.ConnState != nil {
+		s.ConnState(c.conn, StateActive)
+	}
 
 	for {
 		line, err := c.readLine()

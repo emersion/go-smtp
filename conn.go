@@ -46,6 +46,13 @@ type Conn struct {
 	didAuth      bool
 }
 
+// setState changes the connection state and notifies the server callback
+func (c *Conn) setState(state ConnState) {
+	if c.server.ConnState != nil {
+		c.server.ConnState(c.conn, state)
+	}
+}
+
 func newConn(c net.Conn, s *Server) *Conn {
 	sc := &Conn{
 		server: s,
@@ -131,8 +138,10 @@ func (c *Conn) handle(cmd string, arg string) {
 	case "NOOP":
 		c.writeResponse(250, EnhancedCode{2, 0, 0}, "I have successfully done nothing")
 	case "RSET": // Reset session
+		c.setState(StateReset)
 		c.reset()
 		c.writeResponse(250, EnhancedCode{2, 0, 0}, "Session reset")
+		c.setState(StateActive)
 	case "BDAT":
 		c.handleBdat(arg)
 	case "DATA":
@@ -794,23 +803,29 @@ func checkNotifySet(values []DSNNotify) error {
 }
 
 func (c *Conn) handleAuth(arg string) {
+	c.setState(StateAuth)
+	
 	if c.helo == "" {
 		c.writeResponse(502, EnhancedCode{5, 5, 1}, "Please introduce yourself first.")
+		c.setState(StateError)
 		return
 	}
 	if c.didAuth {
 		c.writeResponse(503, EnhancedCode{5, 5, 1}, "Already authenticated")
+		c.setState(StateError)
 		return
 	}
 
 	parts := strings.Fields(arg)
 	if len(parts) == 0 {
 		c.writeResponse(502, EnhancedCode{5, 5, 4}, "Missing parameter")
+		c.setState(StateError)
 		return
 	}
 
 	if !c.authAllowed() {
 		c.writeResponse(523, EnhancedCode{5, 7, 10}, "TLS is required")
+		c.setState(StateError)
 		return
 	}
 
@@ -823,6 +838,7 @@ func (c *Conn) handleAuth(arg string) {
 		ir, err = decodeSASLResponse(parts[1])
 		if err != nil {
 			c.writeResponse(454, EnhancedCode{4, 7, 0}, "Invalid base64 data")
+			c.setState(StateError)
 			return
 		}
 	}
@@ -830,6 +846,7 @@ func (c *Conn) handleAuth(arg string) {
 	sasl, err := c.auth(mechanism)
 	if err != nil {
 		c.writeError(454, EnhancedCode{4, 7, 0}, err)
+		c.setState(StateError)
 		return
 	}
 
@@ -838,6 +855,7 @@ func (c *Conn) handleAuth(arg string) {
 		challenge, done, err := sasl.Next(response)
 		if err != nil {
 			c.writeError(454, EnhancedCode{4, 7, 0}, err)
+			c.setState(StateError)
 			return
 		}
 
@@ -859,18 +877,21 @@ func (c *Conn) handleAuth(arg string) {
 		if encoded == "*" {
 			// https://tools.ietf.org/html/rfc4954#page-4
 			c.writeResponse(501, EnhancedCode{5, 0, 0}, "Negotiation cancelled")
+			c.setState(StateError)
 			return
 		}
 
 		response, err = decodeSASLResponse(encoded)
 		if err != nil {
 			c.writeResponse(454, EnhancedCode{4, 7, 0}, "Invalid base64 data")
+			c.setState(StateError)
 			return
 		}
 	}
 
 	c.writeResponse(235, EnhancedCode{2, 0, 0}, "Authentication succeeded")
 	c.didAuth = true
+	c.setState(StateActive)
 }
 
 func decodeSASLResponse(s string) ([]byte, error) {
@@ -906,16 +927,19 @@ func (c *Conn) handleStartTLS() {
 	}
 
 	c.writeResponse(220, EnhancedCode{2, 0, 0}, "Ready to start TLS")
+	c.setState(StateStartTLS)
 
 	// Upgrade to TLS
 	tlsConn := tls.Server(c.conn, c.server.TLSConfig)
 
 	if err := tlsConn.Handshake(); err != nil {
 		c.writeResponse(550, EnhancedCode{5, 0, 0}, "Handshake error")
+		c.setState(StateError)
 		return
 	}
 
 	c.conn = tlsConn
+	c.setState(StateActive)
 	c.init()
 
 	// Reset all state and close the previous Session.
@@ -953,6 +977,7 @@ func (c *Conn) handleData(arg string) {
 
 	// We have recipients, go to accept data
 	c.writeResponse(354, NoEnhancedCode, "Go ahead. End your data with <CR><LF>.<CR><LF>")
+	c.setState(StateData)
 
 	defer c.reset()
 
@@ -965,6 +990,7 @@ func (c *Conn) handleData(arg string) {
 	code, enhancedCode, msg := dataErrorToStatus(c.Session().Data(r))
 	r.limited = false
 	io.Copy(ioutil.Discard, r) // Make sure all the data has been consumed
+	c.setState(StateActive)
 	c.writeResponse(code, enhancedCode, msg)
 }
 

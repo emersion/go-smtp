@@ -4,6 +4,8 @@ import (
 	"errors"
 	"io"
 	"log"
+	"net"
+	"sync"
 	"time"
 
 	"github.com/emersion/go-sasl"
@@ -101,6 +103,57 @@ func ExampleServer() {
 	s.AllowInsecureAuth = true
 
 	log.Println("Starting server at", s.Addr)
+	if err := s.ListenAndServe(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// ExampleServer_connState demonstrates how to use ConnState for monitoring
+// connection lifecycle events.
+func ExampleServer_connState() {
+	be := &Backend{}
+	s := smtp.NewServer(be)
+	
+	// Track active connections
+	var mu sync.Mutex
+	activeConns := make(map[net.Conn]time.Time)
+	
+	s.ConnState = func(conn net.Conn, state smtp.ConnState) {
+		mu.Lock()
+		defer mu.Unlock()
+		
+		switch state {
+		case smtp.StateNew:
+			log.Printf("[%s] New connection", conn.RemoteAddr())
+			activeConns[conn] = time.Now()
+			
+		case smtp.StateActive:
+			log.Printf("[%s] Connection active", conn.RemoteAddr())
+			
+		case smtp.StateAuth:
+			log.Printf("[%s] Authentication started", conn.RemoteAddr())
+			
+		case smtp.StateData:
+			log.Printf("[%s] Receiving message data", conn.RemoteAddr())
+			
+		case smtp.StateError:
+			log.Printf("[%s] Connection error", conn.RemoteAddr())
+			
+		case smtp.StateClosed:
+			if startTime, ok := activeConns[conn]; ok {
+				duration := time.Since(startTime)
+				log.Printf("[%s] Connection closed (duration: %v)", conn.RemoteAddr(), duration)
+				delete(activeConns, conn)
+			}
+		}
+		
+		log.Printf("Active connections: %d", len(activeConns))
+	}
+	
+	s.Addr = "localhost:1025"
+	s.Domain = "localhost"
+	
+	log.Println("Starting server with connection monitoring")
 	if err := s.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
