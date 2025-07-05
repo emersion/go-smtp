@@ -70,6 +70,15 @@ type Server struct {
 	// Only use if DELIVERBY is enabled.
 	MinimumDeliverByTime time.Duration
 
+	// Advertise MT-PRIORITY (RFC 6710) capability.
+	// Should only be used if backend supports it.
+	EnableMTPRIORITY bool
+	// The profile profile mapping as defined
+	// in RFC 6710 section 10.2.
+	//
+	// Default value of NONE to advertise no specific profile.
+	MtPriorityProfile PriorityProfile
+
 	// The server backend.
 	Backend Backend
 

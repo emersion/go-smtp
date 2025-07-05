@@ -101,6 +101,15 @@ type DeliverByOptions struct {
 	Trace bool
 }
 
+type PriorityProfile string
+
+const (
+	NONE       PriorityProfile = ""
+	MIXER      PriorityProfile = "MIXER"
+	STANAG4406 PriorityProfile = "STANAG4406"
+	NSEP       PriorityProfile = "NSEP"
+)
+
 // RcptOptions contains parameters for the RCPT command.
 type RcptOptions struct {
 	// Value of NOTIFY= argument, NEVER or a combination of either of
@@ -117,4 +126,7 @@ type RcptOptions struct {
 
 	// Value of BY= argument or nil if unset.
 	DeliverBy *DeliverByOptions
+
+	// Value of MT-PRIORITY= or nil if unset.
+	MtPriority *int
 }

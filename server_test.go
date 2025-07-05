@@ -1650,3 +1650,65 @@ func TestServerDELIVERBY(t *testing.T) {
 		t.Fatal("Incorrect BY parameter value:", fmt.Sprintf("expected %#v, got %#v", expectedDeliverByOpts, deliverByOpts))
 	}
 }
+
+func TestServerMTPRIORITY(t *testing.T) {
+	be, s, c, scanner, caps := testServerEhlo(t,
+		func(s *smtp.Server) {
+			s.EnableMTPRIORITY = true
+		})
+	defer s.Close()
+	defer c.Close()
+
+	if _, ok := caps["MT-PRIORITY"]; !ok {
+		t.Fatal("Missing capability: MT-PRIORITY")
+	}
+
+	io.WriteString(c, "MAIL FROM:<root@nsa.gov>\r\n")
+	scanner.Scan()
+
+	malformedMsgs := []string{
+		"RCPT TO:<root@gchq.gov.uk> MT-PRIORITY=",
+		"RCPT TO:<root@gchq.gov.uk> MT-PRIORITY=foo",
+		"RCPT TO:<root@gchq.gov.uk> MT-PRIORITY=-10",
+		"RCPT TO:<root@gchq.gov.uk> MT-PRIORITY=10",
+	}
+
+	for _, msg := range malformedMsgs {
+		io.WriteString(c, msg+"\r\n")
+		scanner.Scan()
+		if !strings.HasPrefix(scanner.Text(), "501 5.5.4") {
+			t.Fatal("Unexpected res on malformed MT-PRIORITY parameter value:", scanner.Text())
+		}
+	}
+
+	expectedPriority := -2
+
+	io.WriteString(c, fmt.Sprintf("RCPT TO:<root@gchq.gov.uk> MT-PRIORITY=%d\r\n", expectedPriority))
+	scanner.Scan()
+
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid MT-PRIORITY parameter value:", scanner.Text())
+	}
+
+	// complete the transaction
+	io.WriteString(c, "DATA\r\n")
+	scanner.Scan()
+	io.WriteString(c, "Hey <3\r\n")
+	io.WriteString(c, ".\r\n")
+	scanner.Scan()
+
+	opts := be.anonmsgs[0].RcptOpts
+	if opts == nil || len(opts) != 1 {
+		t.Fatal("Invalid number of recipients:", opts)
+	}
+
+	priority := opts[0].MtPriority
+
+	if priority == nil {
+		t.Fatal("MtPriority is nil:", opts)
+	}
+
+	if *priority != expectedPriority {
+		t.Fatal("Incorrect MtPriority parameter value:", fmt.Sprintf("expected %d, got %d", expectedPriority, *priority))
+	}
+}
