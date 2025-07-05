@@ -73,7 +73,7 @@ type Server struct {
 	// Advertise MT-PRIORITY (RFC 6710) capability.
 	// Should only be used if backend supports it.
 	EnableMTPRIORITY bool
-	// The profile profile mapping as defined
+	// The priority profile mapping as defined
 	// in RFC 6710 section 10.2.
 	//
 	// Default value of NONE to advertise no specific profile.
