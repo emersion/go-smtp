@@ -1141,7 +1141,7 @@ func TestClientMTPRIORITY(t *testing.T) {
 	c.ext = map[string]string{"MT-PRIORITY": ""}
 	priority := 6
 	c.Rcpt("root@nsa.gov", &RcptOptions{
-		MtPriority: &priority,
+		MTPriority: &priority,
 	})
 	c.Close()
 	if actualcmds := wrote.String(); client != actualcmds {

@@ -302,7 +302,7 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 		}
 	}
 	if c.server.EnableMTPRIORITY {
-		if c.server.MtPriorityProfile == NONE {
+		if c.server.MtPriorityProfile == PriorityUnspecified {
 			caps = append(caps, "MT-PRIORITY")
 		} else {
 			caps = append(caps, fmt.Sprintf("MT-PRIORITY %s", c.server.MtPriorityProfile))
@@ -776,7 +776,7 @@ func (c *Conn) handleRcpt(arg string) {
 				c.writeResponse(501, EnhancedCode{5, 5, 4}, "MT-PRIORITY is outside valid range")
 				return
 			}
-			opts.MtPriority = &mtPriority
+			opts.MTPriority = &mtPriority
 		default:
 			c.writeResponse(500, EnhancedCode{5, 5, 4}, "Unknown RCPT TO argument")
 			return

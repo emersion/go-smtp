@@ -105,10 +105,10 @@ type DeliverByOptions struct {
 type PriorityProfile string
 
 const (
-	NONE       PriorityProfile = ""
-	MIXER      PriorityProfile = "MIXER"
-	STANAG4406 PriorityProfile = "STANAG4406"
-	NSEP       PriorityProfile = "NSEP"
+	PriorityUnspecified PriorityProfile = ""
+	PriorityMIXER       PriorityProfile = "MIXER"
+	PrioritySTANAG4406  PriorityProfile = "STANAG4406"
+	PriorityNSEP        PriorityProfile = "NSEP"
 )
 
 // RcptOptions contains parameters for the RCPT command.
@@ -129,5 +129,5 @@ type RcptOptions struct {
 	DeliverBy *DeliverByOptions
 
 	// Value of MT-PRIORITY= or nil if unset.
-	MtPriority *int
+	MTPriority *int
 }

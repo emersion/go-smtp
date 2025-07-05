@@ -1702,7 +1702,7 @@ func TestServerMTPRIORITY(t *testing.T) {
 		t.Fatal("Invalid number of recipients:", opts)
 	}
 
-	priority := opts[0].MtPriority
+	priority := opts[0].MTPriority
 
 	if priority == nil {
 		t.Fatal("MtPriority is nil:", opts)
