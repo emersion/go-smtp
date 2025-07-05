@@ -11,6 +11,7 @@
 //   - STARTTLS (RFC 3207)
 //   - DSN (RFC 3461, RFC 6533)
 //   - SMTPUTF8 (RFC 6531)
+//   - MT-PRIORITY (RFC 6710)
 //   - RRVS (RFC 7293)
 //   - REQUIRETLS (RFC 8689)
 //
