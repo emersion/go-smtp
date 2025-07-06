@@ -1309,6 +1309,17 @@ func (c *Conn) readLine() (string, error) {
 	line, err := c.text.ReadLine()
 	if err == nil {
 		c.hasReceivedData = true // Mark that connection sent data
+	} else if err != nil && !c.hasReceivedData {
+		// If we haven't received any data and get a connection error,
+		// treat it as EOF (client connected and immediately disconnected)
+		if netErr, ok := err.(*net.OpError); ok && netErr.Op == "read" {
+			return "", io.EOF
+		}
+		// Also handle textproto connection errors
+		if strings.Contains(err.Error(), "connection reset by peer") || 
+		   strings.Contains(err.Error(), "broken pipe") {
+			return "", io.EOF
+		}
 	}
 	return line, err
 }

@@ -133,7 +133,7 @@ func (s *Server) Serve(l net.Listener) error {
 
 			conn := newConn(c, s)
 			err := s.handleConn(conn)
-			if err != nil && conn.hasReceivedData {
+			if err != nil {
 				s.ErrorLog.Printf("error handling %v: %s", c.RemoteAddr(), err)
 			}
 		}()
