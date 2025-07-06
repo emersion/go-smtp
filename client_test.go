@@ -1115,3 +1115,36 @@ func TestClientDELIVERBY(t *testing.T) {
 		t.Errorf("wrote %q; want %q", actualcmds, client)
 	}
 }
+
+var mtPriorityServer = `220 hello world
+250 ok
+`
+
+var mtPriorityClient = `RCPT TO:<root@nsa.gov> MT-PRIORITY=6
+`
+
+func TestClientMTPRIORITY(t *testing.T) {
+	server := strings.Join(strings.Split(mtPriorityServer, "\n"), "\r\n")
+	client := strings.Join(strings.Split(mtPriorityClient, "\n"), "\r\n")
+
+	var wrote bytes.Buffer
+	var fake faker
+	fake.ReadWriter = struct {
+		io.Reader
+		io.Writer
+	}{
+		strings.NewReader(server),
+		&wrote,
+	}
+	c := NewClient(fake)
+	c.didHello = true
+	c.ext = map[string]string{"MT-PRIORITY": ""}
+	priority := 6
+	c.Rcpt("root@nsa.gov", &RcptOptions{
+		MTPriority: &priority,
+	})
+	c.Close()
+	if actualcmds := wrote.String(); client != actualcmds {
+		t.Errorf("wrote %q; want %q", actualcmds, client)
+	}
+}

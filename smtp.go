@@ -11,6 +11,7 @@
 //   - STARTTLS (RFC 3207)
 //   - DSN (RFC 3461, RFC 6533)
 //   - SMTPUTF8 (RFC 6531)
+//   - MT-PRIORITY (RFC 6710)
 //   - RRVS (RFC 7293)
 //   - REQUIRETLS (RFC 8689)
 //
@@ -101,6 +102,15 @@ type DeliverByOptions struct {
 	Trace bool
 }
 
+type PriorityProfile string
+
+const (
+	PriorityUnspecified PriorityProfile = ""
+	PriorityMIXER       PriorityProfile = "MIXER"
+	PrioritySTANAG4406  PriorityProfile = "STANAG4406"
+	PriorityNSEP        PriorityProfile = "NSEP"
+)
+
 // RcptOptions contains parameters for the RCPT command.
 type RcptOptions struct {
 	// Value of NOTIFY= argument, NEVER or a combination of either of
@@ -117,4 +127,7 @@ type RcptOptions struct {
 
 	// Value of BY= argument or nil if unset.
 	DeliverBy *DeliverByOptions
+
+	// Value of MT-PRIORITY= or nil if unset.
+	MTPriority *int
 }
