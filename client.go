@@ -499,7 +499,7 @@ func (c *Client) Rcpt(to string, opts *RcptOptions) error {
 	sb.Grow(2048)
 	fmt.Fprintf(&sb, "RCPT TO:<%s>", to)
 	if _, ok := c.ext["DSN"]; ok && opts != nil {
-		if opts.Notify != nil && len(opts.Notify) != 0 {
+		if len(opts.Notify) != 0 {
 			sb.WriteString(" NOTIFY=")
 			if err := checkNotifySet(opts.Notify); err != nil {
 				return errors.New("smtp: Malformed NOTIFY parameter value")
@@ -744,15 +744,6 @@ func (c *Client) SendMail(from string, to []string, r io.Reader) error {
 var testHookStartTLS func(*tls.Config) // nil, except for tests
 
 func sendMail(addr string, implicitTLS bool, a sasl.Client, from string, to []string, r io.Reader) error {
-	if err := validateLine(from); err != nil {
-		return err
-	}
-	for _, recp := range to {
-		if err := validateLine(recp); err != nil {
-			return err
-		}
-	}
-
 	var (
 		c   *Client
 		err error
