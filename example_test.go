@@ -21,15 +21,15 @@ func ExampleDial() {
 	}
 
 	// Set the sender and recipient first
-	if err := c.Mail("sender@example.org", nil); err != nil {
+	if _, err := c.Mail("sender@example.org", nil); err != nil {
 		log.Fatal(err)
 	}
-	if err := c.Rcpt("recipient@example.net", nil); err != nil {
+	if _, err := c.Rcpt("recipient@example.net", nil); err != nil {
 		log.Fatal(err)
 	}
 
 	// Send the email body.
-	wc, err := c.Data()
+	wc, _, err := c.Data()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func ExampleDial() {
 	}
 
 	// Send the QUIT command and close the connection.
-	err = c.Quit()
+	_, err = c.Quit()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func ExampleSendMail_plainAuth() {
 	hostname := "mail.example.com"
 	auth := sasl.NewPlainClient("", "user@example.com", "password")
 
-	err := smtp.SendMail(hostname+":25", auth, from, recipients, msg)
+	_, err := smtp.SendMail(hostname+":25", auth, from, recipients, msg)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -79,7 +79,7 @@ func ExampleSendMail() {
 		"Subject: discount Gophers!\r\n" +
 		"\r\n" +
 		"This is the email body.\r\n")
-	err := smtp.SendMail("mail.example.com:25", auth, "sender@example.org", to, msg)
+	_, err := smtp.SendMail("mail.example.com:25", auth, "sender@example.org", to, msg)
 	if err != nil {
 		log.Fatal(err)
 	}

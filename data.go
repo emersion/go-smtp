@@ -6,6 +6,19 @@ import (
 	"io"
 )
 
+type ResponseMessage struct {
+	Message string
+	Code    int
+}
+
+func (rm ResponseMessage) Error() string {
+	return rm.String()
+}
+
+func (rm ResponseMessage) String() string {
+	return fmt.Sprintf("Code: %03d, Message: %s", rm.Code, rm.Message)
+}
+
 type EnhancedCode [3]int
 
 // SMTPError specifies the error code, enhanced error code (if any) and
