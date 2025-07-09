@@ -728,7 +728,7 @@ func TestServer_otherCommands(t *testing.T) {
 
 	io.WriteString(c, "HELP\r\n")
 	scanner.Scan()
-	if !strings.HasPrefix(scanner.Text(), "502 ") {
+	if !strings.HasPrefix(scanner.Text(), "214 ") {
 		t.Fatal("Invalid HELP response:", scanner.Text())
 	}
 
