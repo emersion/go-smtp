@@ -1148,3 +1148,44 @@ func TestClientMTPRIORITY(t *testing.T) {
 		t.Errorf("wrote %q; want %q", actualcmds, client)
 	}
 }
+
+func TestClientDebugWriter(t *testing.T) {
+	server := strings.Join(strings.Split(mtPriorityServer, "\n"), "\r\n")
+	client := strings.Join(strings.Split(mtPriorityClient, "\n"), "\r\n")
+
+	var (
+		wrote bytes.Buffer
+		dbg   = new(bytes.Buffer)
+		fake  faker
+	)
+	fake.ReadWriter = struct {
+		io.Reader
+		io.Writer
+	}{
+		strings.NewReader(server),
+		&wrote,
+	}
+
+	c := NewClient(fake)
+	c.DebugWriter = dbg
+	c.didHello = true
+	c.ext = map[string]string{"MT-PRIORITY": ""}
+	priority := 6
+	c.Rcpt("root@nsa.gov", &RcptOptions{
+		MTPriority: &priority,
+	})
+	c.Close()
+	if actualcmds := wrote.String(); client != actualcmds {
+		t.Errorf("wrote %q; want %q", actualcmds, client)
+	}
+
+	tr := strings.NewReplacer("\t", "", "\n", "\r\n")
+	want := tr.Replace(`
+		CLIENT  RCPT TO:<root@nsa.gov> MT-PRIORITY=6
+		SERVER  220 hello world
+		SERVER  250 ok
+	`[1:])
+	if dbg.String() != want {
+		t.Errorf("debug wrong\nhave: %q\nwant: %q", dbg, want)
+	}
+}
