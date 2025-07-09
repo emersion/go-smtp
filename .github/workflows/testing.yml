@@ -17,7 +17,7 @@ jobs:
       - name: Set up Go from go.mod
         uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version: '1.24'
 
       - name: Install dependencies
         run: go mod tidy
