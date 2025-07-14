@@ -879,10 +879,11 @@ Goodbye.`
 	if _, err := w.Write([]byte(msg)); err != nil {
 		t.Fatalf("Data write failed: %s", err)
 	}
-	respReader.Skip(1) // skip CloseWithLMTPResponse
+
 	if err := w.Close(); err != nil {
 		t.Fatalf("Bad data response: %s", err)
 	}
+	checkResponseMessage(t, respReader.Next(), w.CloseResponseMessage())
 
 	if rm, err := c.Quit(); err != nil || !checkResponseMessage(t, respReader.Next(), rm) {
 		t.Fatalf("QUIT failed: %s", err)

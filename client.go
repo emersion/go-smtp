@@ -572,6 +572,8 @@ type DataCommand struct {
 	wc     io.WriteCloser
 
 	closeErr error
+
+	closeResponseMessage ResponseMessage
 }
 
 var _ io.WriteCloser = (*DataCommand)(nil)
@@ -585,9 +587,9 @@ func (cmd *DataCommand) Write(b []byte) (int, error) {
 func (cmd *DataCommand) Close() error {
 	var err error
 	if cmd.client.lmtp {
-		_, _, err = cmd.CloseWithLMTPResponse()
+		_, cmd.closeResponseMessage, err = cmd.CloseWithLMTPResponse()
 	} else {
-		_, _, err = cmd.CloseWithResponse()
+		_, cmd.closeResponseMessage, err = cmd.CloseWithResponse()
 	}
 	return err
 }
@@ -673,6 +675,12 @@ func (cmd *DataCommand) close() error {
 
 	cmd.closeErr = errors.New("smtp: data writer closed twice")
 	return nil
+}
+
+// method Close implements io.Closer and it can't return additional data,
+// use CloseResponseMessage to receive ResponseMessage after Close
+func (cmd *DataCommand) CloseResponseMessage() ResponseMessage {
+	return cmd.closeResponseMessage
 }
 
 // DataResponse is the response returned by a DATA command. See
