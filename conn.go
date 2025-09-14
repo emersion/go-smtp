@@ -166,6 +166,8 @@ func (c *Conn) handle(cmd string, arg string) {
 			return
 		}
 
+		c.commandSequence++
+
 		c.handleData(arg)
 	case "QUIT":
 		c.writeResponse(221, EnhancedCode{2, 0, 0}, "Bye")
