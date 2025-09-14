@@ -44,6 +44,8 @@ type Conn struct {
 	fromReceived bool
 	recipients   []string
 	didAuth      bool
+
+	commandSequence int
 }
 
 func newConn(c net.Conn, s *Server) *Conn {
@@ -84,6 +86,8 @@ func (c *Conn) init() {
 	}
 
 	c.text = textproto.NewConn(rwc)
+
+	c.commandSequence = 1
 }
 
 // Commands are dispatched to the appropriate handler functions.
@@ -111,6 +115,13 @@ func (c *Conn) handle(cmd string, arg string) {
 		// These commands are not implemented in any state
 		c.writeResponse(502, EnhancedCode{5, 5, 1}, fmt.Sprintf("%v command not implemented", cmd))
 	case "HELO", "EHLO", "LHLO":
+		if c.commandSequence != 1 {
+			c.writeResponse(503, EnhancedCode{5, 5, 4}, "Bad sequence of commands")
+			return
+		}
+
+		c.commandSequence++
+
 		lmtp := cmd == "LHLO"
 		enhanced := lmtp || cmd == "EHLO"
 		if c.server.LMTP && !lmtp {
@@ -123,8 +134,22 @@ func (c *Conn) handle(cmd string, arg string) {
 		}
 		c.handleGreet(enhanced, arg)
 	case "MAIL":
+		if c.commandSequence != 2 {
+			c.writeResponse(503, EnhancedCode{5, 5, 4}, "Bad sequence of commands")
+			return
+		}
+
+		c.commandSequence++
+
 		c.handleMail(arg)
 	case "RCPT":
+		if c.commandSequence < 3 || c.commandSequence > 4 {
+			c.writeResponse(503, EnhancedCode{5, 5, 4}, "Bad sequence of commands")
+			return
+		} else if c.commandSequence == 3 {
+			c.commandSequence++
+		}
+
 		c.handleRcpt(arg)
 	case "VRFY":
 		c.writeResponse(252, EnhancedCode{2, 5, 0}, "Cannot VRFY user, but will accept message")
@@ -136,6 +161,11 @@ func (c *Conn) handle(cmd string, arg string) {
 	case "BDAT":
 		c.handleBdat(arg)
 	case "DATA":
+		if c.commandSequence != 4 {
+			c.writeResponse(503, EnhancedCode{5, 5, 4}, "Bad sequence of commands")
+			return
+		}
+
 		c.handleData(arg)
 	case "QUIT":
 		c.writeResponse(221, EnhancedCode{2, 0, 0}, "Bye")
@@ -1347,4 +1377,6 @@ func (c *Conn) reset() {
 
 	c.fromReceived = false
 	c.recipients = nil
+
+	c.commandSequence = 1
 }
