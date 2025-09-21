@@ -44,6 +44,9 @@ type Conn struct {
 	fromReceived bool
 	recipients   []string
 	didAuth      bool
+
+	// XCLIENT data - stores connection information provided by XCLIENT command
+	xclientData map[string]string
 }
 
 func newConn(c net.Conn, s *Server) *Conn {
@@ -144,6 +147,8 @@ func (c *Conn) handle(cmd string, arg string) {
 		c.handleAuth(arg)
 	case "STARTTLS":
 		c.handleStartTLS()
+	case "XCLIENT":
+		c.handleXCLIENT(arg)
 	default:
 		msg := fmt.Sprintf("Syntax errors, %v command unrecognized", cmd)
 		c.protocolError(500, EnhancedCode{5, 5, 2}, msg)
@@ -307,6 +312,9 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 		} else {
 			caps = append(caps, fmt.Sprintf("MT-PRIORITY %s", c.server.MtPriorityProfile))
 		}
+	}
+	if c.server.EnableXCLIENT && c.isXCLIENTTrusted() {
+		caps = append(caps, "XCLIENT ADDR PORT PROTO HELO LOGIN NAME")
 	}
 
 	args := []string{"Hello " + domain}
@@ -778,8 +786,25 @@ func (c *Conn) handleRcpt(arg string) {
 			}
 			opts.MTPriority = &mtPriority
 		default:
-			c.writeResponse(500, EnhancedCode{5, 5, 4}, "Unknown RCPT TO argument")
-			return
+			// Handle custom extensions (non-standard parameters)
+			if !c.server.EnableRCPTExtensions {
+				c.writeResponse(500, EnhancedCode{5, 5, 4}, "Unknown RCPT parameter")
+				return
+			}
+
+			if opts.Extensions == nil {
+				opts.Extensions = make(map[string]string)
+			}
+
+			// Special validation for XRCPTFORWARD
+			if key == "XRCPTFORWARD" {
+				if err := c.validateXRCPTFORWARD(value); err != nil {
+					c.writeResponse(501, EnhancedCode{5, 5, 4}, fmt.Sprintf("Malformed XRCPTFORWARD parameter: %v", err))
+					return
+				}
+			}
+
+			opts.Extensions[key] = value
 		}
 	}
 
@@ -1328,6 +1353,302 @@ func (c *Conn) readLine() (string, error) {
 	}
 
 	return c.text.ReadLine()
+}
+
+// validateXRCPTFORWARD validates an XRCPTFORWARD parameter value according to Dovecot specification
+func (c *Conn) validateXRCPTFORWARD(value string) error {
+	// XRCPTFORWARD must be base64 encoded but can encode empty content
+	if value == "" {
+		return errors.New("XRCPTFORWARD value cannot be empty")
+	}
+
+	// Check if it's valid base64
+	decoded, err := base64.StdEncoding.DecodeString(value)
+	if err != nil {
+		return fmt.Errorf("invalid base64 encoding: %v", err)
+	}
+
+	// Check size limit (~900 bytes per Dovecot spec)
+	if len(decoded) > 900 {
+		return fmt.Errorf("XRCPTFORWARD data too large: %d bytes (max 900)", len(decoded))
+	}
+
+	// Validate that it contains tab-separated key=value pairs (empty content is allowed)
+	decodedStr := string(decoded)
+	if err := c.validateXRCPTFORWARDContent(decodedStr); err != nil {
+		return fmt.Errorf("invalid content: %v", err)
+	}
+
+	return nil
+}
+
+// validateXRCPTFORWARDContent validates the decoded XRCPTFORWARD content
+func (c *Conn) validateXRCPTFORWARDContent(content string) error {
+	// Allow empty content
+	if content == "" {
+		return nil
+	}
+
+	// Content should be tab-separated key=value pairs
+	// Split by literal tabs first, then unescape individual pairs
+	pairs := strings.Split(content, "\t")
+
+	for _, pair := range pairs {
+		if pair == "" {
+			continue // Allow empty pairs
+		}
+
+		// Each pair should be key=value
+		parts := strings.SplitN(pair, "=", 2)
+		if len(parts) != 2 {
+			return fmt.Errorf("invalid key=value pair format: %s", pair)
+		}
+
+		// Key cannot be empty
+		if parts[0] == "" {
+			return errors.New("empty key in key=value pair")
+		}
+	}
+
+	return nil
+}
+
+// unescapeXRCPTFORWARD handles Dovecot's escape sequences (\t, \n, \r, \\)
+func unescapeXRCPTFORWARD(escaped string) string {
+	// Order matters: handle \\ first to avoid double-processing
+	result := strings.ReplaceAll(escaped, "\\\\", "\x00") // temporary placeholder
+	result = strings.ReplaceAll(result, "\\t", "\t")
+	result = strings.ReplaceAll(result, "\\n", "\n")
+	result = strings.ReplaceAll(result, "\\r", "\r")
+	result = strings.ReplaceAll(result, "\x00", "\\") // restore backslashes
+	return result
+}
+
+// ParseXRCPTFORWARD parses XRCPTFORWARD data into key=value pairs
+// This is a utility function that backends can use to parse the forwarded data
+func ParseXRCPTFORWARD(value string) (map[string]string, error) {
+	if value == "" {
+		return nil, errors.New("XRCPTFORWARD value cannot be empty")
+	}
+
+	// Decode base64
+	decoded, err := base64.StdEncoding.DecodeString(value)
+	if err != nil {
+		return nil, fmt.Errorf("invalid base64 encoding: %v", err)
+	}
+
+	content := string(decoded)
+
+	// Split by literal tabs first (before unescaping)
+	pairs := strings.Split(content, "\t")
+	result := make(map[string]string)
+
+	for _, pair := range pairs {
+		if pair == "" {
+			continue
+		}
+
+		// Split into key=value
+		parts := strings.SplitN(pair, "=", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid key=value pair format: %s", pair)
+		}
+		if parts[0] == "" {
+			return nil, errors.New("empty key in key=value pair")
+		}
+
+		key := parts[0]
+		value := parts[1]
+
+		// Unescape the value (not the key)
+		result[key] = unescapeXRCPTFORWARD(value)
+	}
+
+	return result, nil
+}
+
+func (c *Conn) handleXCLIENT(arg string) {
+	// XCLIENT can only be used before authentication
+	if c.didAuth {
+		c.writeResponse(503, EnhancedCode{5, 5, 1}, "XCLIENT not permitted after authentication")
+		return
+	}
+
+	// XCLIENT can only be used before MAIL FROM
+	if c.fromReceived {
+		c.writeResponse(503, EnhancedCode{5, 5, 1}, "XCLIENT not permitted after MAIL FROM")
+		return
+	}
+
+	// Check if XCLIENT is enabled
+	if !c.server.EnableXCLIENT {
+		c.writeResponse(502, EnhancedCode{5, 5, 1}, "XCLIENT command not implemented")
+		return
+	}
+
+	// Check if connection is from trusted network
+	if !c.isXCLIENTTrusted() {
+		c.writeResponse(550, EnhancedCode{5, 7, 1}, "XCLIENT denied")
+		return
+	}
+
+	// Parse XCLIENT attributes
+	attrs, err := c.parseXCLIENTArgs(arg)
+	if err != nil {
+		c.writeResponse(501, EnhancedCode{5, 5, 4}, fmt.Sprintf("Invalid XCLIENT syntax: %v", err))
+		return
+	}
+
+	// Validate attributes
+	if err := c.validateXCLIENTAttrs(attrs); err != nil {
+		c.writeResponse(501, EnhancedCode{5, 5, 4}, fmt.Sprintf("Invalid XCLIENT attributes: %v", err))
+		return
+	}
+
+	// Initialize xclientData if not already done
+	if c.xclientData == nil {
+		c.xclientData = make(map[string]string)
+	}
+
+	// Store attributes
+	for name, value := range attrs {
+		c.xclientData[name] = value
+	}
+
+	// Call backend XCLIENT handler if implemented
+	if xclientBackend, ok := c.Session().(XCLIENTBackend); ok {
+		if err := xclientBackend.XCLIENT(c.Session(), attrs); err != nil {
+			c.writeError(451, EnhancedCode{4, 0, 0}, err)
+			return
+		}
+	}
+
+	// Per XCLIENT spec, we must reset the session state and issue a new
+	// greeting. This is similar to what we do for STARTTLS.
+	if session := c.Session(); session != nil {
+		session.Logout()
+		c.setSession(nil)
+	}
+	c.helo = ""
+	c.didAuth = false
+	c.reset()
+
+	// And send a new greeting.
+	c.greet()
+}
+
+func (c *Conn) isXCLIENTTrusted() bool {
+	if len(c.server.XCLIENTTrustedNets) == 0 {
+		return false
+	}
+
+	clientIP, _, err := net.SplitHostPort(c.conn.RemoteAddr().String())
+	if err != nil {
+		return false
+	}
+
+	ip := net.ParseIP(clientIP)
+	if ip == nil {
+		return false
+	}
+
+	for _, network := range c.server.XCLIENTTrustedNets {
+		if network.Contains(ip) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (c *Conn) parseXCLIENTArgs(arg string) (map[string]string, error) {
+	attrs := make(map[string]string)
+
+	if arg == "" {
+		return attrs, nil
+	}
+
+	fields := strings.Fields(arg)
+	for _, field := range fields {
+		parts := strings.SplitN(field, "=", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid attribute format: %s", field)
+		}
+
+		name := strings.ToUpper(parts[0])
+		value := parts[1]
+
+		attrs[name] = value
+	}
+
+	return attrs, nil
+}
+
+func (c *Conn) validateXCLIENTAttrs(attrs map[string]string) error {
+	// List of valid XCLIENT attributes
+	validAttrs := map[string]bool{
+		"ADDR":  true,
+		"PORT":  true,
+		"PROTO": true,
+		"HELO":  true,
+		"LOGIN": true,
+		"NAME":  true,
+	}
+
+	for name, value := range attrs {
+		if !validAttrs[name] {
+			return fmt.Errorf("unknown attribute: %s", name)
+		}
+
+		// Validate special values
+		if value == "[UNAVAILABLE]" || value == "[TEMPUNAVAIL]" {
+			continue
+		}
+
+		// Validate specific attributes
+		switch name {
+		case "ADDR":
+			addrValue := value
+			if strings.HasPrefix(strings.ToLower(addrValue), "ipv6:") {
+				addrValue = addrValue[5:]
+			}
+			if net.ParseIP(addrValue) == nil {
+				return fmt.Errorf("invalid IP address for ADDR: %s", value)
+			}
+		case "PORT":
+			if port, err := strconv.Atoi(value); err != nil || port < 1 || port > 65535 {
+				return fmt.Errorf("invalid port number for PORT: %s", value)
+			}
+		case "PROTO":
+			validProtos := map[string]bool{"SMTP": true, "ESMTP": true}
+			if !validProtos[strings.ToUpper(value)] {
+				return fmt.Errorf("invalid protocol for PROTO: %s", value)
+			}
+		case "HELO", "LOGIN", "NAME":
+			if value == "" {
+				return fmt.Errorf("empty value for %s", name)
+			}
+		}
+	}
+
+	return nil
+}
+
+// XCLIENTData returns the XCLIENT attributes provided by the client
+func (c *Conn) XCLIENTData() map[string]string {
+	c.locker.Lock()
+	defer c.locker.Unlock()
+
+	if c.xclientData == nil {
+		return nil
+	}
+
+	// Return a copy to prevent modification
+	result := make(map[string]string)
+	for k, v := range c.xclientData {
+		result[k] = v
+	}
+	return result
 }
 
 func (c *Conn) reset() {

@@ -130,4 +130,9 @@ type RcptOptions struct {
 
 	// Value of MT-PRIORITY= or nil if unset.
 	MTPriority *int
+
+	// Extensions contains custom RCPT parameters not defined in standard SMTP.
+	// This includes extensions like XRCPTFORWARD and other server-specific parameters.
+	// The map is nil if no custom parameters are present.
+	Extensions map[string]string
 }

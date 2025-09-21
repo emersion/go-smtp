@@ -52,14 +52,11 @@ func parseCmd(line string) (cmd string, arg string, err error) {
 func parseArgs(s string) (map[string]string, error) {
 	argMap := map[string]string{}
 	for _, arg := range strings.Fields(s) {
-		m := strings.Split(arg, "=")
-		switch len(m) {
-		case 2:
-			argMap[strings.ToUpper(m[0])] = m[1]
-		case 1:
-			argMap[strings.ToUpper(m[0])] = ""
-		default:
-			return nil, fmt.Errorf("failed to parse arg string: %q", arg)
+		key, value, found := strings.Cut(arg, "=")
+		if found {
+			argMap[strings.ToUpper(key)] = value
+		} else {
+			argMap[strings.ToUpper(key)] = ""
 		}
 	}
 	return argMap, nil
