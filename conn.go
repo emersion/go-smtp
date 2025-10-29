@@ -44,6 +44,9 @@ type Conn struct {
 	fromReceived bool
 	recipients   []string
 	didAuth      bool
+
+	// XCLIENT data - stores connection information provided by XCLIENT command
+	xclientData map[string]string
 }
 
 func newConn(c net.Conn, s *Server) *Conn {
@@ -144,6 +147,8 @@ func (c *Conn) handle(cmd string, arg string) {
 		c.handleAuth(arg)
 	case "STARTTLS":
 		c.handleStartTLS()
+	case "XCLIENT":
+		c.handleXCLIENT(arg)
 	default:
 		msg := fmt.Sprintf("Syntax errors, %v command unrecognized", cmd)
 		c.protocolError(500, EnhancedCode{5, 5, 2}, msg)
@@ -307,6 +312,9 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 		} else {
 			caps = append(caps, fmt.Sprintf("MT-PRIORITY %s", c.server.MtPriorityProfile))
 		}
+	}
+	if c.server.EnableXCLIENT && c.isXCLIENTTrusted() {
+		caps = append(caps, "XCLIENT ADDR PORT PROTO HELO LOGIN NAME")
 	}
 
 	args := []string{"Hello " + domain}
@@ -1328,6 +1336,190 @@ func (c *Conn) readLine() (string, error) {
 	}
 
 	return c.text.ReadLine()
+}
+
+func (c *Conn) handleXCLIENT(arg string) {
+	// XCLIENT can only be used before authentication
+	if c.didAuth {
+		c.writeResponse(503, EnhancedCode{5, 5, 1}, "XCLIENT not permitted after authentication")
+		return
+	}
+
+	// XCLIENT can only be used before MAIL FROM
+	if c.fromReceived {
+		c.writeResponse(503, EnhancedCode{5, 5, 1}, "XCLIENT not permitted after MAIL FROM")
+		return
+	}
+
+	// Check if XCLIENT is enabled
+	if !c.server.EnableXCLIENT {
+		c.writeResponse(502, EnhancedCode{5, 5, 1}, "XCLIENT command not implemented")
+		return
+	}
+
+	// Check if connection is from trusted network
+	if !c.isXCLIENTTrusted() {
+		c.writeResponse(550, EnhancedCode{5, 7, 1}, "XCLIENT denied")
+		return
+	}
+
+	// Parse XCLIENT attributes
+	attrs, err := c.parseXCLIENTArgs(arg)
+	if err != nil {
+		c.writeResponse(501, EnhancedCode{5, 5, 4}, fmt.Sprintf("Invalid XCLIENT syntax: %v", err))
+		return
+	}
+
+	// Validate attributes
+	if err := c.validateXCLIENTAttrs(attrs); err != nil {
+		c.writeResponse(501, EnhancedCode{5, 5, 4}, fmt.Sprintf("Invalid XCLIENT attributes: %v", err))
+		return
+	}
+
+	// Initialize xclientData if not already done
+	if c.xclientData == nil {
+		c.xclientData = make(map[string]string)
+	}
+
+	// Store attributes
+	for name, value := range attrs {
+		c.xclientData[name] = value
+	}
+
+	// Call backend XCLIENT handler if implemented
+	if xclientBackend, ok := c.Session().(XCLIENTBackend); ok {
+		if err := xclientBackend.XCLIENT(c.Session(), attrs); err != nil {
+			c.writeError(451, EnhancedCode{4, 0, 0}, err)
+			return
+		}
+	}
+
+	// Per XCLIENT spec, we must reset the session state and issue a new
+	// greeting. This is similar to what we do for STARTTLS.
+	if session := c.Session(); session != nil {
+		session.Logout()
+		c.setSession(nil)
+	}
+	c.helo = ""
+	c.didAuth = false
+	c.reset()
+
+	// And send a new greeting.
+	c.greet()
+}
+
+func (c *Conn) isXCLIENTTrusted() bool {
+	if len(c.server.XCLIENTTrustedNets) == 0 {
+		return false
+	}
+
+	clientIP, _, err := net.SplitHostPort(c.conn.RemoteAddr().String())
+	if err != nil {
+		return false
+	}
+
+	ip := net.ParseIP(clientIP)
+	if ip == nil {
+		return false
+	}
+
+	for _, network := range c.server.XCLIENTTrustedNets {
+		if network.Contains(ip) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (c *Conn) parseXCLIENTArgs(arg string) (map[string]string, error) {
+	attrs := make(map[string]string)
+
+	if arg == "" {
+		return attrs, nil
+	}
+
+	fields := strings.Fields(arg)
+	for _, field := range fields {
+		parts := strings.SplitN(field, "=", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid attribute format: %s", field)
+		}
+
+		name := strings.ToUpper(parts[0])
+		value := parts[1]
+
+		attrs[name] = value
+	}
+
+	return attrs, nil
+}
+
+func (c *Conn) validateXCLIENTAttrs(attrs map[string]string) error {
+	// List of valid XCLIENT attributes
+	validAttrs := map[string]bool{
+		"ADDR":  true,
+		"PORT":  true,
+		"PROTO": true,
+		"HELO":  true,
+		"LOGIN": true,
+		"NAME":  true,
+	}
+
+	for name, value := range attrs {
+		if !validAttrs[name] {
+			return fmt.Errorf("unknown attribute: %s", name)
+		}
+
+		// Validate special values
+		if value == "[UNAVAILABLE]" || value == "[TEMPUNAVAIL]" {
+			continue
+		}
+
+		// Validate specific attributes
+		switch name {
+		case "ADDR":
+			addrValue := value
+			if strings.HasPrefix(strings.ToLower(addrValue), "ipv6:") {
+				addrValue = addrValue[5:]
+			}
+			if net.ParseIP(addrValue) == nil {
+				return fmt.Errorf("invalid IP address for ADDR: %s", value)
+			}
+		case "PORT":
+			if port, err := strconv.Atoi(value); err != nil || port < 1 || port > 65535 {
+				return fmt.Errorf("invalid port number for PORT: %s", value)
+			}
+		case "PROTO":
+			validProtos := map[string]bool{"SMTP": true, "ESMTP": true, "LMTP": true}
+			if !validProtos[strings.ToUpper(value)] {
+				return fmt.Errorf("invalid protocol for PROTO: %s", value)
+			}
+		case "HELO", "LOGIN", "NAME":
+			if value == "" {
+				return fmt.Errorf("empty value for %s", name)
+			}
+		}
+	}
+
+	return nil
+}
+
+// XCLIENTData returns the XCLIENT attributes provided by the client
+func (c *Conn) XCLIENTData() map[string]string {
+	c.locker.Lock()
+	defer c.locker.Unlock()
+
+	if c.xclientData == nil {
+		return nil
+	}
+
+	// Return a copy to prevent modification
+	result := make(map[string]string)
+	for k, v := range c.xclientData {
+		result[k] = v
+	}
+	return result
 }
 
 func (c *Conn) reset() {

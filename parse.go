@@ -18,28 +18,30 @@ func cutPrefixFold(s, prefix string) (string, bool) {
 func parseCmd(line string) (cmd string, arg string, err error) {
 	line = strings.TrimRight(line, "\r\n")
 
-	l := len(line)
-	switch {
-	case strings.HasPrefix(strings.ToUpper(line), "STARTTLS"):
-		return "STARTTLS", "", nil
-	case l == 0:
+	if len(line) == 0 {
 		return "", "", nil
-	case l < 4:
-		return "", "", fmt.Errorf("command too short: %q", line)
-	case l == 4:
+	}
+
+	// Find the first space to separate command from arguments
+	spaceIndex := strings.IndexByte(line, ' ')
+
+	if spaceIndex == -1 {
+		// No space found, entire line is the command
+		if len(line) < 4 {
+			return "", "", fmt.Errorf("command too short: %q", line)
+		}
 		return strings.ToUpper(line), "", nil
-	case l == 5:
-		// Too long to be only command, too short to have args
-		return "", "", fmt.Errorf("mangled command: %q", line)
 	}
 
-	// If we made it here, command is long enough to have args
-	if line[4] != ' ' {
-		// There wasn't a space after the command?
-		return "", "", fmt.Errorf("mangled command: %q", line)
+	// Space found, split into command and arguments
+	if spaceIndex < 4 {
+		return "", "", fmt.Errorf("command too short: %q", line)
 	}
 
-	return strings.ToUpper(line[0:4]), strings.TrimSpace(line[5:]), nil
+	command := strings.ToUpper(line[:spaceIndex])
+	arguments := strings.TrimSpace(line[spaceIndex+1:])
+
+	return command, arguments, nil
 }
 
 // Takes the arguments proceeding a command and files them

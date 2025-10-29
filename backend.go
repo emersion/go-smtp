@@ -100,3 +100,13 @@ type AuthSession interface {
 	AuthMechanisms() []string
 	Auth(mech string) (sasl.Server, error)
 }
+
+// XCLIENTBackend is an add-on interface for Session. It provides support for the
+// XCLIENT extension.
+type XCLIENTBackend interface {
+	// XCLIENT handles the XCLIENT command. The attrs parameter contains
+	// the connection attributes provided by the client (ADDR, PORT, PROTO,
+	// HELO, LOGIN, NAME). Backends can validate and process these attributes.
+	// If an error is returned, the XCLIENT command will be rejected.
+	XCLIENT(session Session, attrs map[string]string) error
+}

@@ -959,3 +959,50 @@ func validateLine(line string) error {
 	}
 	return nil
 }
+
+// SupportsXCLIENT checks whether the server supports the XCLIENT extension.
+func (c *Client) SupportsXCLIENT() bool {
+	if err := c.hello(); err != nil {
+		return false
+	}
+	_, ok := c.ext["XCLIENT"]
+	return ok
+}
+
+// XCLIENT sends the XCLIENT command to the server.
+// This is a Postfix-specific extension.
+// The client must be on a trusted network for this to work.
+// After a successful XCLIENT command, the session is reset and the client
+// should send HELO/EHLO again.
+func (c *Client) XCLIENT(attrs map[string]string) error {
+	if err := c.hello(); err != nil {
+		return err
+	}
+	if !c.SupportsXCLIENT() {
+		return errors.New("smtp: server doesn't support XCLIENT")
+	}
+	if len(attrs) == 0 {
+		return errors.New("smtp: XCLIENT requires at least one attribute")
+	}
+
+	var parts []string
+	for k, v := range attrs {
+		parts = append(parts, fmt.Sprintf("%s=%s", k, v))
+	}
+	// Sort for deterministic command generation (good for testing)
+	sort.Strings(parts)
+
+	_, _, err := c.cmd(220, "XCLIENT %s", strings.Join(parts, " "))
+	if err != nil {
+		return err
+	}
+
+	// After a successful XCLIENT, the server resets the connection and
+	// sends a new greeting. The client must send HELO/EHLO again.
+	// We reset the client state to reflect this.
+	c.didHello = false
+	c.helloError = nil
+	c.ext = nil
+
+	return nil
+}

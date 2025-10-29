@@ -79,6 +79,13 @@ type Server struct {
 	// Default value of NONE to advertise no specific profile.
 	MtPriorityProfile PriorityProfile
 
+	// Advertise XCLIENT (Postfix extension) capability.
+	// Should only be used if backend supports it and proper trusted networks are configured.
+	EnableXCLIENT bool
+	// Trusted networks for XCLIENT command. Only connections from these networks
+	// are allowed to use XCLIENT. If empty, XCLIENT is effectively disabled.
+	XCLIENTTrustedNets []*net.IPNet
+
 	// The server backend.
 	Backend Backend
 
@@ -101,6 +108,17 @@ func NewServer(be Backend) *Server {
 		ErrorLog: log.New(os.Stderr, "smtp/server ", log.LstdFlags),
 		conns:    make(map[*Conn]struct{}),
 	}
+}
+
+// AddXCLIENTTrustedNetwork adds a trusted network for XCLIENT command.
+// The network should be in CIDR notation (e.g., "192.168.1.0/24", "::1/128").
+func (s *Server) AddXCLIENTTrustedNetwork(network string) error {
+	_, ipnet, err := net.ParseCIDR(network)
+	if err != nil {
+		return err
+	}
+	s.XCLIENTTrustedNets = append(s.XCLIENTTrustedNets, ipnet)
+	return nil
 }
 
 // Serve accepts incoming connections on the Listener l.
