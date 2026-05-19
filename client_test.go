@@ -569,6 +569,131 @@ SendMail is working for me.
 QUIT
 `
 
+func TestSendMail_SMTPUTF8_Autodetect(t *testing.T) {
+	buildServer := func(nRcpt int) string {
+		s := "220 hello world\r\n" +
+			"250-mx.example.com at your service\r\n" +
+			"250 SMTPUTF8\r\n" +
+			"250 Sender ok\r\n"
+		for i := 0; i < nRcpt; i++ {
+			s += "250 Receiver ok\r\n"
+		}
+		s += "354 Go ahead\r\n" +
+			"250 Data ok\r\n" +
+			"221 Goodbye\r\n"
+		return s
+	}
+
+	cases := []struct {
+		name     string
+		from     string
+		to       []string
+		wantMail string
+	}{
+		{
+			name:     "ascii both",
+			from:     "arnt@example.com",
+			to:       []string{"info@example.com"},
+			wantMail: "MAIL FROM:<arnt@example.com>",
+		},
+		{
+			name:     "utf8 from",
+			from:     "arnt@grå.org",
+			to:       []string{"info@example.com"},
+			wantMail: "MAIL FROM:<arnt@grå.org> SMTPUTF8",
+		},
+		{
+			name:     "utf8 rcpt only",
+			from:     "arnt@example.com",
+			to:       []string{"info@example.com", "gøril@example.com"},
+			wantMail: "MAIL FROM:<arnt@example.com> SMTPUTF8",
+		},
+		{
+			name:     "utf8 both halves",
+			from:     "grå@grå.org",
+			to:       []string{"阿Q@例子.中国"},
+			wantMail: "MAIL FROM:<grå@grå.org> SMTPUTF8",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var cmdbuf bytes.Buffer
+			bcmdbuf := bufio.NewWriter(&cmdbuf)
+			var fake faker
+			fake.ReadWriter = bufio.NewReadWriter(
+				bufio.NewReader(strings.NewReader(buildServer(len(tc.to)))),
+				bcmdbuf,
+			)
+			c := NewClient(fake)
+			c.localName = "localhost"
+
+			if err := c.SendMail(tc.from, tc.to, strings.NewReader("Subject: t\r\n\r\nhi\r\n")); err != nil {
+				t.Fatalf("SendMail: %v", err)
+			}
+			bcmdbuf.Flush()
+			got := cmdbuf.String()
+			if !strings.Contains(got, tc.wantMail+"\r\n") {
+				t.Errorf("missing %q in:\n%s", tc.wantMail, got)
+			}
+			// Negative check: ASCII case must not emit SMTPUTF8.
+			if tc.wantMail == "MAIL FROM:<"+tc.from+">" && strings.Contains(got, "SMTPUTF8") {
+				t.Errorf("unexpected SMTPUTF8 in ASCII-only case:\n%s", got)
+			}
+		})
+	}
+}
+
+func TestSendMail_SMTPUTF8_NotAdvertised(t *testing.T) {
+	const server = "220 hello world\r\n" +
+		"250-mx.example.com at your service\r\n" +
+		"250 PIPELINING\r\n" +
+		"221 Goodbye\r\n"
+
+	var cmdbuf bytes.Buffer
+	bcmdbuf := bufio.NewWriter(&cmdbuf)
+	var fake faker
+	fake.ReadWriter = bufio.NewReadWriter(
+		bufio.NewReader(strings.NewReader(server)),
+		bcmdbuf,
+	)
+	c := NewClient(fake)
+	c.localName = "localhost"
+
+	err := c.SendMail("arnt@example.com", []string{"gøril@example.com"},
+		strings.NewReader("Subject: t\r\n\r\nhi\r\n"))
+	if err == nil {
+		t.Fatal("SendMail: expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "SMTPUTF8") {
+		t.Errorf("error %q does not mention SMTPUTF8", err)
+	}
+	bcmdbuf.Flush()
+	got := cmdbuf.String()
+	for _, forbidden := range []string{"MAIL ", "RCPT ", "DATA"} {
+		if strings.Contains(got, forbidden) {
+			t.Errorf("client sent %q despite missing SMTPUTF8:\n%s", forbidden, got)
+		}
+	}
+}
+
+func TestIsASCII(t *testing.T) {
+	cases := []struct {
+		s    string
+		want bool
+	}{
+		{"", true},
+		{"arnt@example.com", true},
+		{"grå@example.com", false},
+		{"arnt@grå.org", false},
+	}
+	for _, tc := range cases {
+		if got := isASCII(tc.s); got != tc.want {
+			t.Errorf("isASCII(%q) = %v, want %v", tc.s, got, tc.want)
+		}
+	}
+}
+
 func TestAuthFailed(t *testing.T) {
 	server := strings.Join(strings.Split(authFailedServer, "\n"), "\r\n")
 	client := strings.Join(strings.Split(authFailedClient, "\n"), "\r\n")
