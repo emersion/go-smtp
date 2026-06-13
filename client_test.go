@@ -545,30 +545,6 @@ func TestHello_421Response(t *testing.T) {
 	}
 }
 
-var sendMailServer = `220 hello world
-502 EH?
-250 mx.google.com at your service
-250 Sender ok
-250 Receiver ok
-354 Go ahead
-250 Data ok
-221 Goodbye
-`
-
-var sendMailClient = `EHLO localhost
-HELO localhost
-MAIL FROM:<test@example.com>
-RCPT TO:<other@example.com>
-DATA
-From: test@example.com
-To: other@example.com
-Subject: SendMail test
-
-SendMail is working for me.
-.
-QUIT
-`
-
 func TestAuthFailed(t *testing.T) {
 	server := strings.Join(strings.Split(authFailedServer, "\n"), "\r\n")
 	client := strings.Join(strings.Split(authFailedClient, "\n"), "\r\n")

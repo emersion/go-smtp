@@ -189,7 +189,7 @@ func (s *Server) handleConn(c *Conn) error {
 			if err == io.EOF || errors.Is(err, net.ErrClosed) {
 				return nil
 			}
-			if err == ErrTooLongLine {
+			if errors.Is(err, ErrTooLongLine) {
 				c.writeResponse(500, EnhancedCode{5, 4, 0}, "Too long line, closing connection")
 				return nil
 			}
