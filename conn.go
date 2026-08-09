@@ -1247,7 +1247,7 @@ func (c *Conn) handleDataLMTP() {
 		c.writeResponse(code, enchCode, "<"+rcpt+"> "+msg)
 	}
 
-	// If done gets false, the panic occured in LMTPData and the connection
+	// If done gets false, the panic occurred in LMTPData and the connection
 	// should be closed.
 	if !<-done {
 		c.Close()
