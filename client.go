@@ -34,7 +34,7 @@ type Client struct {
 	greetError error             // the error from the greeting
 	didHello   bool              // whether we've said HELO/EHLO/LHLO
 	helloError error             // the error from the hello
-	rcpts      []string          // recipients accumulated for the current session
+	rcpts      []string          // recipients accumulated for the current transaction
 
 	// Time to wait for command responses (this includes 3xx reply to DATA).
 	CommandTimeout time.Duration
@@ -477,8 +477,14 @@ func (c *Client) Mail(from string, opts *MailOptions) error {
 		}
 		// We can safely discard parameter if server does not support AUTH.
 	}
-	_, _, err := c.cmd(250, "%s", sb.String())
-	return err
+	if _, _, err := c.cmd(250, "%s", sb.String()); err != nil {
+		return err
+	}
+
+	// A new transaction has started, forget the previous recipients.
+	c.rcpts = nil
+
+	return nil
 }
 
 // Rcpt issues a RCPT command to the server using the provided email address.

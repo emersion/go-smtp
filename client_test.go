@@ -1077,6 +1077,68 @@ Goodbye.`
 	}
 }
 
+func TestLMTPDataTwoMessages(t *testing.T) {
+	var lmtpServerTwoMessages = `220 localhost Simple Mail Transfer Service Ready
+250-localhost at your service
+250 8BITMIME
+250 Sender OK
+250 Receiver OK
+354 Go ahead
+250 First message OK
+250 Sender OK
+250 Receiver OK
+354 Go ahead
+250 Second message OK
+221 OK
+`
+	server := strings.Join(strings.Split(lmtpServerTwoMessages, "\n"), "\r\n")
+
+	var cmdbuf bytes.Buffer
+	bcmdbuf := bufio.NewWriter(&cmdbuf)
+	var fake faker
+	fake.ReadWriter = bufio.NewReadWriter(bufio.NewReader(strings.NewReader(server)), bcmdbuf)
+	c := &Client{text: textproto.NewConn(fake), conn: fake, lmtp: true}
+
+	if err := c.Hello("localhost"); err != nil {
+		t.Fatalf("LHLO failed: %s", err)
+	}
+	c.didHello = true
+
+	send := func(rcpt, statusText string) {
+		t.Helper()
+
+		if err := c.Mail("user@gmail.com", nil); err != nil {
+			t.Fatalf("MAIL failed: %s", err)
+		}
+		if err := c.Rcpt(rcpt, nil); err != nil {
+			t.Fatalf("RCPT failed: %s", err)
+		}
+		w, err := c.Data()
+		if err != nil {
+			t.Fatalf("DATA failed: %s", err)
+		}
+		if _, err := w.Write([]byte("Hello")); err != nil {
+			t.Fatalf("Data write failed: %s", err)
+		}
+		resp, err := w.CloseWithLMTPResponse()
+		if err != nil {
+			t.Fatalf("CloseWithLMTPResponse failed: %s", err)
+		}
+
+		wantResp := map[string]*DataResponse{rcpt: {StatusText: statusText}}
+		if !reflect.DeepEqual(resp, wantResp) {
+			t.Fatalf("resp = %v, want %v", resp, wantResp)
+		}
+	}
+
+	send("golang-nuts@googlegroups.com", "First message OK")
+	send("golang-not-nuts@googlegroups.com", "Second message OK")
+
+	if err := c.Quit(); err != nil {
+		t.Fatalf("QUIT failed: %s", err)
+	}
+}
+
 var xtextClient = `MAIL FROM:<e=mc2@example.com> AUTH=e+3Dmc2@example.com
 RCPT TO:<e=mc2@example.com> ORCPT=UTF-8;e\x{3D}mc2@example.com
 `
