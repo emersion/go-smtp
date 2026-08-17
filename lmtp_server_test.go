@@ -86,6 +86,45 @@ func TestServer_LMTP(t *testing.T) {
 	}
 }
 
+func TestServer_LMTP_tooLongMessage(t *testing.T) {
+	be, s, c, scanner := testServerGreetedLMTP(t, func(s *smtp.Server) {
+		s.LMTP = true
+		s.MaxMessageBytes = 50
+	})
+	defer s.Close()
+	defer c.Close()
+
+	sendLHLO(t, scanner, c)
+	io.WriteString(c, "MAIL FROM:<root@nsa.gov>\r\n")
+	scanner.Scan()
+	io.WriteString(c, "RCPT TO:<root@gchq.gov.uk>\r\n")
+	scanner.Scan()
+	io.WriteString(c, "DATA\r\n")
+	scanner.Scan()
+
+	io.WriteString(c, "This is a very long message.\r\n")
+	io.WriteString(c, "Much longer than you can possibly imagine.\r\n")
+	io.WriteString(c, "MAIL FROM:<root@example.org>\r\n")
+	io.WriteString(c, ".\r\n")
+
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "552 ") {
+		t.Fatal("Invalid DATA response, expected an error but got:", scanner.Text())
+	}
+
+	// See that command stream state is not corrupted e.g. server is not
+	// interpreting the rest of the message body as commands.
+	io.WriteString(c, "NOOP\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid NOOP response:", scanner.Text())
+	}
+
+	if len(be.messages) != 0 || len(be.anonmsgs) != 0 {
+		t.Fatal("Invalid number of sent messages:", be.messages, be.anonmsgs)
+	}
+}
+
 func TestServer_LMTP_Early(t *testing.T) {
 	// This test confirms responses are sent as early as possible
 	// e.g. right after SetStatus is called.
