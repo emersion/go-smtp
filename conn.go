@@ -23,10 +23,11 @@ import (
 const errThreshold = 3
 
 type Conn struct {
-	conn   net.Conn
-	text   *textproto.Conn
-	server *Server
-	helo   string
+	conn     net.Conn
+	text     *textproto.Conn
+	server   *Server
+	helo     string
+	rejected bool
 
 	// Number of errors witnessed on this connection
 	errCount int
@@ -102,6 +103,17 @@ func (c *Conn) handle(cmd string, arg string) {
 
 	if cmd == "" {
 		c.protocolError(500, EnhancedCode{5, 5, 2}, "Error: bad syntax")
+		return
+	}
+
+	//as per RFC5321 3.1
+	if c.rejected {
+		if cmd == "QUIT" {
+			c.writeResponse(221, NoEnhancedCode, "OK")
+			c.Close()
+		} else {
+			c.protocolError(503, NoEnhancedCode, "bad sequence of commands")
+		}
 		return
 	}
 
@@ -1278,7 +1290,13 @@ func (c *Conn) greet() {
 	if c.server.LMTP {
 		protocol = "LMTP"
 	}
-	c.writeResponse(220, NoEnhancedCode, fmt.Sprintf("%v %s Service Ready", c.server.Domain, protocol))
+	domain, err := c.server.GetDomain(c)
+	if err != nil {
+		c.writeResponse(554, NoEnhancedCode, "Error: "+err.Error())
+		c.rejected = true
+		return
+	}
+	c.writeResponse(220, NoEnhancedCode, fmt.Sprintf("%v %s Service Ready", domain, protocol))
 }
 
 func (c *Conn) writeResponse(code int, enhCode EnhancedCode, text ...string) {

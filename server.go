@@ -40,6 +40,7 @@ type Server struct {
 	ErrorLog          Logger
 	ReadTimeout       time.Duration
 	WriteTimeout      time.Duration
+	domainFn          func(*Conn) (string, error)
 
 	// Advertise SMTPUTF8 (RFC 6531) capability.
 	// Should be used only if backend supports it.
@@ -146,6 +147,19 @@ func (s *Server) Serve(l net.Listener) error {
 			}
 		}()
 	}
+}
+
+// Getter for the optional dynamic domain string generator function
+func (s *Server) GetDomain(c *Conn) (string, error) {
+	if s.domainFn != nil {
+		return s.domainFn(c)
+	}
+	return s.Domain, nil
+}
+
+// Setter for the dynamic domain string generator function
+func (s *Server) SetDomainFunc(fn func(*Conn) (string, error)) {
+	s.domainFn = fn
 }
 
 func (s *Server) handleConn(c *Conn) error {

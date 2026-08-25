@@ -1744,3 +1744,95 @@ func TestServerMTPRIORITY(t *testing.T) {
 		t.Fatal("Incorrect MtPriority parameter value:", fmt.Sprintf("expected %d, got %d", expectedPriority, *priority))
 	}
 }
+
+func getDynamicDomainResponse(c *smtp.Conn) (string, error) {
+	return "dynamichost.local", nil
+}
+
+func getNegativeDynamicDomainResponse(c *smtp.Conn) (string, error) {
+	return "", fmt.Errorf("no service")
+}
+
+func testServerDynamicDomain(t *testing.T, fn ...serverConfigureFunc) (be *backend, s *smtp.Server, c net.Conn, scanner *bufio.Scanner) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	be = new(backend)
+	s = smtp.NewServer(be)
+	s.Domain = "localhost"
+	s.SetDomainFunc(getDynamicDomainResponse)
+	s.AllowInsecureAuth = true
+	for _, f := range fn {
+		f(s)
+	}
+
+	go s.Serve(l)
+
+	c, err = net.Dial("tcp", l.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	scanner = bufio.NewScanner(c)
+	return
+}
+
+func testServerNegativeDynamicDomain(t *testing.T, fn ...serverConfigureFunc) (be *backend, s *smtp.Server, c net.Conn, scanner *bufio.Scanner) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	be = new(backend)
+	s = smtp.NewServer(be)
+	s.Domain = "localhost"
+	s.SetDomainFunc(getNegativeDynamicDomainResponse)
+	s.AllowInsecureAuth = true
+	for _, f := range fn {
+		f(s)
+	}
+
+	go s.Serve(l)
+
+	c, err = net.Dial("tcp", l.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	scanner = bufio.NewScanner(c)
+	return
+}
+
+func TestServerDynamicDomainGreeted(t *testing.T) {
+	_, _, _, scanner := testServerDynamicDomain(t)
+
+	scanner.Scan()
+	if scanner.Text() != "220 dynamichost.local ESMTP Service Ready" {
+		t.Fatal("Invalid greeting:", scanner.Text())
+	}
+}
+
+func TestServerNegativeDynamicDomainGreeted(t *testing.T) {
+	_, _, c, scanner := testServerNegativeDynamicDomain(t)
+
+	scanner.Scan()
+	if scanner.Text() != "554 Error: no service" {
+		t.Fatal("Invalid greeting:", scanner.Text())
+	}
+
+	//Now test for 503 error as per RFC521 3.1
+	io.WriteString(c, "HELO localhost\r\n")
+
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "503 bad sequence of commands") {
+		t.Fatal("Invalid HELO response:", scanner.Text())
+	}
+	io.WriteString(c, "QUIT\r\n")
+
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "221 OK") {
+		t.Fatal("Invalid HELO response:", scanner.Text())
+	}
+}
