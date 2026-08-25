@@ -17,6 +17,10 @@ The Go standard library provides a SMTP client implementation in `net/smtp`.
 However `net/smtp` is frozen: it's not getting any new features. go-smtp
 provides a server implementation and a number of client improvements.
 
+## Documentation
+
+* [Navigable API reference](https://paolosca90.github.io/go-smtp/) generated from the repository source with Sourcey
+
 ## Licence
 
 MIT
