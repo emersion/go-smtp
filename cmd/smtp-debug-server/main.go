@@ -39,6 +39,10 @@ func (s *session) Data(r io.Reader) error {
 	return nil
 }
 
+func (s *session) XForward(attrName, attrValue string) error {
+	return nil
+}
+
 func (s *session) Reset() {}
 
 func (s *session) Logout() error {

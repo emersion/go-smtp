@@ -137,6 +137,8 @@ func (c *Conn) handle(cmd string, arg string) {
 		c.handleBdat(arg)
 	case "DATA":
 		c.handleData(arg)
+	case "XFORWARD":
+		c.handleXForward(arg)
 	case "QUIT":
 		c.writeResponse(221, EnhancedCode{2, 0, 0}, "Bye")
 		c.Close()
@@ -307,6 +309,9 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 		} else {
 			caps = append(caps, fmt.Sprintf("MT-PRIORITY %s", c.server.MtPriorityProfile))
 		}
+	}
+	if c.server.EnableXFORWARD {
+		caps = append(caps, "XFORWARD NAME ADDR PROTO HELO")
 	}
 
 	args := []string{"Hello " + domain}
@@ -988,6 +993,42 @@ func (c *Conn) handleData(arg string) {
 	r.limited = false
 	io.Copy(ioutil.Discard, r) // Make sure all the data has been consumed
 	c.writeResponse(code, enhancedCode, msg)
+}
+
+func (c *Conn) handleXForward(arg string) {
+	/*
+		Handling is according to https://www.postfix.org/XFORWARD_README.html
+			xforward-command = XFORWARD 1*( SP attribute-name"="attribute-value )
+			attribute-name = ( NAME | ADDR | PORT | PROTO | HELO | IDENT | SOURCE )
+			attribute-value = xtext
+			Attribute values are xtext encoded as per RFC 1891. https://datatracker.ietf.org/doc/html/rfc1891
+	*/
+
+	if c.bdatPipe != nil {
+		c.writeResponse(502, EnhancedCode{5, 5, 1}, "XFORWARD not allowed during message transfer")
+		return
+	}
+
+	attributes := strings.Split(arg, " ")
+	for _, attribute := range attributes {
+		if !strings.Contains(attribute, "=") {
+			c.writeResponse(501, EnhancedCode{5, 5, 1}, "Bad XFORWARD command.")
+			return
+		}
+		nameValue := strings.SplitN(attribute, "=", 2)
+		attrName := strings.ToUpper(nameValue[0]) // attr names are case insensitive, normalise
+		attrValue, err := decodeXtext(nameValue[1])
+		if err != nil {
+			c.writeResponse(501, EnhancedCode{5, 5, 1}, "Bad XFORWARD value.")
+			return
+		}
+		err = c.Session().XForward(attrName, attrValue)
+		if err != nil {
+			c.writeResponse(501, EnhancedCode{5, 0, 0}, "Error: transaction failed: "+err.Error())
+			return
+		}
+	}
+	c.writeResponse(250, EnhancedCode{2, 0, 0}, "OK")
 }
 
 func (c *Conn) handleBdat(arg string) {

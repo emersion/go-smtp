@@ -73,6 +73,12 @@ type Server struct {
 	// Advertise MT-PRIORITY (RFC 6710) capability.
 	// Should only be used if backend supports it.
 	EnableMTPRIORITY bool
+
+	// Advertise XFORWARD NAME ADDR PROTO HELO
+	// (https://www.postfix.org/XFORWARD_README.html) capability.
+	// Should only be used if backend supports it.
+	EnableXFORWARD bool
+
 	// The priority profile mapping as defined
 	// in RFC 6710 section 10.2.
 	//

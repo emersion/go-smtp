@@ -68,6 +68,11 @@ func (s *Session) Data(r io.Reader) error {
 	return nil
 }
 
+func (s *Session) XForward(attrName, attrValue string) error {
+	log.Printf("XFORWARD %s=%s\n", attrName, attrValue)
+	return nil
+}
+
 func (s *Session) Reset() {}
 
 func (s *Session) Logout() error {
@@ -99,6 +104,7 @@ func ExampleServer() {
 	s.MaxMessageBytes = 1024 * 1024
 	s.MaxRecipients = 50
 	s.AllowInsecureAuth = true
+	s.EnableXFORWARD = true
 
 	log.Println("Starting server at", s.Addr)
 	if err := s.ListenAndServe(); err != nil {

@@ -25,6 +25,7 @@ type message struct {
 	RcptOpts []*smtp.RcptOptions
 	Data     []byte
 	Opts     *smtp.MailOptions
+	XForward map[string]string
 }
 
 type backend struct {
@@ -98,7 +99,9 @@ func (s *session) Auth(mech string) (sasl.Server, error) {
 }
 
 func (s *session) Reset() {
-	s.msg = &message{}
+	s.msg = &message{
+		XForward: make(map[string]string),
+	}
 }
 
 func (s *session) Logout() error {
@@ -154,6 +157,11 @@ func (s *session) Data(r io.Reader) error {
 			s.backend.dataErrors <- nil
 		}
 	}
+	return nil
+}
+
+func (s *session) XForward(attrName, attrValue string) error {
+	s.msg.XForward[attrName] = attrValue
 	return nil
 }
 
@@ -1742,5 +1750,92 @@ func TestServerMTPRIORITY(t *testing.T) {
 
 	if *priority != expectedPriority {
 		t.Fatal("Incorrect MtPriority parameter value:", fmt.Sprintf("expected %d, got %d", expectedPriority, *priority))
+	}
+}
+
+func TestServerXFORWARD(t *testing.T) {
+	be, s, c, scanner, caps := testServerEhlo(t,
+		func(s *smtp.Server) {
+			s.EnableXFORWARD = true
+		})
+	defer s.Close()
+	defer c.Close()
+
+	if _, ok := caps["XFORWARD NAME ADDR PROTO HELO"]; !ok {
+		t.Fatal("Missing capability: XFORWARD")
+	}
+
+	io.WriteString(c, "MAIL FROM:<root@nsa.gov>\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid MAIL response:", scanner.Text())
+	}
+
+	io.WriteString(c, "RCPT TO:<root@gchq.gov.uk>\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid RCPT response:", scanner.Text())
+	}
+
+	// Atrribute names are case insensitive, check we normalised them
+	io.WriteString(c, "XFORWARD NAME=spike.porcupine.org ADDR=168.100.189.2 proto=ESMTP\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid XFORWARD response:", scanner.Text())
+	}
+
+	io.WriteString(c, "DATA\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "354 ") {
+		t.Fatal("Invalid DATA response:", scanner.Text())
+	}
+
+	io.WriteString(c, "From: root@nsa.gov\r\n")
+	io.WriteString(c, "\r\n")
+	io.WriteString(c, "Hey\r <3\r\n")
+	io.WriteString(c, "..this dot is fine\r\n")
+	io.WriteString(c, ".\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid DATA response:", scanner.Text())
+	}
+
+	if len(be.messages) != 0 || len(be.anonmsgs) != 1 {
+		t.Fatal("Invalid number of sent messages:", be.messages, be.anonmsgs)
+	}
+
+	msg := be.anonmsgs[0]
+
+	if len(msg.XForward) != 3 {
+		t.Fatal("Invalid XFORWARD data:", msg.XForward)
+	}
+
+	if got, ok := msg.XForward["NAME"]; !ok {
+		t.Fatal("Missing XFORWARD attribute NAME")
+	} else if got != "spike.porcupine.org" {
+		t.Fatal("Invalid XFORWARD attribute value for NAME", got)
+	}
+
+	if got, ok := msg.XForward["ADDR"]; !ok {
+		t.Fatal("Missing XFORWARD attribute ADDR")
+	} else if got != "168.100.189.2" {
+		t.Fatal("Invalid XFORWARD attribute value for ADDR", got)
+	}
+
+	if got, ok := msg.XForward["PROTO"]; !ok {
+		t.Fatal("Missing (normalised) XFORWARD attribute PROTO")
+	} else if got != "ESMTP" {
+		t.Fatal("Invalid (normalised) XFORWARD attribute value for PROTO", got)
+	}
+
+	// Sanity that the rest of the connection continued fine
+	if msg.From != "root@nsa.gov" {
+		t.Fatal("Invalid mail sender:", msg.From)
+	}
+	if len(msg.To) != 1 || msg.To[0] != "root@gchq.gov.uk" {
+		t.Fatal("Invalid mail recipients:", msg.To)
+	}
+	if string(msg.Data) != "From: root@nsa.gov\r\n\r\nHey\r <3\r\n.this dot is fine\r\n" {
+		t.Fatal("Invalid mail data:", string(msg.Data))
 	}
 }
