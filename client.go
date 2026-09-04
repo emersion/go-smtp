@@ -380,17 +380,20 @@ func (c *Client) Auth(a sasl.Client) error {
 	} else if resp != nil {
 		resp64 = []byte{'='}
 	}
+	var code int
+	var msg64 string
 	authCmd := strings.TrimSpace(fmt.Sprintf("AUTH %s %s", mech, resp64))
-	// RFC 5321 section 4.5.3.1.4 limits a command line (including CRLF) to 512
-	// octets. When the SASL initial response is too large to inline on the AUTH
-	// command line (e.g. GSSAPI), defer it: send "AUTH <mech>" and provide the
-	// response on the first server challenge instead, per RFC 4954 section 4.
-	var deferredResp64 []byte
 	if len(authCmd)+2 > 512 && len(resp64) > 0 {
-		deferredResp64 = resp64
-		authCmd = "AUTH " + mech
+		// The initial response does not fit in the 512-octet command line (RFC 5321
+		// section 4.5.3.1.4), so send it as the reply to the first challenge instead
+		// (RFC 4954 section 4).
+		code, msg64, err = c.cmd(0, "AUTH %s", mech)
+		if err == nil && code == 334 {
+			code, msg64, err = c.cmd(0, "%s", resp64)
+		}
+	} else {
+		code, msg64, err = c.cmd(0, "%s", authCmd)
 	}
-	code, msg64, err := c.cmd(0, "%s", authCmd)
 	for err == nil {
 		var msg []byte
 		switch code {
@@ -404,13 +407,6 @@ func (c *Client) Auth(a sasl.Client) error {
 		}
 		if err == nil {
 			if code == 334 {
-				if deferredResp64 != nil {
-					// Send the deferred initial response (already base64-encoded)
-					// as the reply to the first challenge, then continue.
-					code, msg64, err = c.cmd(0, "%s", string(deferredResp64))
-					deferredResp64 = nil
-					continue
-				}
 				resp, err = a.Next(msg)
 			} else {
 				resp = nil
