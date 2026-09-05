@@ -994,3 +994,16 @@ func allASCII(ss []string) bool {
 	}
 	return true
 }
+
+// Cmd sends an arbitrary SMTP command and returns the reply code and message.
+//
+// go-smtp models the commands of the base protocol plus the extensions it
+// implements; extensions like XCLIENT (Postfix) are not among them. Routers
+// that forward with the client's original address need XCLIENT on a pooled
+// connection: it carries the client address per transaction instead of per
+// connection, which is what makes pooling possible for HAProxy-protocol
+// destinations. The command is expected to be pre-validated by the caller —
+// this method performs no quoting or encoding beyond what the caller passes.
+func (c *Client) Cmd(expectCode int, format string, args ...interface{}) (int, string, error) {
+	return c.cmd(expectCode, format, args...)
+}
