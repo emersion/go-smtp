@@ -1,6 +1,7 @@
 package smtp
 
 import (
+	"bytes"
 	"errors"
 	"io"
 )
@@ -32,15 +33,22 @@ func (r *lineLimitReader) Read(b []byte) (int, error) {
 		return n, nil
 	}
 
-	for _, chr := range b[:n] {
-		if chr == '\n' {
-			r.curLineLength = 0
+	for rest := b[:n]; len(rest) > 0; {
+		i := bytes.IndexByte(rest, '\n')
+		span := len(rest)
+		if i >= 0 {
+			span = i
 		}
-		r.curLineLength++
-
+		r.curLineLength += span
 		if r.curLineLength > r.LineLimit {
 			return 0, ErrTooLongLine
 		}
+		if i < 0 {
+			break
+		}
+		// Preserve the existing accounting: LF starts the next line.
+		r.curLineLength = 1
+		rest = rest[i+1:]
 	}
 
 	return n, nil

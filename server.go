@@ -31,9 +31,12 @@ type Server struct {
 	// Enable LMTP mode, as defined in RFC 2033.
 	LMTP bool
 
-	Domain            string
-	MaxRecipients     int
-	MaxMessageBytes   int64
+	Domain          string
+	MaxRecipients   int
+	MaxMessageBytes int64
+	// ReadBufferSize controls the per-connection input buffer. Zero uses the
+	// default 4 KiB buffer. Larger buffers can improve large DATA transfers.
+	ReadBufferSize    int
 	MaxLineLength     int
 	AllowInsecureAuth bool
 	Debug             io.Writer

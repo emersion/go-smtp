@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net"
 	"strings"
 	"testing"
 )
@@ -126,5 +127,59 @@ func BenchmarkDataReader(b *testing.B) {
 				}
 			}
 		})
+	}
+}
+
+func BenchmarkDataReaderWithLineLimit(b *testing.B) {
+	block := []byte(strings.Repeat(strings.Repeat("x", 76)+"\r\n", 13443))
+	buffer := make([]byte, 128<<10)
+	b.SetBytes(2 << 30)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		wire := io.MultiReader(&repeatedDataReader{block: block, remaining: 2 << 30}, strings.NewReader("\r\n.\r\n"))
+		reader := &dataReader{r: bufio.NewReader(&lineLimitReader{R: wire, LineLimit: 2000})}
+		n, err := io.CopyBuffer(discardDataWriter{}, reader, buffer)
+		if err != nil || n != (2<<30)+2 {
+			b.Fatalf("read %d, %v", n, err)
+		}
+	}
+}
+
+func TestConnReadBufferDataPipeline(t *testing.T) {
+	for _, size := range []int{0, 128 << 10} {
+		server, client := net.Pipe()
+		s := NewServer(nil)
+		s.ReadBufferSize = size
+		c := newConn(server, s)
+		wantSize := size
+		if wantSize == 0 {
+			wantSize = 4096
+		}
+		if c.text.R.Size() != wantSize {
+			t.Fatalf("buffer size %d", c.text.R.Size())
+		}
+		done := make(chan error, 1)
+		go func() {
+			_, err := io.WriteString(client, "DATA\r\nhello\r\n..dot\r\n.\r\nNOOP\r\n")
+			done <- err
+		}()
+		line, err := c.text.ReadLine()
+		if err != nil || line != "DATA" {
+			t.Fatal(line, err)
+		}
+		body, err := ioutil.ReadAll(newDataReader(c))
+		if err != nil || string(body) != "hello\r\n.dot\r\n" {
+			t.Fatal(string(body), err)
+		}
+		line, err = c.text.ReadLine()
+		if err != nil || line != "NOOP" {
+			t.Fatal(line, err)
+		}
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+		server.Close()
+		client.Close()
 	}
 }

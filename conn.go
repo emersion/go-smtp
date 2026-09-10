@@ -1,6 +1,7 @@
 package smtp
 
 import (
+	"bufio"
 	"crypto/tls"
 	"encoding/base64"
 	"errors"
@@ -84,6 +85,9 @@ func (c *Conn) init() {
 	}
 
 	c.text = textproto.NewConn(rwc)
+	if c.server.ReadBufferSize > 0 {
+		c.text.Reader = *textproto.NewReader(bufio.NewReaderSize(rwc, c.server.ReadBufferSize))
+	}
 }
 
 // Commands are dispatched to the appropriate handler functions.
