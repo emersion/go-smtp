@@ -55,7 +55,9 @@ func (d *dotWriter) Write(b []byte) (n int, err error) {
 			p, b = b, nil
 		}
 		pLen = len(p)
-		if d.state == wstateBeginLine && p[0] == '.' {
+		// A leading dot must be stuffed at the beginning of every line,
+		// including the very first one (wstateBegin).
+		if (d.state == wstateBeginLine || d.state == wstateBegin) && p[0] == '.' {
 			err = bw.WriteByte('.')
 			if err != nil {
 				return n, err

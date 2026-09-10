@@ -122,6 +122,26 @@ func TestDotWriter(t *testing.T) {
 	})
 }
 
+// TestDotWriterLeadingDot checks that a dot at the very beginning of the
+// first line is stuffed, as required by RFC 5321 4.5.2 (transparency).
+// Without stuffing the first line, a body starting with a dot is silently
+// corrupted (or misread as end-of-data) by a conforming receiver. See
+// MS-1560.
+func TestDotWriterLeadingDot(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{".hello\r\n", "..hello\r\n.\r\n"},
+		{".\r\nfoo\r\n", "..\r\nfoo\r\n.\r\n"},
+		{"..x\r\n", "...x\r\n.\r\n"},
+	} {
+		var buf bytes.Buffer
+		d := textsmtp.NewDotWriter(bufio.NewWriter(&buf))
+		_, err := d.Write([]byte(tc.in))
+		require.NoError(t, err)
+		require.NoError(t, d.Close())
+		require.Equal(t, tc.want, buf.String(), "input %q", tc.in)
+	}
+}
+
 func TestDotWriterCloseEmptyWrite(t *testing.T) {
 	var buf bytes.Buffer
 	d := textsmtp.NewDotWriter(bufio.NewWriter(&buf))
