@@ -477,6 +477,22 @@ func (c *Client) Mail(from string, opts *MailOptions) error {
 		}
 		// We can safely discard parameter if server does not support AUTH.
 	}
+	if _, ok := c.ext["DELIVERBY"]; ok && opts != nil && opts.DeliverBy != nil {
+		if opts.DeliverBy.Mode == DeliverByReturn && opts.DeliverBy.Time < 1 {
+			return errors.New("smtp: DELIVERBY mode must be greater than zero with return mode")
+		}
+		arg := fmt.Sprintf(" BY=%d;%s", int(opts.DeliverBy.Time.Seconds()), opts.DeliverBy.Mode)
+		if opts.DeliverBy.Trace {
+			arg += "T"
+		}
+		sb.WriteString(arg)
+	}
+	if _, ok := c.ext["MT-PRIORITY"]; ok && opts != nil && opts.MTPriority != nil {
+		if *opts.MTPriority < -9 || *opts.MTPriority > 9 {
+			return errors.New("smtp: MT-PRIORITY must be between -9 and 9")
+		}
+		sb.WriteString(fmt.Sprintf(" MT-PRIORITY=%d", *opts.MTPriority))
+	}
 	if _, _, err := c.cmd(250, "%s", sb.String()); err != nil {
 		return err
 	}
@@ -539,22 +555,6 @@ func (c *Client) Rcpt(to string, opts *RcptOptions) error {
 	}
 	if _, ok := c.ext["RRVS"]; ok && opts != nil && !opts.RequireRecipientValidSince.IsZero() {
 		sb.WriteString(fmt.Sprintf(" RRVS=%s", opts.RequireRecipientValidSince.Format(time.RFC3339)))
-	}
-	if _, ok := c.ext["DELIVERBY"]; ok && opts != nil && opts.DeliverBy != nil {
-		if opts.DeliverBy.Mode == DeliverByReturn && opts.DeliverBy.Time < 1 {
-			return errors.New("smtp: DELIVERBY mode must be greater than zero with return mode")
-		}
-		arg := fmt.Sprintf(" BY=%d;%s", int(opts.DeliverBy.Time.Seconds()), opts.DeliverBy.Mode)
-		if opts.DeliverBy.Trace {
-			arg += "T"
-		}
-		sb.WriteString(arg)
-	}
-	if _, ok := c.ext["MT-PRIORITY"]; ok && opts != nil && opts.MTPriority != nil {
-		if *opts.MTPriority < -9 || *opts.MTPriority > 9 {
-			return errors.New("smtp: MT-PRIORITY must be between -9 and 9")
-		}
-		sb.WriteString(fmt.Sprintf(" MT-PRIORITY=%d", *opts.MTPriority))
 	}
 	if _, _, err := c.cmd(25, "%s", sb.String()); err != nil {
 		return err

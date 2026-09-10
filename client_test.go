@@ -1271,7 +1271,7 @@ var deliverByServer = `220 hello world
 250 ok
 `
 
-var deliverByClient = `RCPT TO:<root@nsa.gov> BY=100;RT
+var deliverByClient = `MAIL FROM:<root@nsa.gov> BY=100;RT
 `
 
 func TestClientDELIVERBY(t *testing.T) {
@@ -1290,7 +1290,7 @@ func TestClientDELIVERBY(t *testing.T) {
 	c := NewClient(fake)
 	c.didHello = true
 	c.ext = map[string]string{"DELIVERBY": ""}
-	c.Rcpt("root@nsa.gov", &RcptOptions{
+	c.Mail("root@nsa.gov", &MailOptions{
 		DeliverBy: &DeliverByOptions{
 			Time:  100 * time.Second,
 			Mode:  DeliverByReturn,
@@ -1307,7 +1307,7 @@ var mtPriorityServer = `220 hello world
 250 ok
 `
 
-var mtPriorityClient = `RCPT TO:<root@nsa.gov> MT-PRIORITY=6
+var mtPriorityClient = `MAIL FROM:<root@nsa.gov> MT-PRIORITY=6
 `
 
 func TestClientMTPRIORITY(t *testing.T) {
@@ -1327,7 +1327,7 @@ func TestClientMTPRIORITY(t *testing.T) {
 	c.didHello = true
 	c.ext = map[string]string{"MT-PRIORITY": ""}
 	priority := 6
-	c.Rcpt("root@nsa.gov", &RcptOptions{
+	c.Mail("root@nsa.gov", &MailOptions{
 		MTPriority: &priority,
 	})
 	c.Close()

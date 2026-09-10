@@ -1613,6 +1613,19 @@ func TestServerRRVS(t *testing.T) {
 	}
 }
 
+// readReply returns the next reply line, failing the test rather than
+// silently yielding "" if the connection dropped.
+func readReply(t *testing.T, scanner *bufio.Scanner) string {
+	t.Helper()
+	if !scanner.Scan() {
+		if err := scanner.Err(); err != nil {
+			t.Fatal("Reading reply failed:", err)
+		}
+		t.Fatal("Connection closed while waiting for a reply")
+	}
+	return scanner.Text()
+}
+
 func TestServerDELIVERBY(t *testing.T) {
 	be, s, c, scanner, caps := testServerEhlo(t,
 		func(s *smtp.Server) {
@@ -1622,64 +1635,90 @@ func TestServerDELIVERBY(t *testing.T) {
 	defer s.Close()
 	defer c.Close()
 
-	if _, ok := caps["DELIVERBY 50"]; !ok {
-		t.Fatal("Missing capability: DELIVERBY")
+	if !caps["DELIVERBY 50"] {
+		t.Fatal("Missing capability: DELIVERBY 50")
 	}
 
-	io.WriteString(c, "MAIL FROM:<root@nsa.gov>\r\n")
-	scanner.Scan()
-
-	malformedMsgs := []string{
-		"RCPT TO:<root@gchq.gov.uk> BY=",
-		"RCPT TO:<root@gchq.gov.uk> BY=1234",
-		"RCPT TO:<root@gchq.gov.uk> BY=123;RT;",
-		"RCPT TO:<root@gchq.gov.uk> BY=0;R",
-		"RCPT TO:<root@gchq.gov.uk> BY=49;RT",
+	// RFC 2852 section 4 puts BY on MAIL FROM, so a bad value must be
+	// rejected before a transaction is opened.
+	// Syntax errors get 501 5.5.4 (RFC 2852 section 4).
+	malformed := []string{
+		"BY=",        // no value
+		"BY=1234",    // no by-mode
+		"BY=123;RT;", // trailing separator
+		"BY=0;R",     // zero by-time is a syntax error with mode R
+		"BY=-1;R",    // so is a negative one
 	}
-
-	for _, msg := range malformedMsgs {
-		io.WriteString(c, msg+"\r\n")
-		scanner.Scan()
-		if !strings.HasPrefix(scanner.Text(), "501 5.5.4") {
-			t.Fatal("Unexpected res on malformed BY parameter value:", scanner.Text())
+	for _, param := range malformed {
+		_, _ = io.WriteString(c, "MAIL FROM:<root@nsa.gov> "+param+"\r\n")
+		if res := readReply(t, scanner); !strings.HasPrefix(res, "501 5.5.4") {
+			t.Errorf("MAIL FROM with %q: want 501 5.5.4, got %q", param, res)
 		}
 	}
 
-	io.WriteString(c, "RCPT TO:<root@gchq.gov.uk> BY=100;NT\r\n")
-	scanner.Scan()
-
-	if !strings.HasPrefix(scanner.Text(), "250 ") {
-		t.Fatal("Invalid BY parameter value:", scanner.Text())
+	// A syntactically valid by-time below the server minimum is a different
+	// failure: RFC 2852 section 3 requires a 55z reply, section 4 names 555
+	// for a permanent server-specific refusal.
+	_, _ = io.WriteString(c, "MAIL FROM:<root@nsa.gov> BY=100;RT\r\n")
+	if res := readReply(t, scanner); !strings.HasPrefix(res, "250 ") {
+		t.Errorf("MAIL FROM with BY=100;RT: want 250, got %q", res)
+	}
+	_, _ = io.WriteString(c, "RSET\r\n")
+	if res := readReply(t, scanner); !strings.HasPrefix(res, "250 ") {
+		t.Fatal("RSET rejected:", res)
 	}
 
-	// complete the transaction
-	io.WriteString(c, "DATA\r\n")
-	scanner.Scan()
-	io.WriteString(c, "Hey <3\r\n")
-	io.WriteString(c, ".\r\n")
-	scanner.Scan()
-
-	opts := be.anonmsgs[0].RcptOpts
-	if opts == nil || len(opts) != 1 {
-		t.Fatal("Invalid number of recipients:", opts)
+	// Values the RFC requires the server to accept: exactly at the minimum
+	// with mode R, and zero or negative with mode N (section 4).
+	accepted := []string{"BY=50;R", "BY=0;N", "BY=-1;N"}
+	for _, param := range accepted {
+		_, _ = io.WriteString(c, "MAIL FROM:<root@nsa.gov> "+param+"\r\n")
+		if res := readReply(t, scanner); !strings.HasPrefix(res, "250 ") {
+			t.Errorf("MAIL FROM with %q: want 250, got %q", param, res)
+		}
+		_, _ = io.WriteString(c, "RSET\r\n")
+		if res := readReply(t, scanner); !strings.HasPrefix(res, "250 ") {
+			t.Fatal("RSET rejected:", res)
+		}
 	}
 
-	deliverByOpts := opts[0].DeliverBy
-
-	if deliverByOpts == nil {
-		t.Fatal("Deliver by options is nil:", opts)
+	// The parsed value reaches the backend on the completed transaction.
+	_, _ = io.WriteString(c, "MAIL FROM:<root@nsa.gov> BY=100;NT\r\n")
+	if res := readReply(t, scanner); !strings.HasPrefix(res, "250 ") {
+		t.Fatal("MAIL FROM rejected:", res)
+	}
+	_, _ = io.WriteString(c, "RCPT TO:<root@gchq.gov.uk>\r\n")
+	if res := readReply(t, scanner); !strings.HasPrefix(res, "250 ") {
+		t.Fatal("RCPT TO rejected:", res)
+	}
+	_, _ = io.WriteString(c, "DATA\r\n")
+	if res := readReply(t, scanner); !strings.HasPrefix(res, "354 ") {
+		t.Fatal("DATA rejected:", res)
+	}
+	_, _ = io.WriteString(c, "Hey <3\r\n")
+	_, _ = io.WriteString(c, ".\r\n")
+	if res := readReply(t, scanner); !strings.HasPrefix(res, "250 ") {
+		t.Fatal("Message rejected:", res)
 	}
 
-	expectedDeliverByOpts := smtp.DeliverByOptions{
+	if len(be.anonmsgs) != 1 {
+		t.Fatalf("Invalid number of sent messages: want 1, got %d", len(be.anonmsgs))
+	}
+	opts := be.anonmsgs[0].Opts
+	if opts == nil {
+		t.Fatal("MailOptions is nil")
+	}
+	if opts.DeliverBy == nil {
+		t.Fatal("DeliverBy is nil")
+	}
+
+	want := smtp.DeliverByOptions{
 		Time:  100 * time.Second,
 		Mode:  smtp.DeliverByNotify,
 		Trace: true,
 	}
-
-	if deliverByOpts.Time != expectedDeliverByOpts.Time ||
-		deliverByOpts.Mode != expectedDeliverByOpts.Mode ||
-		deliverByOpts.Trace != expectedDeliverByOpts.Trace {
-		t.Fatal("Incorrect BY parameter value:", fmt.Sprintf("expected %#v, got %#v", expectedDeliverByOpts, deliverByOpts))
+	if *opts.DeliverBy != want {
+		t.Fatalf("DeliverBy: want %#v, got %#v", want, *opts.DeliverBy)
 	}
 }
 
@@ -1691,56 +1730,69 @@ func TestServerMTPRIORITY(t *testing.T) {
 	defer s.Close()
 	defer c.Close()
 
-	if _, ok := caps["MT-PRIORITY"]; !ok {
+	if !caps["MT-PRIORITY"] {
 		t.Fatal("Missing capability: MT-PRIORITY")
 	}
 
-	io.WriteString(c, "MAIL FROM:<root@nsa.gov>\r\n")
-	scanner.Scan()
-
-	malformedMsgs := []string{
-		"RCPT TO:<root@gchq.gov.uk> MT-PRIORITY=",
-		"RCPT TO:<root@gchq.gov.uk> MT-PRIORITY=foo",
-		"RCPT TO:<root@gchq.gov.uk> MT-PRIORITY=-10",
-		"RCPT TO:<root@gchq.gov.uk> MT-PRIORITY=10",
+	// RFC 6710 section 3 puts MT-PRIORITY on MAIL FROM, so a bad value must
+	// be rejected before a transaction is opened.
+	malformed := []string{
+		"MT-PRIORITY=",
+		"MT-PRIORITY=foo",
+		"MT-PRIORITY=-10",
+		"MT-PRIORITY=10",
 	}
-
-	for _, msg := range malformedMsgs {
-		io.WriteString(c, msg+"\r\n")
-		scanner.Scan()
-		if !strings.HasPrefix(scanner.Text(), "501 5.5.4") {
-			t.Fatal("Unexpected res on malformed MT-PRIORITY parameter value:", scanner.Text())
+	for _, param := range malformed {
+		_, _ = io.WriteString(c, "MAIL FROM:<root@nsa.gov> "+param+"\r\n")
+		if res := readReply(t, scanner); !strings.HasPrefix(res, "501 5.5.4") {
+			t.Errorf("MAIL FROM with %q: want 501 5.5.4, got %q", param, res)
 		}
 	}
 
-	expectedPriority := -2
-
-	io.WriteString(c, fmt.Sprintf("RCPT TO:<root@gchq.gov.uk> MT-PRIORITY=%d\r\n", expectedPriority))
-	scanner.Scan()
-
-	if !strings.HasPrefix(scanner.Text(), "250 ") {
-		t.Fatal("Invalid MT-PRIORITY parameter value:", scanner.Text())
+	// Range boundaries are accepted.
+	for _, priority := range []int{-9, 0, 9} {
+		_, _ = io.WriteString(c, fmt.Sprintf("MAIL FROM:<root@nsa.gov> MT-PRIORITY=%d\r\n", priority))
+		if res := readReply(t, scanner); !strings.HasPrefix(res, "250 ") {
+			t.Errorf("MAIL FROM with MT-PRIORITY=%d: want 250, got %q", priority, res)
+		}
+		_, _ = io.WriteString(c, "RSET\r\n")
+		if res := readReply(t, scanner); !strings.HasPrefix(res, "250 ") {
+			t.Fatal("RSET rejected:", res)
+		}
 	}
 
-	// complete the transaction
-	io.WriteString(c, "DATA\r\n")
-	scanner.Scan()
-	io.WriteString(c, "Hey <3\r\n")
-	io.WriteString(c, ".\r\n")
-	scanner.Scan()
+	// The value reaches the backend on the completed transaction.
+	const expectedPriority = -2
 
-	opts := be.anonmsgs[0].RcptOpts
-	if opts == nil || len(opts) != 1 {
-		t.Fatal("Invalid number of recipients:", opts)
+	_, _ = io.WriteString(c, fmt.Sprintf("MAIL FROM:<root@nsa.gov> MT-PRIORITY=%d\r\n", expectedPriority))
+	if res := readReply(t, scanner); !strings.HasPrefix(res, "250 ") {
+		t.Fatal("MAIL FROM rejected:", res)
+	}
+	_, _ = io.WriteString(c, "RCPT TO:<root@gchq.gov.uk>\r\n")
+	if res := readReply(t, scanner); !strings.HasPrefix(res, "250 ") {
+		t.Fatal("RCPT TO rejected:", res)
+	}
+	_, _ = io.WriteString(c, "DATA\r\n")
+	if res := readReply(t, scanner); !strings.HasPrefix(res, "354 ") {
+		t.Fatal("DATA rejected:", res)
+	}
+	_, _ = io.WriteString(c, "Hey <3\r\n")
+	_, _ = io.WriteString(c, ".\r\n")
+	if res := readReply(t, scanner); !strings.HasPrefix(res, "250 ") {
+		t.Fatal("Message rejected:", res)
 	}
 
-	priority := opts[0].MTPriority
-
-	if priority == nil {
-		t.Fatal("MtPriority is nil:", opts)
+	if len(be.anonmsgs) != 1 {
+		t.Fatalf("Invalid number of sent messages: want 1, got %d", len(be.anonmsgs))
 	}
-
-	if *priority != expectedPriority {
-		t.Fatal("Incorrect MtPriority parameter value:", fmt.Sprintf("expected %d, got %d", expectedPriority, *priority))
+	opts := be.anonmsgs[0].Opts
+	if opts == nil {
+		t.Fatal("MailOptions is nil")
+	}
+	if opts.MTPriority == nil {
+		t.Fatal("MTPriority is nil")
+	}
+	if *opts.MTPriority != expectedPriority {
+		t.Fatalf("MTPriority: want %d, got %d", expectedPriority, *opts.MTPriority)
 	}
 }
