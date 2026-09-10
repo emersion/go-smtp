@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/uponusolutions/go-smtp"
@@ -460,4 +461,64 @@ func TestDotReaderBytes(t *testing.T) {
 		// buffer must be empty
 		require.Equal(t, 0, bufio.Buffered())
 	})
+}
+
+// TestDotReaderNoBlockAfterEnd verifies that once the end marker has been
+// consumed, a further Read returns io.EOF immediately and does not block
+// waiting for more bytes on a still open connection. Without this a caller
+// draining the reader would hang, wedging the server goroutine (denial of
+// service). See MS-1560.
+func TestDotReaderNoBlockAfterEnd(t *testing.T) {
+	pr, pw := io.Pipe()
+	// Write the full message but keep the pipe open, as a live connection
+	// waiting for the next command would be.
+	go func() { _, _ = pw.Write([]byte("hi\r\n.\r\n")) }()
+
+	r := textsmtp.NewDotReader(bufio.NewReader(pr), 0)
+
+	// Consume the message up to the end marker.
+	body, err := io.ReadAll(io.LimitReader(r, 4))
+	require.NoError(t, err)
+	require.Equal(t, []byte("hi\r\n"), body)
+
+	done := make(chan error, 1)
+	go func() {
+		b := make([]byte, 8)
+		_, e := r.Read(b)
+		done <- e
+	}()
+
+	select {
+	case e := <-done:
+		require.Equal(t, io.EOF, e)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Read blocked after end marker (denial of service)")
+	}
+}
+
+// TestDotReaderTruncatedMarker verifies that a stream cut off in the middle
+// of the \r\n.\r\n end marker terminates with io.ErrUnexpectedEOF and never
+// panics, for every read buffer size. This exercises the defensive end
+// marker boundary handling, including the stateCR short peek guard. See
+// MS-1560.
+func TestDotReaderTruncatedMarker(t *testing.T) {
+	truncations := []string{
+		"x\r\n.\r",               // marker missing final \n
+		"x\r\n.",                 // marker missing \r\n
+		"x\r\n",                  // no marker at all
+		"body\r\n.\r",            // longer body, truncated marker
+		".\r",                    // leading dot then truncated
+		"line\r\n..stuffed\r\n.", // stuffed line then truncated marker
+	}
+	for _, in := range truncations {
+		for bufSize := 1; bufSize <= 8; bufSize++ {
+			r := textsmtp.NewDotReader(bufio.NewReader(strings.NewReader(in)), 0)
+			b := make([]byte, bufSize)
+			var err error
+			for i := 0; i < 100 && err == nil; i++ {
+				_, err = r.Read(b)
+			}
+			require.ErrorIs(t, err, io.ErrUnexpectedEOF, "input %q bufSize %d", in, bufSize)
+		}
+	}
 }
