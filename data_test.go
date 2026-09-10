@@ -9,6 +9,7 @@ import (
 	"net"
 	"strings"
 	"testing"
+	"time"
 )
 
 type fragmentReader struct {
@@ -146,40 +147,68 @@ func BenchmarkDataReaderWithLineLimit(b *testing.B) {
 	}
 }
 
-func TestConnReadBufferDataPipeline(t *testing.T) {
-	for _, size := range []int{0, 128 << 10} {
-		server, client := net.Pipe()
-		s := NewServer(nil)
-		s.ReadBufferSize = size
-		c := newConn(server, s)
-		wantSize := size
-		if wantSize == 0 {
-			wantSize = 4096
-		}
-		if c.text.R.Size() != wantSize {
-			t.Fatalf("buffer size %d", c.text.R.Size())
-		}
-		done := make(chan error, 1)
-		go func() {
-			_, err := io.WriteString(client, "DATA\r\nhello\r\n..dot\r\n.\r\nNOOP\r\n")
-			done <- err
-		}()
-		line, err := c.text.ReadLine()
-		if err != nil || line != "DATA" {
-			t.Fatal(line, err)
-		}
-		body, err := ioutil.ReadAll(newDataReader(c))
-		if err != nil || string(body) != "hello\r\n.dot\r\n" {
-			t.Fatal(string(body), err)
-		}
-		line, err = c.text.ReadLine()
-		if err != nil || line != "NOOP" {
-			t.Fatal(line, err)
-		}
-		if err := <-done; err != nil {
-			t.Fatal(err)
-		}
-		server.Close()
-		client.Close()
+func TestConnDataPipeline(t *testing.T) {
+	server, client := net.Pipe()
+	s := NewServer(nil)
+	c := newConn(server, s)
+	wantSize := 4096
+	if c.text.R.Size() != wantSize {
+		t.Fatalf("buffer size %d", c.text.R.Size())
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := io.WriteString(client, "DATA\r\nhello\r\n..dot\r\n.\r\nNOOP\r\n")
+		done <- err
+	}()
+	line, err := c.text.ReadLine()
+	if err != nil || line != "DATA" {
+		t.Fatal(line, err)
+	}
+	body, err := ioutil.ReadAll(newDataReader(c))
+	if err != nil || string(body) != "hello\r\n.dot\r\n" {
+		t.Fatal(string(body), err)
+	}
+	line, err = c.text.ReadLine()
+	if err != nil || line != "NOOP" {
+		t.Fatal(line, err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	server.Close()
+	client.Close()
+}
+
+// A live SMTP peer waits for the reply without closing the write side.
+func TestDataReaderEmptyLiveConnection(t *testing.T) {
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	server.SetReadDeadline(time.Now().Add(2 * time.Second))
+	done := make(chan error, 1)
+	go func() { _, err := io.WriteString(client, ".\r\n"); done <- err }()
+	r := &dataReader{r: bufio.NewReader(server)}
+	got, err := ioutil.ReadAll(r)
+	if err != nil || len(got) != 0 {
+		t.Fatalf("empty DATA: %q, %v", got, err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDataReaderZeroRead(t *testing.T) {
+	br := bufio.NewReader(strings.NewReader("..first\r\n.\r\nNEXT\r\n"))
+	r := &dataReader{r: br}
+	if n, err := r.Read(nil); n != 0 || err != nil {
+		t.Fatalf("zero read: %d, %v", n, err)
+	}
+	got, err := ioutil.ReadAll(r)
+	if err != nil || string(got) != ".first\r\n" {
+		t.Fatalf("body: %q, %v", got, err)
+	}
+	got, err = ioutil.ReadAll(br)
+	if err != nil || string(got) != "NEXT\r\n" {
+		t.Fatalf("next command: %q, %v", got, err)
 	}
 }

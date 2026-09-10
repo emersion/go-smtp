@@ -1,3 +1,6 @@
+// Copyright (c) 2025 UPONU Solutions GmbH
+// Portions adapted under the MIT license; see LICENSE.
+
 package smtp
 
 import (
@@ -93,18 +96,38 @@ func (r *dataReader) Read(b []byte) (n int, err error) {
 		stateEOF              // reached .\r\n end marker line
 	)
 	for n < len(b) && r.state != stateEOF {
-		// Most message bytes do not affect the dot/CRLF state machine. Copy
-		// the buffered run through its first CR, leaving boundary handling
-		// (including split terminators) to the existing states below.
+		// Adapted from ml1nk's cross-line scan in uponusolutions/go-smtp:
+		// https://github.com/uponusolutions/go-smtp/blob/86ff2622fb52f86371265b74a976333ff53c10a0/internal/textsmtp/dotreader.go
+		// Ordinary CRLFs can be copied together. Leave leading dots and
+		// terminators to the original state machine, including the first line.
+		// Only inspect buffered bytes: waiting for five bytes here would block
+		// on an empty DATA terminator when the peer is waiting for our reply.
 		if r.state == stateData && r.r.Buffered() > 0 {
 			available := r.r.Buffered()
 			if available > len(b)-n {
 				available = len(b) - n
 			}
 			p, _ := r.r.Peek(available)
-			if i := bytes.IndexByte(p, '\r'); i >= 0 {
+			if i := bytes.Index(p, []byte("\r\n.")); i >= 0 {
 				p = p[:i+1]
-				r.state = stateCR
+			}
+			// Preserve the byte-wise machine's state at the end of the span.
+			// Consecutive CRs alternate between stateCR and stateData; an
+			// even run followed by LF does not begin a line in that machine.
+			end := len(p)
+			if p[end-1] == '\n' {
+				end--
+			}
+			start := end
+			for start > 0 && p[start-1] == '\r' {
+				start--
+			}
+			if (end-start)%2 != 0 {
+				if end == len(p) {
+					r.state = stateCR
+				} else {
+					r.state = stateBeginLine
+				}
 			}
 			n += copy(b[n:], p)
 			r.r.Discard(len(p))
