@@ -90,6 +90,14 @@ func (r *dotReader) Read(b []byte) (int, error) {
 
 	// write \n
 	if r.state == stateCR {
+		if len(c) < 5 {
+			// The stream ended inside the \r\n.\r\n end marker detection,
+			// there is not enough data left to decide.
+			if err == nil || err == io.EOF {
+				err = io.ErrUnexpectedEOF
+			}
+			return 0, err
+		}
 		b[0] = '\n'
 		n++
 		skipped += 2
@@ -104,54 +112,9 @@ func (r *dotReader) Read(b []byte) (int, error) {
 	}
 
 	if r.state != stateEOF {
-		for {
-			i := bytes.Index(c, smtp.Crlfdot)
-
-			// No full \r\n. found.
-			if i == -1 {
-				n += noCrlfDotFound(err, b, c)
-				break
-			}
-
-			if len(c)-1 < i+4 {
-				// i is \r, \n.\r\n needs to be accessible
-				if err != nil {
-					// No more data, just read to the end.
-					n += copy(b, c[:i+2])
-					skipped++
-				} else if i > 0 {
-					// Not enough bytes to check for \r\n.\r\n,
-					// write everything before
-					n += copy(b, c[:i])
-				}
-
-				break
-			}
-
-			p := copy(b, c[:i+2])
-			n += p
-
-			// b was to small
-			if p < i+2 {
-				// we only wrote \r
-				if i+2-p == 1 {
-					r.state = stateCR // Next time we want to write '\n'.
-					skipped--         // Prevent \r from being discarded
-				}
-				break
-			}
-
-			// The end \r\n.\n\r
-			if c[i+3] == '\r' && c[i+4] == '\n' {
-				r.state = stateEOF
-				skipped += 3 // skip .\r\n
-				break
-			}
-
-			skipped++ // . isn't written
-			b = b[i+2:]
-			c = c[i+3:]
-		}
+		sn, ss := r.scan(b, c, err)
+		n += sn
+		skipped += ss
 	}
 
 	// n + skipped is always smaller then what was peeked,
@@ -169,4 +132,59 @@ func (r *dotReader) Read(b []byte) (int, error) {
 	}
 
 	return n, err
+}
+
+// scan copies data from c into b while eliding leading dots and detecting
+// the end marker, it returns the written and skipped byte counts.
+func (r *dotReader) scan(b []byte, c []byte, err error) (n int, skipped int) {
+	for {
+		i := bytes.Index(c, smtp.Crlfdot)
+
+		// No full \r\n. found.
+		if i == -1 {
+			n += noCrlfDotFound(err, b, c)
+			break
+		}
+
+		if len(c)-1 < i+4 {
+			// i is \r, \n.\r\n needs to be accessible
+			if err != nil {
+				// No more data, just read to the end.
+				n += copy(b, c[:i+2])
+				skipped++
+			} else if i > 0 {
+				// Not enough bytes to check for \r\n.\r\n,
+				// write everything before
+				n += copy(b, c[:i])
+			}
+
+			break
+		}
+
+		p := copy(b, c[:i+2])
+		n += p
+
+		// b was to small
+		if p < i+2 {
+			// we only wrote \r
+			if i+2-p == 1 {
+				r.state = stateCR // Next time we want to write '\n'.
+				skipped--         // Prevent \r from being discarded
+			}
+			break
+		}
+
+		// The end \r\n.\n\r
+		if c[i+3] == '\r' && c[i+4] == '\n' {
+			r.state = stateEOF
+			skipped += 3 // skip .\r\n
+			break
+		}
+
+		skipped++ // . isn't written
+		b = b[i+2:]
+		c = c[i+3:]
+	}
+
+	return n, skipped
 }
