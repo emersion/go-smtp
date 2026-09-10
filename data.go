@@ -2,6 +2,7 @@ package smtp
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 )
@@ -92,6 +93,23 @@ func (r *dataReader) Read(b []byte) (n int, err error) {
 		stateEOF              // reached .\r\n end marker line
 	)
 	for n < len(b) && r.state != stateEOF {
+		// Most message bytes do not affect the dot/CRLF state machine. Copy
+		// the buffered run through its first CR, leaving boundary handling
+		// (including split terminators) to the existing states below.
+		if r.state == stateData && r.r.Buffered() > 0 {
+			available := r.r.Buffered()
+			if available > len(b)-n {
+				available = len(b) - n
+			}
+			p, _ := r.r.Peek(available)
+			if i := bytes.IndexByte(p, '\r'); i >= 0 {
+				p = p[:i+1]
+				r.state = stateCR
+			}
+			n += copy(b[n:], p)
+			r.r.Discard(len(p))
+			continue
+		}
 		var c byte
 		c, err = r.r.ReadByte()
 		if err != nil {
