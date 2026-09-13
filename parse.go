@@ -89,7 +89,12 @@ func parseDeliverByArgument(arg string) *DeliverByOptions {
 	}
 	modeValue := DeliverByMode(modeStr)
 	secondsValue, err := strconv.Atoi(secondsStr)
-	if err != nil || (modeValue == DeliverByReturn && secondsValue < 1) {
+	// Specified in rfc2852
+	// by-time      = ["-" / "+"]1*9digit ; a negative or zero value is not
+	//				      ; allowed with a by-mode of "R"
+	if err != nil ||
+		(modeValue == DeliverByReturn && (secondsValue < 1 || secondsValue > 999999999)) ||
+		(modeValue == DeliverByNotify && (secondsValue < -999999999 || secondsValue > 999999999)) {
 		return nil
 	}
 	return &DeliverByOptions{
