@@ -478,10 +478,17 @@ func (c *Client) Mail(from string, opts *MailOptions) error {
 		// We can safely discard parameter if server does not support AUTH.
 	}
 	if _, ok := c.ext["DELIVERBY"]; ok && opts != nil && opts.DeliverBy != nil {
-		if opts.DeliverBy.Mode == DeliverByReturn && opts.DeliverBy.Time < 1 {
-			return errors.New("smtp: DELIVERBY mode must be greater than zero with return mode")
+		by := int(opts.DeliverBy.Time.Seconds())
+		// Specified in rfc2852
+		// by-time      = ["-" / "+"]1*9digit ; a negative or zero value is not
+		//				      ; allowed with a by-mode of "R"
+		if opts.DeliverBy.Mode == DeliverByReturn && (by < 1 || by > 999999999) {
+			return errors.New("smtp: DELIVERBY mode must be between 1 and 999999999 with return mode")
 		}
-		arg := fmt.Sprintf(" BY=%d;%s", int(opts.DeliverBy.Time.Seconds()), opts.DeliverBy.Mode)
+		if opts.DeliverBy.Mode == DeliverByNotify && (by < -999999999 || by > 999999999) {
+			return errors.New("smtp: DELIVERBY mode must be between -999999999 and 999999999 with notify mode")
+		}
+		arg := fmt.Sprintf(" BY=%d;%s", by, opts.DeliverBy.Mode)
 		if opts.DeliverBy.Trace {
 			arg += "T"
 		}
