@@ -430,7 +430,7 @@ func TestHello(t *testing.T) {
 			}
 			err = c.Hello("customhost")
 		case 1:
-			err = c.startTLS(nil)
+			err = c.StartTLS(nil)
 			if err.Error() == "SMTP error 502: Not implemented" {
 				err = nil
 			}

@@ -134,7 +134,7 @@ func initStartTLS(c *Client, tlsConfig *tls.Config) error {
 	if ok, _ := c.Extension("STARTTLS"); !ok {
 		return errors.New("smtp: server doesn't support STARTTLS")
 	}
-	if err := c.startTLS(tlsConfig); err != nil {
+	if err := c.StartTLS(tlsConfig); err != nil {
 		return err
 	}
 	return nil
@@ -302,13 +302,13 @@ func (c *Client) ehlo() error {
 	return err
 }
 
-// startTLS sends the STARTTLS command and encrypts all further communication.
+// StartTLS sends the STARTTLS command and encrypts all further communication.
 // Only servers that advertise the STARTTLS extension support this function.
 //
 // A nil config is equivalent to a zero tls.Config.
 //
 // If server returns an error, it will be of type *SMTPError.
-func (c *Client) startTLS(config *tls.Config) error {
+func (c *Client) StartTLS(config *tls.Config) error {
 	if err := c.hello(); err != nil {
 		return err
 	}
