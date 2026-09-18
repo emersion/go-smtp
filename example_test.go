@@ -9,8 +9,8 @@ import (
 	"log"
 	"strings"
 
+	"github.com/TheTeaParty/go-smtp"
 	"github.com/emersion/go-sasl"
-	"github.com/emersion/go-smtp"
 )
 
 func ExampleDial() {

@@ -2,7 +2,7 @@ image: alpine/latest
 packages:
   - go
 sources:
-  - https://github.com/emersion/go-smtp
+  - https://github.com/TheTeaParty/go-smtp
 artifacts:
   - coverage.html
 tasks:
