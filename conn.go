@@ -107,7 +107,7 @@ func (c *Conn) handle(cmd string, arg string) {
 
 	cmd = strings.ToUpper(cmd)
 	switch cmd {
-	case "SEND", "SOML", "SAML", "EXPN", "HELP", "TURN":
+	case "SEND", "SOML", "SAML", "EXPN", "TURN":
 		// These commands are not implemented in any state
 		c.writeResponse(502, EnhancedCode{5, 5, 1}, fmt.Sprintf("%v command not implemented", cmd))
 	case "HELO", "EHLO", "LHLO":
@@ -144,6 +144,8 @@ func (c *Conn) handle(cmd string, arg string) {
 		c.handleAuth(arg)
 	case "STARTTLS":
 		c.handleStartTLS()
+	case "HELP":
+		c.writeResponse(214, EnhancedCode{2, 0, 0}, "By helping others, you help yourself")
 	default:
 		msg := fmt.Sprintf("Syntax errors, %v command unrecognized", cmd)
 		c.protocolError(500, EnhancedCode{5, 5, 2}, msg)
