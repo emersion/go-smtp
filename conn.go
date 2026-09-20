@@ -41,9 +41,10 @@ type Conn struct {
 	dataResult      chan error
 	bytesReceived   int64 // counts total size of chunks when BDAT is used
 
-	fromReceived bool
-	recipients   []string
-	didAuth      bool
+	fromReceived    bool
+	recipients      []string
+	didAuth         bool
+	hasReceivedData bool // tracks if connection has sent any SMTP data
 }
 
 func newConn(c net.Conn, s *Server) *Conn {
@@ -1329,7 +1330,22 @@ func (c *Conn) readLine() (string, error) {
 		}
 	}
 
-	return c.text.ReadLine()
+	line, err := c.text.ReadLine()
+	if err == nil {
+		c.hasReceivedData = true // Mark that connection sent data
+	} else if err != nil && !c.hasReceivedData {
+		// If we haven't received any data and get a connection error,
+		// treat it as EOF (client connected and immediately disconnected)
+		if netErr, ok := err.(*net.OpError); ok && netErr.Op == "read" {
+			return "", io.EOF
+		}
+		// Also handle textproto connection errors
+		if strings.Contains(err.Error(), "connection reset by peer") || 
+		   strings.Contains(err.Error(), "broken pipe") {
+			return "", io.EOF
+		}
+	}
+	return line, err
 }
 
 func (c *Conn) reset() {
