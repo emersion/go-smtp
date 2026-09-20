@@ -63,6 +63,10 @@ type Session interface {
 	//
 	// r must be consumed before Data returns.
 	Data(r io.Reader) error
+
+	// XForward is called for any attribute name/value pair.
+	// See https://www.postfix.org/XFORWARD_README.html
+	XForward(attrName, attrValue string) error
 }
 
 // LMTPSession is an add-on interface for Session. It can be implemented by
