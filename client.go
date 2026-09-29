@@ -35,6 +35,7 @@ type Client struct {
 	didHello   bool              // whether we've said HELO/EHLO/LHLO
 	helloError error             // the error from the hello
 	rcpts      []string          // recipients accumulated for the current transaction
+	pipelined  []pipelinedCmd    // commands whose responses have not yet been read
 
 	// Time to wait for command responses (this includes 3xx reply to DATA).
 	CommandTimeout time.Duration
@@ -43,6 +44,15 @@ type Client struct {
 
 	// Logger for all network activity.
 	DebugWriter io.Writer
+}
+
+// pipelinedCmd describes a command whose response is expected but has not
+// been read yet, as part of a PIPELINING batch (RFC 2920).
+type pipelinedCmd struct {
+	id         uint
+	expectCode int
+	// handler, if non-nil, is invoked after the response is read.
+	handler func(code int, msg string, err error)
 }
 
 // 30 seconds was chosen as it's the same duration as http.DefaultTransport's
@@ -251,7 +261,14 @@ func (c *Client) readResponse(expectCode int) (int, string, error) {
 
 // cmd is a convenience function that sends a command and returns the response
 // textproto.Error returned by c.text.ReadResponse is converted into SMTPError.
+//
+// Any responses to previously pipelined commands (see asyncCmd) are drained
+// first, so that this command's response is not confused with theirs.
 func (c *Client) cmd(expectCode int, format string, args ...interface{}) (int, string, error) {
+	if err := c.flushPipeline(); err != nil {
+		return 0, "", err
+	}
+
 	c.conn.SetDeadline(time.Now().Add(c.CommandTimeout))
 	defer c.conn.SetDeadline(time.Time{})
 
@@ -263,6 +280,77 @@ func (c *Client) cmd(expectCode int, format string, args ...interface{}) (int, s
 	defer c.text.EndResponse(id)
 
 	return c.readResponse(expectCode)
+}
+
+// pipelining reports whether the server advertised the PIPELINING extension
+// (RFC 2920) and the client is thus permitted to batch commands.
+func (c *Client) pipelining() bool {
+	_, ok := c.ext["PIPELINING"]
+	return ok
+}
+
+// asyncCmd sends a command using PIPELINING if the server supports it: the
+// command is written but its response is deferred until the pipeline is
+// flushed (by cmd, flushPipeline, or Data). If pipelining is not supported,
+// the command is executed synchronously via cmd.
+//
+// The handler, if not nil, is invoked with the response once it is read
+// (either synchronously in the non-pipelined path, or later when the pipeline
+// is drained). It is called with err == nil only when the response code
+// matched expectCode.
+//
+// Any write error or (in the synchronous path) SMTPError from the response is
+// returned. In the pipelined path, response errors are surfaced later at the
+// next flush point.
+func (c *Client) asyncCmd(expectCode int, handler func(code int, msg string, err error), format string, args ...interface{}) error {
+	if !c.pipelining() {
+		code, msg, err := c.cmd(expectCode, format, args...)
+		if handler != nil {
+			handler(code, msg, err)
+		}
+		return err
+	}
+
+	c.conn.SetDeadline(time.Now().Add(c.CommandTimeout))
+	id, err := c.text.Cmd(format, args...)
+	c.conn.SetDeadline(time.Time{})
+	if err != nil {
+		return err
+	}
+	c.pipelined = append(c.pipelined, pipelinedCmd{
+		id:         id,
+		expectCode: expectCode,
+		handler:    handler,
+	})
+	return nil
+}
+
+// flushPipeline reads responses for all commands previously queued by
+// asyncCmd, invoking each command's handler in order. It returns the first
+// error encountered, if any; the remaining responses are still consumed so
+// that the connection stays in sync with the server.
+func (c *Client) flushPipeline() error {
+	if len(c.pipelined) == 0 {
+		return nil
+	}
+	pending := c.pipelined
+	c.pipelined = nil
+
+	var firstErr error
+	for _, p := range pending {
+		c.conn.SetDeadline(time.Now().Add(c.CommandTimeout))
+		c.text.StartResponse(p.id)
+		code, msg, err := c.readResponse(p.expectCode)
+		c.text.EndResponse(p.id)
+		c.conn.SetDeadline(time.Time{})
+		if p.handler != nil {
+			p.handler(code, msg, err)
+		}
+		if err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
 }
 
 // helo sends the HELO greeting to the server. It should be used only when the
@@ -500,12 +588,15 @@ func (c *Client) Mail(from string, opts *MailOptions) error {
 		}
 		sb.WriteString(fmt.Sprintf(" MT-PRIORITY=%d", *opts.MTPriority))
 	}
-	if _, _, err := c.cmd(250, "%s", sb.String()); err != nil {
+	// A new transaction has started, forget the previous recipients. This has
+	// to happen before we send the command because subsequent Rcpt calls may
+	// pipeline further commands and append to c.rcpts before MAIL's response
+	// is even read.
+	c.rcpts = nil
+
+	if err := c.asyncCmd(250, nil, "%s", sb.String()); err != nil {
 		return err
 	}
-
-	// A new transaction has started, forget the previous recipients.
-	c.rcpts = nil
 
 	return nil
 }
@@ -563,11 +654,14 @@ func (c *Client) Rcpt(to string, opts *RcptOptions) error {
 	if _, ok := c.ext["RRVS"]; ok && opts != nil && !opts.RequireRecipientValidSince.IsZero() {
 		sb.WriteString(fmt.Sprintf(" RRVS=%s", opts.RequireRecipientValidSince.Format(time.RFC3339)))
 	}
-	if _, _, err := c.cmd(25, "%s", sb.String()); err != nil {
-		return err
+	// Only recipients accepted by the server are recorded, so that LMTP's
+	// per-recipient DATA responses can be matched up correctly.
+	handler := func(code int, msg string, err error) {
+		if err == nil {
+			c.rcpts = append(c.rcpts, to)
+		}
 	}
-	c.rcpts = append(c.rcpts, to)
-	return nil
+	return c.asyncCmd(25, handler, "%s", sb.String())
 }
 
 // DataCommand is a pending DATA command. DataCommand is an io.WriteCloser.
@@ -711,6 +805,23 @@ func (lmtpErr LMTPDataError) Unwrap() []error {
 // close the writer before calling any more methods on c. A call to
 // Data must be preceded by one or more calls to Rcpt.
 func (c *Client) Data() (*DataCommand, error) {
+	// If MAIL and/or RCPT were pipelined, send DATA in the same batch and
+	// then read all responses in order. This saves a round-trip per pending
+	// command.
+	if len(c.pipelined) > 0 {
+		c.conn.SetDeadline(time.Now().Add(c.CommandTimeout))
+		id, err := c.text.Cmd("DATA")
+		c.conn.SetDeadline(time.Time{})
+		if err != nil {
+			return nil, err
+		}
+		c.pipelined = append(c.pipelined, pipelinedCmd{id: id, expectCode: 354})
+		if err := c.flushPipeline(); err != nil {
+			return nil, err
+		}
+		return &DataCommand{client: c, wc: c.text.DotWriter()}, nil
+	}
+
 	_, _, err := c.cmd(354, "DATA")
 	if err != nil {
 		return nil, err
@@ -876,6 +987,9 @@ func (c *Client) Reset() error {
 	if err := c.hello(); err != nil {
 		return err
 	}
+	// Drain any pipelined responses first; their errors are irrelevant since
+	// we are aborting the transaction anyway.
+	_ = c.flushPipeline()
 	if _, _, err := c.cmd(250, "RSET"); err != nil {
 		return err
 	}

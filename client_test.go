@@ -10,6 +10,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/textproto"
@@ -1334,4 +1335,166 @@ func TestClientMTPRIORITY(t *testing.T) {
 	if actualcmds := wrote.String(); client != actualcmds {
 		t.Errorf("wrote %q; want %q", actualcmds, client)
 	}
+}
+
+// TestSendMail_Pipelining verifies that when the server advertises PIPELINING
+// the client sends MAIL, RCPT and DATA before reading any response. The test
+// server refuses to reply until all three commands have been received, so a
+// non-pipelined client would deadlock (and eventually trip the read
+// deadline).
+func TestSendMail_Pipelining(t *testing.T) {
+	server, client := net.Pipe()
+	t.Cleanup(func() {
+		client.Close()
+		server.Close()
+	})
+
+	serverErr := make(chan error, 1)
+	go func() {
+		serverErr <- runPipeliningServer(server, false)
+	}()
+
+	c := NewClient(client)
+	c.CommandTimeout = 5 * time.Second
+	c.SubmissionTimeout = 5 * time.Second
+	c.localName = "localhost"
+
+	if err := c.SendMail("from@example.com", []string{"to@example.com"}, strings.NewReader("Subject: t\r\n\r\nhi\r\n")); err != nil {
+		t.Fatalf("SendMail: %v", err)
+	}
+	if err := c.Quit(); err != nil {
+		t.Fatalf("Quit: %v", err)
+	}
+	if err := <-serverErr; err != nil {
+		t.Fatalf("server: %v", err)
+	}
+}
+
+// TestSendMail_Pipelining_MailError verifies that when a pipelined MAIL
+// command is rejected the error surfaces at the next flush point (Data)
+// even though Mail returned nil.
+func TestSendMail_Pipelining_MailError(t *testing.T) {
+	server, client := net.Pipe()
+	t.Cleanup(func() {
+		client.Close()
+		server.Close()
+	})
+
+	serverErr := make(chan error, 1)
+	go func() {
+		serverErr <- runPipeliningServer(server, true)
+	}()
+
+	c := NewClient(client)
+	c.CommandTimeout = 5 * time.Second
+	c.SubmissionTimeout = 5 * time.Second
+	c.localName = "localhost"
+
+	// Mail should return nil because the response is pipelined and not yet
+	// read.
+	if err := c.Mail("from@example.com", nil); err != nil {
+		t.Fatalf("Mail: unexpected error %v", err)
+	}
+	if err := c.Rcpt("to@example.com", nil); err != nil {
+		t.Fatalf("Rcpt: unexpected error %v", err)
+	}
+	// Data flushes the pipeline; the queued MAIL error should surface here.
+	_, err := c.Data()
+	if err == nil {
+		t.Fatal("Data: expected error, got nil")
+	}
+	var smtpErr *SMTPError
+	if !errors.As(err, &smtpErr) || smtpErr.Code != 550 {
+		t.Fatalf("Data: expected 550 SMTPError, got %v", err)
+	}
+
+	// Client should be able to Close cleanly; connection state is fine.
+	client.Close()
+	<-serverErr
+}
+
+// runPipeliningServer implements a minimal SMTP server that advertises
+// PIPELINING and, on each transaction, refuses to send any response until
+// MAIL, RCPT and DATA have all been read. If mailReject is true, MAIL is
+// answered with 550 (and the RCPT / DATA commands with 503).
+func runPipeliningServer(conn net.Conn, mailReject bool) error {
+	tp := textproto.NewConn(conn)
+	defer tp.Close()
+
+	if err := tp.PrintfLine("220 hello world"); err != nil {
+		return err
+	}
+	line, err := tp.ReadLine()
+	if err != nil {
+		return err
+	}
+	if !strings.HasPrefix(line, "EHLO") {
+		return fmt.Errorf("expected EHLO, got %q", line)
+	}
+	if err := tp.PrintfLine("250-mx.example.com at your service"); err != nil {
+		return err
+	}
+	if err := tp.PrintfLine("250 PIPELINING"); err != nil {
+		return err
+	}
+
+	mail, err := tp.ReadLine()
+	if err != nil {
+		return err
+	}
+	if !strings.HasPrefix(mail, "MAIL FROM:") {
+		return fmt.Errorf("expected MAIL FROM, got %q", mail)
+	}
+	rcpt, err := tp.ReadLine()
+	if err != nil {
+		return err
+	}
+	if !strings.HasPrefix(rcpt, "RCPT TO:") {
+		return fmt.Errorf("expected RCPT TO, got %q", rcpt)
+	}
+	data, err := tp.ReadLine()
+	if err != nil {
+		return err
+	}
+	if data != "DATA" {
+		return fmt.Errorf("expected DATA, got %q", data)
+	}
+
+	if mailReject {
+		if err := tp.PrintfLine("550 sender rejected"); err != nil {
+			return err
+		}
+		if err := tp.PrintfLine("503 bad sequence: no MAIL FROM"); err != nil {
+			return err
+		}
+		if err := tp.PrintfLine("503 bad sequence: no valid recipients"); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	if err := tp.PrintfLine("250 sender ok"); err != nil {
+		return err
+	}
+	if err := tp.PrintfLine("250 recipient ok"); err != nil {
+		return err
+	}
+	if err := tp.PrintfLine("354 go ahead"); err != nil {
+		return err
+	}
+	if _, err := io.ReadAll(tp.DotReader()); err != nil {
+		return err
+	}
+	if err := tp.PrintfLine("250 data ok"); err != nil {
+		return err
+	}
+
+	quit, err := tp.ReadLine()
+	if err != nil {
+		return err
+	}
+	if quit != "QUIT" {
+		return fmt.Errorf("expected QUIT, got %q", quit)
+	}
+	return tp.PrintfLine("221 bye")
 }
