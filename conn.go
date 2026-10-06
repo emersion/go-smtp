@@ -1093,10 +1093,9 @@ func (c *Conn) handleBdat(arg string) {
 	}
 
 	c.bytesReceived += int64(size)
+	c.lineLimitReader.LineLimit = c.server.MaxLineLength
 
 	if last {
-		c.lineLimitReader.LineLimit = c.server.MaxLineLength
-
 		c.bdatPipe.Close()
 
 		err := <-c.dataResult

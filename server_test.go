@@ -1744,3 +1744,27 @@ func TestServerMTPRIORITY(t *testing.T) {
 		t.Fatal("Incorrect MtPriority parameter value:", fmt.Sprintf("expected %d, got %d", expectedPriority, *priority))
 	}
 }
+
+func TestServer_Chunking_lineLimitBetweenChunks(t *testing.T) {
+	_, s, c, scanner := testServerAuthenticated(t)
+	defer s.Close()
+	defer c.Close()
+
+	io.WriteString(c, "MAIL FROM:<root@nsa.gov>\r\n")
+	scanner.Scan()
+	io.WriteString(c, "RCPT TO:<root@gchq.gov.uk>\r\n")
+	scanner.Scan()
+
+	io.WriteString(c, "BDAT 8\r\n")
+	io.WriteString(c, "Hey <3\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid BDAT response:", scanner.Text())
+	}
+
+	io.WriteString(c, "NOOP "+strings.Repeat("x", s.MaxLineLength)+"\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "500 ") {
+		t.Fatal("Invalid response to an over-long line between chunks:", scanner.Text())
+	}
+}
