@@ -1768,3 +1768,47 @@ func TestServer_Chunking_lineLimitBetweenChunks(t *testing.T) {
 		t.Fatal("Invalid response to an over-long line between chunks:", scanner.Text())
 	}
 }
+
+func TestServer_421ClosesConnection(t *testing.T) {
+	be, s, c, scanner := testServerAuthenticated(t)
+	defer s.Close()
+	defer c.Close()
+
+	be.userErr = &smtp.SMTPError{Code: 421, EnhancedCode: smtp.EnhancedCode{4, 7, 0}, Message: "slow down"}
+
+	io.WriteString(c, "MAIL FROM:<root@nsa.gov>\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "421 4.7.0 ") {
+		t.Fatal("Invalid MAIL response:", scanner.Text())
+	}
+
+	io.WriteString(c, "NOOP\r\n")
+	if scanner.Scan() {
+		t.Fatal("Connection still open after 421:", scanner.Text())
+	}
+}
+
+func TestServer_DataError421ClosesConnection(t *testing.T) {
+	be, s, c, scanner := testServerAuthenticated(t)
+	defer s.Close()
+	defer c.Close()
+
+	be.dataErr = &smtp.SMTPError{Code: 421, EnhancedCode: smtp.EnhancedCode{4, 3, 0}, Message: "shutting down"}
+
+	io.WriteString(c, "MAIL FROM:<root@nsa.gov>\r\n")
+	scanner.Scan()
+	io.WriteString(c, "RCPT TO:<root@gchq.gov.uk>\r\n")
+	scanner.Scan()
+	io.WriteString(c, "DATA\r\n")
+	scanner.Scan()
+	io.WriteString(c, "Hey <3\r\n.\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "421 4.3.0 ") {
+		t.Fatal("Invalid DATA response:", scanner.Text())
+	}
+
+	io.WriteString(c, "NOOP\r\n")
+	if scanner.Scan() {
+		t.Fatal("Connection still open after 421:", scanner.Text())
+	}
+}

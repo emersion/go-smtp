@@ -988,6 +988,7 @@ func (c *Conn) handleData(arg string) {
 	r.limited = false
 	io.Copy(ioutil.Discard, r) // Make sure all the data has been consumed
 	c.writeResponse(code, enhancedCode, msg)
+	c.closeOnShutdown(code)
 }
 
 func (c *Conn) handleBdat(arg string) {
@@ -1081,11 +1082,13 @@ func (c *Conn) handleBdat(arg string) {
 		// the whole chunk.
 		io.Copy(ioutil.Discard, chunk)
 
-		c.writeResponse(dataErrorToStatus(err))
+		code, enhancedCode, msg := dataErrorToStatus(err)
+		c.writeResponse(code, enhancedCode, msg)
 
 		if err == errPanic {
 			c.Close()
 		}
+		c.closeOnShutdown(code)
 
 		c.reset()
 		c.lineLimitReader.LineLimit = c.server.MaxLineLength
@@ -1107,7 +1110,9 @@ func (c *Conn) handleBdat(arg string) {
 				c.writeResponse(code, enchCode, "<"+rcpt+"> "+msg)
 			}
 		} else {
-			c.writeResponse(dataErrorToStatus(err))
+			code, enhancedCode, msg := dataErrorToStatus(err)
+			c.writeResponse(code, enhancedCode, msg)
+			c.closeOnShutdown(code)
 		}
 
 		if err == errPanic {
@@ -1313,8 +1318,16 @@ func (c *Conn) writeResponse(code int, enhCode EnhancedCode, text ...string) {
 func (c *Conn) writeError(code int, enhCode EnhancedCode, err error) {
 	if smtpErr, ok := err.(*SMTPError); ok {
 		c.writeResponse(smtpErr.Code, smtpErr.EnhancedCode, smtpErr.Message)
+		c.closeOnShutdown(smtpErr.Code)
 	} else {
 		c.writeResponse(code, enhCode, err.Error())
+		c.closeOnShutdown(code)
+	}
+}
+
+func (c *Conn) closeOnShutdown(code int) {
+	if code == 421 {
+		c.Close()
 	}
 }
 
