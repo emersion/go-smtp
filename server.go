@@ -79,6 +79,8 @@ type Server struct {
 	// Default value of NONE to advertise no specific profile.
 	MtPriorityProfile PriorityProfile
 
+	AdmitConn func(c *Conn) (release func(), err error)
+
 	// The server backend.
 	Backend Backend
 
@@ -160,6 +162,17 @@ func (s *Server) handleConn(c *Conn) error {
 		delete(s.conns, c)
 		s.locker.Unlock()
 	}()
+
+	if s.AdmitConn != nil {
+		release, err := s.AdmitConn(c)
+		if err != nil {
+			c.writeError(421, EnhancedCode{4, 7, 0}, err)
+			return nil
+		}
+		if release != nil {
+			defer release()
+		}
+	}
 
 	if tlsConn, ok := c.conn.(*tls.Conn); ok {
 		if d := s.ReadTimeout; d != 0 {

@@ -1812,3 +1812,57 @@ func TestServer_DataError421ClosesConnection(t *testing.T) {
 		t.Fatal("Connection still open after 421:", scanner.Text())
 	}
 }
+
+func TestServer_AdmitConnRejects(t *testing.T) {
+	be, s, c, scanner := testServer(t, func(s *smtp.Server) {
+		s.AdmitConn = func(*smtp.Conn) (func(), error) {
+			return nil, &smtp.SMTPError{Code: 421, EnhancedCode: smtp.EnhancedCode{4, 7, 0}, Message: "too many connections"}
+		}
+	})
+	defer s.Close()
+	defer c.Close()
+
+	scanner.Scan()
+	if scanner.Text() != "421 4.7.0 too many connections" {
+		t.Fatal("Invalid greeting:", scanner.Text())
+	}
+
+	io.WriteString(c, "EHLO localhost\r\n")
+	if scanner.Scan() {
+		t.Fatal("Connection still open after rejection:", scanner.Text())
+	}
+	if len(be.messages) != 0 {
+		t.Fatal("Unexpected messages:", be.messages)
+	}
+}
+
+func TestServer_AdmitConnReleasesOnClose(t *testing.T) {
+	released := make(chan struct{})
+	_, s, c, scanner := testServer(t, func(s *smtp.Server) {
+		s.AdmitConn = func(*smtp.Conn) (func(), error) {
+			return func() { close(released) }, nil
+		}
+	})
+	defer s.Close()
+
+	scanner.Scan()
+	if scanner.Text() != "220 localhost ESMTP Service Ready" {
+		t.Fatal("Invalid greeting:", scanner.Text())
+	}
+
+	select {
+	case <-released:
+		t.Fatal("Released before the connection closed")
+	default:
+	}
+
+	io.WriteString(c, "QUIT\r\n")
+	scanner.Scan()
+	c.Close()
+
+	select {
+	case <-released:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Admission was not released")
+	}
+}
