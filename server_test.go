@@ -963,6 +963,56 @@ func TestServer_authParam(t *testing.T) {
 	}
 }
 
+func TestServerBdatDiscard(t *testing.T) {
+	_, s, c, scanner, caps := testServerEhlo(t)
+	defer s.Close()
+	defer c.Close()
+
+	if !caps["CHUNKING"] {
+		t.Fatal("server does not advertise CHUNKING")
+	}
+
+	io.WriteString(c, "BDAT 9 LAST\r\nMAIL FROM")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "502 ") {
+		t.Fatal("Invalid BDAT response:", scanner.Text())
+	}
+
+	io.WriteString(c, "NOOP\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid NOOP response:", scanner.Text())
+	}
+}
+
+func TestServerBdatNoRecipientsDiscard(t *testing.T) {
+	_, s, c, scanner, caps := testServerEhlo(t)
+	defer s.Close()
+	defer c.Close()
+
+	if !caps["CHUNKING"] {
+		t.Fatal("server does not advertise CHUNKING")
+	}
+
+	io.WriteString(c, "MAIL FROM:<alice@wonderland.book>\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid MAIL FROM response:", scanner.Text())
+	}
+
+	io.WriteString(c, "BDAT 7 LAST\r\nRCPT TO")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "502 ") {
+		t.Fatal("Invalid BDAT response:", scanner.Text())
+	}
+
+	io.WriteString(c, "NOOP\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid NOOP response:", scanner.Text())
+	}
+}
+
 func TestServer_Chunking(t *testing.T) {
 	be, s, c, scanner := testServerAuthenticated(t)
 	defer s.Close()
