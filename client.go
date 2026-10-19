@@ -382,17 +382,17 @@ func (c *Client) Auth(a sasl.Client) error {
 	}
 	var code int
 	var msg64 string
-	authCmd := strings.TrimSpace(fmt.Sprintf("AUTH %s %s", mech, resp64))
-	if len(authCmd)+2 > 512 && len(resp64) > 0 {
-		// The initial response does not fit in the 512-octet command line (RFC 5321
-		// section 4.5.3.1.4), so send it as the reply to the first challenge instead
+	// 504 = 512 - len("AUTH") - 2*len(" ") - len("\r\n")
+	if len(resp64) == 0 || len(mech)+len(resp64) > 504 {
+		// An initial response that does not fit in the 512-octet command line (RFC 5321
+		// section 4.5.3.1.4) is sent as the reply to the first challenge instead
 		// (RFC 4954 section 4).
 		code, msg64, err = c.cmd(0, "AUTH %s", mech)
-		if err == nil && code == 334 {
+		if err == nil && code == 334 && len(resp64) > 0 {
 			code, msg64, err = c.cmd(0, "%s", resp64)
 		}
 	} else {
-		code, msg64, err = c.cmd(0, "%s", authCmd)
+		code, msg64, err = c.cmd(0, "AUTH %s %s", mech, resp64)
 	}
 	for err == nil {
 		var msg []byte

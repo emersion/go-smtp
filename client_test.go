@@ -59,6 +59,41 @@ func (toServerNoRespAuth) Next(fromServer []byte) (toServer []byte, err error) {
 	panic("unexpected call")
 }
 
+// A mechanism without an initial response must answer the first challenge
+// itself, not with an empty line.
+func TestClientAuthNoInitialResponse(t *testing.T) {
+	server := "334 Y2hhbGxlbmdl\r\n" +
+		"235 2.0.0 OK\r\n"
+	var wrote bytes.Buffer
+	var fake faker
+	fake.ReadWriter = struct {
+		io.Reader
+		io.Writer
+	}{
+		strings.NewReader(server),
+		&wrote,
+	}
+	c := NewClient(fake)
+	c.didHello = true
+	if err := c.Auth(challengeAuth{}); err != nil {
+		t.Fatalf("Auth: %v", err)
+	}
+	c.Close()
+	if got, want := wrote.String(), "AUTH CHALLENGE\r\ncmVzcG9uc2U=\r\n"; got != want {
+		t.Errorf("wrote %q; want %q", got, want)
+	}
+}
+
+type challengeAuth struct{}
+
+func (challengeAuth) Start() (proto string, toServer []byte, err error) {
+	return "CHALLENGE", nil, nil
+}
+
+func (challengeAuth) Next(fromServer []byte) (toServer []byte, err error) {
+	return []byte("response"), nil
+}
+
 // A SASL initial response too large to inline within the 512-octet command-line
 // limit must be deferred to the first challenge instead of being appended to the
 // AUTH command line. https://github.com/emersion/go-smtp/issues/301
@@ -79,7 +114,7 @@ func TestClientAuthLargeInitialResponse(t *testing.T) {
 	c.didHello = true
 
 	resp := bytes.Repeat([]byte("x"), 600)
-	if err := c.Auth(largeInitialRespAuth{resp: resp}); err != nil {
+	if err := c.Auth(largeInitialRespAuth{mech: "LARGE", resp: resp}); err != nil {
 		t.Fatalf("Auth: %v", err)
 	}
 	c.Close()
@@ -99,13 +134,45 @@ func TestClientAuthLargeInitialResponse(t *testing.T) {
 	}
 }
 
+// An AUTH line of exactly 512 octets is still sent inline; one more octet defers it.
+func TestClientAuthInitialResponseLimit(t *testing.T) {
+	resp := bytes.Repeat([]byte("x"), 375) // 500 octets in base64
+	resp64 := base64.StdEncoding.EncodeToString(resp)
+	for _, tc := range []struct {
+		mech, server, firstLine string
+	}{
+		{"ABCD", "235 2.0.0 OK\r\n", "AUTH ABCD " + resp64},
+		{"ABCDE", "334 \r\n235 2.0.0 OK\r\n", "AUTH ABCDE"},
+	} {
+		var wrote bytes.Buffer
+		var fake faker
+		fake.ReadWriter = struct {
+			io.Reader
+			io.Writer
+		}{
+			strings.NewReader(tc.server),
+			&wrote,
+		}
+		c := NewClient(fake)
+		c.didHello = true
+		if err := c.Auth(largeInitialRespAuth{mech: tc.mech, resp: resp}); err != nil {
+			t.Fatalf("Auth(%s): %v", tc.mech, err)
+		}
+		c.Close()
+		if firstLine, _, _ := strings.Cut(wrote.String(), "\r\n"); firstLine != tc.firstLine {
+			t.Errorf("Auth(%s): first line is %d octets, want %d", tc.mech, len(firstLine), len(tc.firstLine))
+		}
+	}
+}
+
 // largeInitialRespAuth returns a large SASL initial response from Start.
 type largeInitialRespAuth struct {
+	mech string
 	resp []byte
 }
 
 func (a largeInitialRespAuth) Start() (proto string, toServer []byte, err error) {
-	return "LARGE", a.resp, nil
+	return a.mech, a.resp, nil
 }
 
 func (a largeInitialRespAuth) Next(fromServer []byte) (toServer []byte, err error) {
