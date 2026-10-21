@@ -718,7 +718,7 @@ func (c *Conn) handleRcpt(arg string) {
 	}
 
 	p := parser{s: strings.TrimSpace(arg)}
-	recipient, err := p.parsePath()
+	recipient, err := p.parseForwardPath()
 	if err != nil {
 		c.writeResponse(501, EnhancedCode{5, 5, 2}, "Was expecting RCPT arg syntax of TO:<address>")
 		return

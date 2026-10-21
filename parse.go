@@ -152,6 +152,19 @@ func (p *parser) parseReversePath() (string, error) {
 	return p.parsePath()
 }
 
+// parseForwardPath parses the argument of RCPT TO. Unlike a reverse-path, it
+// may be "<Postmaster>" without a domain (RFC 5321 section 4.1.1.3), which is
+// returned as given.
+func (p *parser) parseForwardPath() (string, error) {
+	const postmaster = "<postmaster>"
+	if len(p.s) >= len(postmaster) && strings.EqualFold(p.s[:len(postmaster)], postmaster) {
+		path := p.s[1 : len(postmaster)-1]
+		p.s = p.s[len(postmaster):]
+		return path, nil
+	}
+	return p.parsePath()
+}
+
 func (p *parser) parsePath() (string, error) {
 	hasBracket := p.acceptByte('<')
 	if p.acceptByte('@') {
