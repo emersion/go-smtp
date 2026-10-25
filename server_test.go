@@ -1308,6 +1308,31 @@ func TestServer_Chunking_lineLimitRestoredAfterReset(t *testing.T) {
 	}
 }
 
+func TestServer_Chunking_lineLimitInsideTransaction(t *testing.T) {
+	_, s, c, scanner := testServerAuthenticated(t)
+	defer s.Close()
+	defer c.Close()
+
+	io.WriteString(c, "MAIL FROM:<root@nsa.gov>\r\n")
+	scanner.Scan()
+	io.WriteString(c, "RCPT TO:<root@gchq.gov.uk>\r\n")
+	scanner.Scan()
+
+	io.WriteString(c, "BDAT 8\r\n")
+	io.WriteString(c, "Hey <3\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid BDAT response:", scanner.Text())
+	}
+
+	// MaxLineLength should be enforced inside a BDAT transaction
+	io.WriteString(c, "NOOP "+strings.Repeat("x", s.MaxLineLength)+"\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "500 ") {
+		t.Fatal("Invalid response to an over-long line:", scanner.Text())
+	}
+}
+
 func TestServer_Chunking_Binarymime(t *testing.T) {
 	be, s, c, scanner := testServerAuthenticated(t)
 	defer s.Close()
