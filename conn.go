@@ -1075,6 +1075,9 @@ func (c *Conn) handleBdat(arg string) {
 	}
 
 	c.lineLimitReader.LineLimit = 0
+	defer func() {
+		c.lineLimitReader.LineLimit = c.server.MaxLineLength
+	}()
 
 	chunk := io.LimitReader(c.text.R, int64(size))
 	_, err = io.Copy(c.bdatPipe, chunk)
@@ -1090,15 +1093,12 @@ func (c *Conn) handleBdat(arg string) {
 		}
 
 		c.reset()
-		c.lineLimitReader.LineLimit = c.server.MaxLineLength
 		return
 	}
 
 	c.bytesReceived += int64(size)
 
 	if last {
-		c.lineLimitReader.LineLimit = c.server.MaxLineLength
-
 		c.bdatPipe.Close()
 
 		err := <-c.dataResult
@@ -1344,9 +1344,6 @@ func (c *Conn) reset() {
 	}
 	c.bdatStatus = nil
 	c.bytesReceived = 0
-
-	// BDAT disables the line limit while reading a chunk, the transaction is over now.
-	c.lineLimitReader.LineLimit = c.server.MaxLineLength
 
 	if c.session != nil {
 		c.session.Reset()
