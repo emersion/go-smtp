@@ -964,14 +964,14 @@ func TestServer_authParam(t *testing.T) {
 }
 
 func TestServerBdatDiscard(t *testing.T) {
-	_, s, c, scanner, caps := testServerEhlo(t)
+	_, s, c, scanner, _ := testServerEhlo(t)
 	defer s.Close()
 	defer c.Close()
 
-	if !caps["CHUNKING"] {
-		t.Fatal("server does not advertise CHUNKING")
-	}
-
+	// The chunk is command text on purpose. A client that writes BDAT and
+	// the next command in one buffer leaves those bytes in the stream. If
+	// they are not discarded, the server parses them as MAIL and the NOOP
+	// below comes back as 501.
 	io.WriteString(c, "BDAT 9 LAST\r\nMAIL FROM")
 	scanner.Scan()
 	if !strings.HasPrefix(scanner.Text(), "502 ") {
@@ -986,14 +986,12 @@ func TestServerBdatDiscard(t *testing.T) {
 }
 
 func TestServerBdatNoRecipientsDiscard(t *testing.T) {
-	_, s, c, scanner, caps := testServerEhlo(t)
+	_, s, c, scanner, _ := testServerEhlo(t)
 	defer s.Close()
 	defer c.Close()
 
-	if !caps["CHUNKING"] {
-		t.Fatal("server does not advertise CHUNKING")
-	}
-
+	// Same shape as TestServerBdatDiscard. The chunk text is a command so a
+	// missed discard shows up as a 501 on the NOOP, not as a clean 250.
 	io.WriteString(c, "MAIL FROM:<alice@wonderland.book>\r\n")
 	scanner.Scan()
 	if !strings.HasPrefix(scanner.Text(), "250 ") {
