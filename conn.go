@@ -1001,11 +1001,6 @@ func (c *Conn) handleBdat(arg string) {
 		return
 	}
 
-	if !c.fromReceived || len(c.recipients) == 0 {
-		c.writeResponse(502, EnhancedCode{5, 5, 1}, "Missing RCPT TO command.")
-		return
-	}
-
 	last := false
 	if len(args) == 2 {
 		if !strings.EqualFold(args[1], "LAST") {
@@ -1019,6 +1014,13 @@ func (c *Conn) handleBdat(arg string) {
 	size, err := strconv.ParseUint(args[0], 10, 32)
 	if err != nil {
 		c.writeResponse(501, EnhancedCode{5, 5, 4}, "Malformed size argument")
+		return
+	}
+
+	if !c.fromReceived || len(c.recipients) == 0 {
+		c.writeResponse(502, EnhancedCode{5, 5, 1}, "Missing RCPT TO command.")
+		// The chunk follows the command even when the command is rejected.
+		io.Copy(ioutil.Discard, io.LimitReader(c.text.R, int64(size)))
 		return
 	}
 
