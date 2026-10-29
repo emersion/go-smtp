@@ -996,6 +996,54 @@ func TestServer_authParam(t *testing.T) {
 	}
 }
 
+func TestServerBdatDiscard(t *testing.T) {
+	_, s, c, scanner, _ := testServerEhlo(t)
+	defer s.Close()
+	defer c.Close()
+
+	// The chunk is command text on purpose. A client that writes BDAT and
+	// the next command in one buffer leaves those bytes in the stream. If
+	// they are not discarded, the server parses them as MAIL and the NOOP
+	// below comes back as 501.
+	io.WriteString(c, "BDAT 9 LAST\r\nMAIL FROM")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "502 ") {
+		t.Fatal("Invalid BDAT response:", scanner.Text())
+	}
+
+	io.WriteString(c, "NOOP\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid NOOP response:", scanner.Text())
+	}
+}
+
+func TestServerBdatNoRecipientsDiscard(t *testing.T) {
+	_, s, c, scanner, _ := testServerEhlo(t)
+	defer s.Close()
+	defer c.Close()
+
+	// Same shape as TestServerBdatDiscard. The chunk text is a command so a
+	// missed discard shows up as a 501 on the NOOP, not as a clean 250.
+	io.WriteString(c, "MAIL FROM:<alice@wonderland.book>\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid MAIL FROM response:", scanner.Text())
+	}
+
+	io.WriteString(c, "BDAT 7 LAST\r\nRCPT TO")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "502 ") {
+		t.Fatal("Invalid BDAT response:", scanner.Text())
+	}
+
+	io.WriteString(c, "NOOP\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid NOOP response:", scanner.Text())
+	}
+}
+
 func TestServer_Chunking(t *testing.T) {
 	be, s, c, scanner := testServerAuthenticated(t)
 	defer s.Close()
