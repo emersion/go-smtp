@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/base64"
 	"errors"
 	"io"
 	"net"
@@ -98,9 +97,10 @@ func (challengeAuth) Next(fromServer []byte) (toServer []byte, err error) {
 // limit must be deferred to the first challenge instead of being appended to the
 // AUTH command line. https://github.com/emersion/go-smtp/issues/301
 func TestClientAuthLargeInitialResponse(t *testing.T) {
-	// didHello is set below, so the first server line is the AUTH response.
 	server := "334 \r\n" +
 		"235 2.0.0 OK\r\n"
+	client := "AUTH LARGE\r\n" +
+		strings.Repeat("eHh4", 200) + "\r\n"
 	var wrote bytes.Buffer
 	var fake faker
 	fake.ReadWriter = struct {
@@ -112,37 +112,50 @@ func TestClientAuthLargeInitialResponse(t *testing.T) {
 	}
 	c := NewClient(fake)
 	c.didHello = true
-
-	resp := bytes.Repeat([]byte("x"), 600)
-	if err := c.Auth(largeInitialRespAuth{mech: "LARGE", resp: resp}); err != nil {
+	if err := c.Auth(largeInitialRespAuth{mech: "LARGE", resp: bytes.Repeat([]byte("x"), 600)}); err != nil {
 		t.Fatalf("Auth: %v", err)
 	}
 	c.Close()
+	if got := wrote.String(); got != client {
+		t.Errorf("wrote %q; want %q", got, client)
+	}
+}
 
-	written := wrote.String()
-	firstLine, _, _ := strings.Cut(written, "\r\n")
-	if firstLine != "AUTH LARGE" {
-		t.Errorf("AUTH command line = %q; want the initial response deferred (%q)", firstLine, "AUTH LARGE")
+// A challenge in the reply to AUTH goes to Next instead of being answered with
+// the deferred initial response.
+func TestClientAuthLargeInitialResponseChallenge(t *testing.T) {
+	server := "334 Y2hhbGxlbmdl\r\n" +
+		"235 2.0.0 OK\r\n"
+	client := "AUTH LARGE\r\n" +
+		"cmVzcG9uc2U=\r\n"
+	var wrote bytes.Buffer
+	var fake faker
+	fake.ReadWriter = struct {
+		io.Reader
+		io.Writer
+	}{
+		strings.NewReader(server),
+		&wrote,
 	}
-	if len(firstLine)+2 > 512 {
-		t.Errorf("AUTH command line is %d octets, exceeding the 512-octet limit", len(firstLine)+2)
+	c := NewClient(fake)
+	c.didHello = true
+	if err := c.Auth(largeInitialRespAuth{mech: "LARGE", resp: bytes.Repeat([]byte("x"), 600)}); err != nil {
+		t.Fatalf("Auth: %v", err)
 	}
-	// The initial response must still be sent, on its own line.
-	resp64 := base64.StdEncoding.EncodeToString(resp)
-	if !strings.Contains(written, "\r\n"+resp64+"\r\n") {
-		t.Errorf("deferred initial response was not sent; wrote %q", written)
+	c.Close()
+	if got := wrote.String(); got != client {
+		t.Errorf("wrote %q; want %q", got, client)
 	}
 }
 
 // An AUTH line of exactly 512 octets is still sent inline; one more octet defers it.
 func TestClientAuthInitialResponseLimit(t *testing.T) {
-	resp := bytes.Repeat([]byte("x"), 375) // 500 octets in base64
-	resp64 := base64.StdEncoding.EncodeToString(resp)
+	resp64 := strings.Repeat("eHh4", 125) // 500 octets
 	for _, tc := range []struct {
-		mech, server, firstLine string
+		mech, server, client string
 	}{
-		{"ABCD", "235 2.0.0 OK\r\n", "AUTH ABCD " + resp64},
-		{"ABCDE", "334 \r\n235 2.0.0 OK\r\n", "AUTH ABCDE"},
+		{"ABCD", "235 2.0.0 OK\r\n", "AUTH ABCD " + resp64 + "\r\n"},
+		{"ABCDE", "334 \r\n235 2.0.0 OK\r\n", "AUTH ABCDE\r\n" + resp64 + "\r\n"},
 	} {
 		var wrote bytes.Buffer
 		var fake faker
@@ -155,12 +168,12 @@ func TestClientAuthInitialResponseLimit(t *testing.T) {
 		}
 		c := NewClient(fake)
 		c.didHello = true
-		if err := c.Auth(largeInitialRespAuth{mech: tc.mech, resp: resp}); err != nil {
+		if err := c.Auth(largeInitialRespAuth{mech: tc.mech, resp: bytes.Repeat([]byte("x"), 375)}); err != nil {
 			t.Fatalf("Auth(%s): %v", tc.mech, err)
 		}
 		c.Close()
-		if firstLine, _, _ := strings.Cut(wrote.String(), "\r\n"); firstLine != tc.firstLine {
-			t.Errorf("Auth(%s): first line is %d octets, want %d", tc.mech, len(firstLine), len(tc.firstLine))
+		if got := wrote.String(); got != tc.client {
+			t.Errorf("Auth(%s): wrote %q; want %q", tc.mech, got, tc.client)
 		}
 	}
 }
@@ -176,7 +189,7 @@ func (a largeInitialRespAuth) Start() (proto string, toServer []byte, err error)
 }
 
 func (a largeInitialRespAuth) Next(fromServer []byte) (toServer []byte, err error) {
-	return nil, nil
+	return []byte("response"), nil
 }
 
 type faker struct {
