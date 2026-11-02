@@ -388,7 +388,11 @@ func (c *Client) Auth(a sasl.Client) error {
 		// section 4.5.3.1.4) is sent as the reply to the first challenge instead
 		// (RFC 4954 section 4).
 		code, msg64, err = c.cmd(0, "AUTH %s", mech)
-		if err == nil && code == 334 && msg64 == "" && len(resp64) > 0 {
+		if err == nil && code == 334 && len(resp64) > 0 {
+			if msg64 != "" {
+				c.cmd(501, "*")
+				return errors.New("smtp: server sent a challenge instead of asking for the initial response")
+			}
 			code, msg64, err = c.cmd(0, "%s", resp64)
 		}
 	} else {

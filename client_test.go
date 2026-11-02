@@ -121,13 +121,13 @@ func TestClientAuthLargeInitialResponse(t *testing.T) {
 	}
 }
 
-// A challenge in the reply to AUTH goes to Next instead of being answered with
-// the deferred initial response.
+// A challenge in the reply to AUTH aborts the exchange instead of dropping the
+// deferred initial response.
 func TestClientAuthLargeInitialResponseChallenge(t *testing.T) {
 	server := "334 Y2hhbGxlbmdl\r\n" +
-		"235 2.0.0 OK\r\n"
+		"501 5.7.0 Authentication aborted\r\n"
 	client := "AUTH LARGE\r\n" +
-		"cmVzcG9uc2U=\r\n"
+		"*\r\n"
 	var wrote bytes.Buffer
 	var fake faker
 	fake.ReadWriter = struct {
@@ -139,8 +139,8 @@ func TestClientAuthLargeInitialResponseChallenge(t *testing.T) {
 	}
 	c := NewClient(fake)
 	c.didHello = true
-	if err := c.Auth(largeInitialRespAuth{mech: "LARGE", resp: bytes.Repeat([]byte("x"), 600)}); err != nil {
-		t.Fatalf("Auth: %v", err)
+	if err := c.Auth(largeInitialRespAuth{mech: "LARGE", resp: bytes.Repeat([]byte("x"), 600)}); err == nil {
+		t.Fatal("Auth succeeded; want an error")
 	}
 	c.Close()
 	if got := wrote.String(); got != client {
