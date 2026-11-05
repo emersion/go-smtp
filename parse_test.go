@@ -92,6 +92,8 @@ func TestParseCmd(t *testing.T) {
 		{"rcpt TO:<root@nsa.gov>", "RCPT", "TO:<root@nsa.gov>"},
 		{"STARTTLS", "STARTTLS", ""},
 		{"starttls", "STARTTLS", ""},
+		{"STARTTLS ", "STARTTLS", ""},
+		{"STARTTLS foo", "STARTTLS", "foo"},
 	}
 	for _, tc := range valid {
 		cmd, arg, err := parseCmd(tc.line)
@@ -102,6 +104,11 @@ func TestParseCmd(t *testing.T) {
 
 	// Verbs are ASCII: a non-ASCII letter that strings.ToUpper maps to an
 	// ASCII one ("ſ" to "S", "ı" to "I") does not make a verb.
+	// A verb is followed by SP or the end of the line.
+	if cmd, _, err := parseCmd("STARTTLSX"); err == nil || cmd == "STARTTLS" {
+		t.Errorf("parseCmd(%q) = %q, %v, want error", "STARTTLSX", cmd, err)
+	}
+
 	for line, verb := range map[string]string{"ſTARTTLS": "STARTTLS", "ſtarttls": "STARTTLS", "ıı": "II"} {
 		if cmd, _, _ := parseCmd(line); cmd == verb {
 			t.Errorf("parseCmd(%q) = %q, want no verb", line, cmd)

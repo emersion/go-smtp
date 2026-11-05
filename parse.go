@@ -34,8 +34,8 @@ func parseCmd(line string) (cmd string, arg string, err error) {
 
 	l := len(line)
 	switch {
-	case l >= 8 && toUpperASCII(line[:8]) == "STARTTLS":
-		return "STARTTLS", "", nil
+	case l >= 8 && toUpperASCII(line[:8]) == "STARTTLS" && (l == 8 || line[8] == ' '):
+		return "STARTTLS", strings.TrimSpace(line[8:]), nil
 	case l == 0:
 		return "", "", nil
 	case l < 4:

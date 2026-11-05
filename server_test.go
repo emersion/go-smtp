@@ -4,11 +4,18 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
+	"math/big"
 	"net"
 	"strings"
 	"sync"
@@ -1900,5 +1907,70 @@ func TestServerMTPRIORITY(t *testing.T) {
 	}
 	if *opts.MTPriority != expectedPriority {
 		t.Fatalf("MTPriority: want %d, got %d", expectedPriority, *opts.MTPriority)
+	}
+}
+
+// testTLSConfig returns a server TLS configuration with a self-signed
+// certificate for 127.0.0.1.
+func testTLSConfig(t *testing.T) *tls.Config {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "localhost"},
+		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert := tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}
+	return &tls.Config{Certificates: []tls.Certificate{cert}}
+}
+
+func TestServer_startTLSParameters(t *testing.T) {
+	_, s, c, scanner, caps := testServerEhlo(t, func(s *smtp.Server) {
+		s.TLSConfig = testTLSConfig(t)
+	})
+	defer s.Close()
+	defer c.Close()
+
+	if !caps["STARTTLS"] {
+		t.Fatal("Missing capability: STARTTLS")
+	}
+
+	// RFC 3207 section 4: the command takes no parameters.
+	io.WriteString(c, "STARTTLS foo\r\n")
+	scanner.Scan()
+	if scanner.Text() != "501 5.5.4 Syntax error (no parameters allowed)" {
+		t.Fatal("Invalid STARTTLS response:", scanner.Text())
+	}
+
+	// The session goes on in cleartext.
+	io.WriteString(c, "NOOP\r\n")
+	scanner.Scan()
+	if !strings.HasPrefix(scanner.Text(), "250 ") {
+		t.Fatal("Invalid NOOP response:", scanner.Text())
+	}
+
+	io.WriteString(c, "STARTTLS\r\n")
+	scanner.Scan()
+	if scanner.Text() != "220 2.0.0 Ready to start TLS" {
+		t.Fatal("Invalid STARTTLS response:", scanner.Text())
+	}
+	tc := tls.Client(c, &tls.Config{InsecureSkipVerify: true})
+	if err := tc.Handshake(); err != nil {
+		t.Fatal("TLS handshake failed:", err)
+	}
+	defer tc.Close()
+	io.WriteString(tc, "QUIT\r\n")
+	tlsScanner := bufio.NewScanner(tc)
+	tlsScanner.Scan()
+	if !strings.HasPrefix(tlsScanner.Text(), "221 ") {
+		t.Fatal("Invalid QUIT response:", tlsScanner.Text())
 	}
 }

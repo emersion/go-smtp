@@ -142,7 +142,7 @@ func (c *Conn) handle(cmd string, arg string) {
 	case "AUTH":
 		c.handleAuth(arg)
 	case "STARTTLS":
-		c.handleStartTLS()
+		c.handleStartTLS(arg)
 	default:
 		msg := fmt.Sprintf("Syntax errors, %v command unrecognized", cmd)
 		c.protocolError(500, EnhancedCode{5, 5, 2}, msg)
@@ -915,7 +915,13 @@ func (c *Conn) auth(mech string) (sasl.Server, error) {
 	return nil, ErrAuthUnknownMechanism
 }
 
-func (c *Conn) handleStartTLS() {
+func (c *Conn) handleStartTLS(arg string) {
+	// RFC 3207 section 4: STARTTLS takes no parameters.
+	if arg != "" {
+		c.writeResponse(501, EnhancedCode{5, 5, 4}, "Syntax error (no parameters allowed)")
+		return
+	}
+
 	if _, isTLS := c.TLSConnectionState(); isTLS {
 		c.writeResponse(502, EnhancedCode{5, 5, 1}, "Already running in TLS")
 		return
