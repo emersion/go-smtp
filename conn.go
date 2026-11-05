@@ -44,6 +44,7 @@ type Conn struct {
 	fromReceived bool
 	recipients   []string
 	didAuth      bool
+	closed       bool
 }
 
 func newConn(c net.Conn, s *Server) *Conn {
@@ -169,6 +170,8 @@ func (c *Conn) Close() error {
 	c.locker.Lock()
 	defer c.locker.Unlock()
 
+	c.closed = true
+
 	if c.bdatPipe != nil {
 		c.bdatPipe.CloseWithError(ErrDataReset)
 		c.bdatPipe = nil
@@ -180,6 +183,13 @@ func (c *Conn) Close() error {
 	}
 
 	return c.conn.Close()
+}
+
+// isClosed reports whether Close was called.
+func (c *Conn) isClosed() bool {
+	c.locker.Lock()
+	defer c.locker.Unlock()
+	return c.closed
 }
 
 // TLSConnectionState returns the connection's TLS connection state.
@@ -938,7 +948,9 @@ func (c *Conn) handleStartTLS(arg string) {
 	tlsConn := tls.Server(c.conn, c.server.TLSConfig)
 
 	if err := tlsConn.Handshake(); err != nil {
-		c.writeResponse(550, EnhancedCode{5, 0, 0}, "Handshake error")
+		// The connection is in an unknown state: a reply in cleartext
+		// would be read as TLS data, if at all. Close it.
+		c.Close()
 		return
 	}
 

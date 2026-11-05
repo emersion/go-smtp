@@ -1974,3 +1974,79 @@ func TestServer_startTLSParameters(t *testing.T) {
 		t.Fatal("Invalid QUIT response:", tlsScanner.Text())
 	}
 }
+
+func TestServer_startTLSHandshakeError(t *testing.T) {
+	_, s, c, scanner, _ := testServerEhlo(t, func(s *smtp.Server) {
+		s.TLSConfig = testTLSConfig(t)
+	})
+	defer s.Close()
+	defer c.Close()
+
+	io.WriteString(c, "STARTTLS\r\n")
+	scanner.Scan()
+	if scanner.Text() != "220 2.0.0 Ready to start TLS" {
+		t.Fatal("Invalid STARTTLS response:", scanner.Text())
+	}
+
+	// Not a TLS ClientHello: the handshake fails, and the server closes the
+	// connection without writing a reply in cleartext.
+	io.WriteString(c, "MAIL FROM:<root@nsa.gov>\r\n")
+	c.SetReadDeadline(time.Now().Add(5 * time.Second))
+	b, err := ioutil.ReadAll(c)
+	if err != nil {
+		t.Fatal("Connection not closed:", err)
+	}
+	if bytes.Contains(b, []byte("550")) || bytes.Contains(b, []byte("250")) {
+		t.Fatalf("Cleartext reply after a failed handshake: %q", b)
+	}
+}
+
+func TestServer_startTLSHandshakeErrorPipelined(t *testing.T) {
+	errorLog := bytes.NewBuffer(nil)
+	var mu sync.Mutex
+	be, s, c, scanner, _ := testServerEhlo(t, func(s *smtp.Server) {
+		s.TLSConfig = testTLSConfig(t)
+		s.ReadTimeout = 0
+		s.ErrorLog = log.New(lockedWriter{&mu, errorLog}, "", 0)
+	})
+	defer s.Close()
+	defer c.Close()
+
+	// A transaction pipelined behind STARTTLS is read into the server's
+	// buffer along with it; the handshake then fails.
+	io.WriteString(c, "STARTTLS\r\nMAIL FROM:<root@nsa.gov>\r\nRCPT TO:<root@gchq.gov.uk>\r\nDATA\r\nHey <3\r\n.\r\n")
+	scanner.Scan()
+	if scanner.Text() != "220 2.0.0 Ready to start TLS" {
+		t.Fatal("Invalid STARTTLS response:", scanner.Text())
+	}
+	io.WriteString(c, "not a TLS ClientHello\r\n")
+	c.SetReadDeadline(time.Now().Add(5 * time.Second))
+	b, err := ioutil.ReadAll(c)
+	if err != nil {
+		t.Fatal("Connection not closed:", err)
+	}
+	if len(b) != 0 {
+		t.Fatalf("Reply after a failed handshake: %q", b)
+	}
+	s.Close()
+	if len(be.messages) != 0 || len(be.anonmsgs) != 0 {
+		t.Fatal("Buffered transaction was run after the connection was closed")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if errorLog.Len() != 0 {
+		t.Fatal("Unexpected error log:", errorLog.String())
+	}
+}
+
+// lockedWriter serializes writes to w.
+type lockedWriter struct {
+	mu *sync.Mutex
+	w  io.Writer
+}
+
+func (l lockedWriter) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.w.Write(p)
+}
