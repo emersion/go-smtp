@@ -81,3 +81,30 @@ func TestParser(t *testing.T) {
 		t.Errorf("parser.parseReversePath(%q) = %q, want error: only a forward-path may omit the domain", "<Postmaster>", path)
 	}
 }
+
+func TestParseCmd(t *testing.T) {
+	valid := []struct {
+		line, cmd, arg string
+	}{
+		{"NOOP", "NOOP", ""},
+		{"noop", "NOOP", ""},
+		{"MAIL FROM:<root@nsa.gov>", "MAIL", "FROM:<root@nsa.gov>"},
+		{"rcpt TO:<root@nsa.gov>", "RCPT", "TO:<root@nsa.gov>"},
+		{"STARTTLS", "STARTTLS", ""},
+		{"starttls", "STARTTLS", ""},
+	}
+	for _, tc := range valid {
+		cmd, arg, err := parseCmd(tc.line)
+		if err != nil || cmd != tc.cmd || arg != tc.arg {
+			t.Errorf("parseCmd(%q) = %q, %q, %v, want %q, %q", tc.line, cmd, arg, err, tc.cmd, tc.arg)
+		}
+	}
+
+	// Verbs are ASCII: a non-ASCII letter that strings.ToUpper maps to an
+	// ASCII one ("ſ" to "S", "ı" to "I") does not make a verb.
+	for line, verb := range map[string]string{"ſTARTTLS": "STARTTLS", "ſtarttls": "STARTTLS", "ıı": "II"} {
+		if cmd, _, _ := parseCmd(line); cmd == verb {
+			t.Errorf("parseCmd(%q) = %q, want no verb", line, cmd)
+		}
+	}
+}
