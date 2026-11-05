@@ -91,7 +91,7 @@ func DialStartTLS(addr string, tlsConfig *tls.Config) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := initStartTLS(c, tlsConfig); err != nil {
+	if err := InitStartTLS(c, tlsConfig); err != nil {
 		c.Close()
 		return nil, err
 	}
@@ -120,14 +120,14 @@ func NewClient(conn net.Conn) *Client {
 // NewClientStartTLS creates a new Client and performs a STARTTLS command.
 func NewClientStartTLS(conn net.Conn, tlsConfig *tls.Config) (*Client, error) {
 	c := NewClient(conn)
-	if err := initStartTLS(c, tlsConfig); err != nil {
+	if err := InitStartTLS(c, tlsConfig); err != nil {
 		c.Close()
 		return nil, err
 	}
 	return c, nil
 }
 
-func initStartTLS(c *Client, tlsConfig *tls.Config) error {
+func InitStartTLS(c *Client, tlsConfig *tls.Config) error {
 	if err := c.hello(); err != nil {
 		return err
 	}
