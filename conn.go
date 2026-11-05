@@ -44,6 +44,7 @@ type Conn struct {
 	fromReceived bool
 	recipients   []string
 	didAuth      bool
+	closed       bool
 }
 
 func newConn(c net.Conn, s *Server) *Conn {
@@ -105,7 +106,6 @@ func (c *Conn) handle(cmd string, arg string) {
 		return
 	}
 
-	cmd = strings.ToUpper(cmd)
 	switch cmd {
 	case "SEND", "SOML", "SAML", "EXPN", "HELP", "TURN":
 		// These commands are not implemented in any state
@@ -143,7 +143,7 @@ func (c *Conn) handle(cmd string, arg string) {
 	case "AUTH":
 		c.handleAuth(arg)
 	case "STARTTLS":
-		c.handleStartTLS()
+		c.handleStartTLS(arg)
 	default:
 		msg := fmt.Sprintf("Syntax errors, %v command unrecognized", cmd)
 		c.protocolError(500, EnhancedCode{5, 5, 2}, msg)
@@ -170,6 +170,8 @@ func (c *Conn) Close() error {
 	c.locker.Lock()
 	defer c.locker.Unlock()
 
+	c.closed = true
+
 	if c.bdatPipe != nil {
 		c.bdatPipe.CloseWithError(ErrDataReset)
 		c.bdatPipe = nil
@@ -181,6 +183,13 @@ func (c *Conn) Close() error {
 	}
 
 	return c.conn.Close()
+}
+
+// isClosed reports whether Close was called.
+func (c *Conn) isClosed() bool {
+	c.locker.Lock()
+	defer c.locker.Unlock()
+	return c.closed
 }
 
 // TLSConnectionState returns the connection's TLS connection state.
@@ -916,7 +925,13 @@ func (c *Conn) auth(mech string) (sasl.Server, error) {
 	return nil, ErrAuthUnknownMechanism
 }
 
-func (c *Conn) handleStartTLS() {
+func (c *Conn) handleStartTLS(arg string) {
+	// RFC 3207 section 4: STARTTLS takes no parameters.
+	if arg != "" {
+		c.writeResponse(501, EnhancedCode{5, 5, 4}, "Syntax error (no parameters allowed)")
+		return
+	}
+
 	if _, isTLS := c.TLSConnectionState(); isTLS {
 		c.writeResponse(502, EnhancedCode{5, 5, 1}, "Already running in TLS")
 		return
@@ -933,7 +948,9 @@ func (c *Conn) handleStartTLS() {
 	tlsConn := tls.Server(c.conn, c.server.TLSConfig)
 
 	if err := tlsConn.Handshake(); err != nil {
-		c.writeResponse(550, EnhancedCode{5, 0, 0}, "Handshake error")
+		// The connection is in an unknown state: a reply in cleartext
+		// would be read as TLS data, if at all. Close it.
+		c.Close()
 		return
 	}
 

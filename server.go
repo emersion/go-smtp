@@ -185,6 +185,11 @@ func (s *Server) handleConn(c *Conn) error {
 			}
 
 			c.handle(cmd, arg)
+			if c.isClosed() {
+				// Commands still buffered behind the one that closed
+				// the connection are not run.
+				return nil
+			}
 		} else {
 			if err == io.EOF || errors.Is(err, net.ErrClosed) {
 				return nil

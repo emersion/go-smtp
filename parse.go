@@ -15,19 +15,33 @@ func cutPrefixFold(s, prefix string) (string, bool) {
 	return s[len(prefix):], true
 }
 
+// toUpperASCII returns s with the ASCII letters a-z mapped to upper case and
+// any other byte unchanged. SMTP verbs are ASCII and case-insensitive (RFC
+// 5321 section 2.4); strings.ToUpper also maps some non-ASCII letters to
+// ASCII ones, such as "ſ" (U+017F) to "S".
+func toUpperASCII(s string) string {
+	b := []byte(s)
+	for i, c := range b {
+		if 'a' <= c && c <= 'z' {
+			b[i] = c - ('a' - 'A')
+		}
+	}
+	return string(b)
+}
+
 func parseCmd(line string) (cmd string, arg string, err error) {
 	line = strings.TrimRight(line, "\r\n")
 
 	l := len(line)
 	switch {
-	case strings.HasPrefix(strings.ToUpper(line), "STARTTLS"):
-		return "STARTTLS", "", nil
+	case l >= 8 && toUpperASCII(line[:8]) == "STARTTLS" && (l == 8 || line[8] == ' '):
+		return "STARTTLS", strings.TrimSpace(line[8:]), nil
 	case l == 0:
 		return "", "", nil
 	case l < 4:
 		return "", "", fmt.Errorf("command too short: %q", line)
 	case l == 4:
-		return strings.ToUpper(line), "", nil
+		return toUpperASCII(line), "", nil
 	case l == 5:
 		// Too long to be only command, too short to have args
 		return "", "", fmt.Errorf("mangled command: %q", line)
@@ -39,7 +53,7 @@ func parseCmd(line string) (cmd string, arg string, err error) {
 		return "", "", fmt.Errorf("mangled command: %q", line)
 	}
 
-	return strings.ToUpper(line[0:4]), strings.TrimSpace(line[5:]), nil
+	return toUpperASCII(line[0:4]), strings.TrimSpace(line[5:]), nil
 }
 
 // Takes the arguments proceeding a command and files them
