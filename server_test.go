@@ -10,8 +10,10 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
+	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1145,6 +1147,39 @@ func TestServer_Chunking_LMTP(t *testing.T) {
 	}
 }
 
+func TestServer_Chunking_LMTP_ResetStatusOwner(t *testing.T) {
+	be := newBlockedBackend()
+	defer be.releaseAll()
+	_, s, c, scanner := testServerGreetedLMTP(t, func(s *smtp.Server) {
+		s.LMTP = true
+		s.Backend = be
+	})
+	defer s.Close()
+	defer c.Close()
+	c.SetDeadline(time.Now().Add(10 * time.Second))
+
+	sendLHLO(t, scanner, c)
+	sendRcpts(t, scanner, c, "root@gchq.gov.uk")
+	sendCmd(t, scanner, c, "BDAT 8\r\nHey <3\r\n", "250 ")
+	sendCmd(t, scanner, c, "RSET\r\n", "250 ")
+	sendRcpts(t, scanner, c, "root@bnd.bund.de", "root@mi6.gov.uk")
+	io.WriteString(c, "BDAT 8 LAST\r\nHey <3\r\n")
+	waitBdatGoroutines(t, 2)
+
+	// The first call finishes and must not set the statuses of the second.
+	close(be.release[0])
+	waitBdatGoroutines(t, 1)
+	close(be.release[1])
+
+	for _, rcpt := range []string{"root@bnd.bund.de", "root@mi6.gov.uk"} {
+		want := "550 5.0.0 <" + rcpt + "> data 2"
+		if reply := readReply(t, scanner); reply != want {
+			t.Fatalf("Invalid BDAT response: %q, want %q", reply, want)
+		}
+	}
+	waitBdatGoroutines(t, 0)
+}
+
 func TestServer_Chunking_Reset(t *testing.T) {
 	be, s, c, scanner := testServerAuthenticated(t)
 	defer s.Close()
@@ -1412,6 +1447,150 @@ func TestServer_Chunking_Binarymime(t *testing.T) {
 	if want := "Hey <3\r\nHey :3\r\n"; string(msg.Data) != want {
 		t.Fatal("Invalid mail data:", string(msg.Data), msg.Data)
 	}
+}
+
+// blockedBackend is a backend whose Data calls return only when the test
+// closes release[N-1] for call N, after reading the message until it fails.
+// Call N returns an error with the message "data N".
+type blockedBackend struct {
+	calls   int32
+	release [2]chan struct{}
+}
+
+func newBlockedBackend() *blockedBackend {
+	return &blockedBackend{release: [2]chan struct{}{
+		make(chan struct{}), make(chan struct{}),
+	}}
+}
+
+// releaseAll unblocks the Data calls that are still blocked, so a failed
+// test does not leave them running.
+func (be *blockedBackend) releaseAll() {
+	for _, ch := range be.release {
+		select {
+		case <-ch:
+		default:
+			close(ch)
+		}
+	}
+}
+
+func (be *blockedBackend) NewSession(_ *smtp.Conn) (smtp.Session, error) {
+	return &blockedSession{be}, nil
+}
+
+// blockedSession does not implement LMTPSession on purpose: in LMTP the
+// server then sets the status of each recipient itself.
+type blockedSession struct {
+	be *blockedBackend
+}
+
+func (s *blockedSession) Reset()                               {}
+func (s *blockedSession) Logout() error                        { return nil }
+func (s *blockedSession) Mail(string, *smtp.MailOptions) error { return nil }
+func (s *blockedSession) Rcpt(string, *smtp.RcptOptions) error { return nil }
+
+func (s *blockedSession) Data(r io.Reader) error {
+	n := atomic.AddInt32(&s.be.calls, 1)
+	io.Copy(ioutil.Discard, r)
+	<-s.be.release[n-1]
+	return &smtp.SMTPError{
+		Code:         550,
+		EnhancedCode: smtp.EnhancedCode{5, 0, 0},
+		Message:      fmt.Sprintf("data %d", n),
+	}
+}
+
+// waitBdatGoroutines waits until exactly want goroutines started by
+// Conn.handleBdat exist, including one blocked on sending its result.
+func waitBdatGoroutines(t *testing.T, want int) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		buf := make([]byte, 1<<20)
+		buf = buf[:runtime.Stack(buf, true)]
+		n := 0
+		for _, g := range strings.Split(string(buf), "\n\n") {
+			if strings.Contains(g, ".handleBdat.func") {
+				n++
+			}
+		}
+		if n == want {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("Expected %v goroutines started by BDAT, got %v", want, n)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func sendCmd(t *testing.T, scanner *bufio.Scanner, c io.Writer, cmd, prefix string) {
+	t.Helper()
+	io.WriteString(c, cmd)
+	if reply := readReply(t, scanner); !strings.HasPrefix(reply, prefix) {
+		t.Fatalf("Invalid response to %q: %v", cmd, reply)
+	}
+}
+
+// sendRcpts starts a transaction with the given recipients.
+func sendRcpts(t *testing.T, scanner *bufio.Scanner, c io.Writer, rcpts ...string) {
+	t.Helper()
+	sendCmd(t, scanner, c, "MAIL FROM:<root@nsa.gov>\r\n", "250 ")
+	for _, rcpt := range rcpts {
+		sendCmd(t, scanner, c, "RCPT TO:<"+rcpt+">\r\n", "250 ")
+	}
+}
+
+func TestServer_Chunking_ResetResultOwner(t *testing.T) {
+	be := newBlockedBackend()
+	defer be.releaseAll()
+	_, s, c, scanner, _ := testServerEhlo(t, func(s *smtp.Server) { s.Backend = be })
+	defer s.Close()
+	defer c.Close()
+	c.SetDeadline(time.Now().Add(10 * time.Second))
+
+	sendRcpts(t, scanner, c, "root@gchq.gov.uk")
+	sendCmd(t, scanner, c, "BDAT 8\r\nHey <3\r\n", "250 ")
+
+	// The first Data call is still blocked after RSET.
+	sendCmd(t, scanner, c, "RSET\r\n", "250 ")
+	sendRcpts(t, scanner, c, "root@gchq.gov.uk")
+	io.WriteString(c, "BDAT 8 LAST\r\nHey <3\r\n")
+	waitBdatGoroutines(t, 2)
+
+	close(be.release[0])
+	waitBdatGoroutines(t, 1)
+	close(be.release[1])
+
+	if reply := readReply(t, scanner); !strings.HasPrefix(reply, "550 5.0.0 data 2") {
+		t.Fatal("Invalid BDAT response:", reply)
+	}
+	waitBdatGoroutines(t, 0)
+}
+
+func TestServer_Chunking_ResetThenClosedInTheMiddle(t *testing.T) {
+	be := newBlockedBackend()
+	defer be.releaseAll()
+	_, s, c, scanner, _ := testServerEhlo(t, func(s *smtp.Server) { s.Backend = be })
+	defer s.Close()
+	defer c.Close()
+	c.SetDeadline(time.Now().Add(10 * time.Second))
+
+	sendRcpts(t, scanner, c, "root@gchq.gov.uk")
+	sendCmd(t, scanner, c, "BDAT 8\r\nHey <3\r\n", "250 ")
+	sendCmd(t, scanner, c, "RSET\r\n", "250 ")
+	sendRcpts(t, scanner, c, "root@gchq.gov.uk")
+	sendCmd(t, scanner, c, "BDAT 8\r\nHey <3\r\n", "250 ")
+	waitBdatGoroutines(t, 2)
+
+	// Bye! Both transfers are abandoned while both Data calls are blocked.
+	c.Close()
+	close(be.release[0])
+	close(be.release[1])
+
+	// Neither goroutine may stay blocked once Data has returned.
+	waitBdatGoroutines(t, 0)
 }
 
 func TestServer_TooLongCommand(t *testing.T) {

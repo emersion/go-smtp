@@ -1042,14 +1042,17 @@ func (c *Conn) handleBdat(arg string) {
 		var r *io.PipeReader
 		r, c.bdatPipe = io.Pipe()
 
-		c.dataResult = make(chan error, 1)
+		result := make(chan error, 1)
+		status := c.bdatStatus
+		recipients := c.recipients
+		c.dataResult = result
 
 		go func() {
 			defer func() {
 				if err := recover(); err != nil {
-					c.handlePanic(err, c.bdatStatus)
+					c.handlePanic(err, status)
 
-					c.dataResult <- errPanic
+					result <- errPanic
 					r.CloseWithError(errPanic)
 				}
 			}()
@@ -1061,15 +1064,15 @@ func (c *Conn) handleBdat(arg string) {
 				lmtpSession, ok := c.Session().(LMTPSession)
 				if !ok {
 					err = c.Session().Data(r)
-					for _, rcpt := range c.recipients {
-						c.bdatStatus.SetStatus(rcpt, err)
+					for _, rcpt := range recipients {
+						status.SetStatus(rcpt, err)
 					}
 				} else {
-					err = lmtpSession.LMTPData(r, c.bdatStatus)
+					err = lmtpSession.LMTPData(r, status)
 				}
 			}
 
-			c.dataResult <- err
+			result <- err
 			r.CloseWithError(err)
 		}()
 	}
