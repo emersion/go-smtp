@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/emersion/go-sasl"
@@ -27,6 +28,7 @@ type Conn struct {
 	text   *textproto.Conn
 	server *Server
 	helo   string
+	esmtp  uint32
 
 	// Number of errors witnessed on this connection
 	errCount int
@@ -39,6 +41,7 @@ type Conn struct {
 	bdatPipe        *io.PipeWriter
 	bdatStatus      *statusCollector // used for BDAT on LMTP
 	dataResult      chan error
+	bdatDone        chan struct{}
 	bytesReceived   int64 // counts total size of chunks when BDAT is used
 
 	fromReceived bool
@@ -172,7 +175,6 @@ func (c *Conn) Close() error {
 
 	if c.bdatPipe != nil {
 		c.bdatPipe.CloseWithError(ErrDataReset)
-		c.bdatPipe = nil
 	}
 
 	if c.session != nil {
@@ -195,6 +197,23 @@ func (c *Conn) TLSConnectionState() (state tls.ConnectionState, ok bool) {
 
 func (c *Conn) Hostname() string {
 	return c.helo
+}
+
+// ESMTP reports whether the current greeting used EHLO or LHLO.
+// It is false before a greeting, after HELO, and after successful STARTTLS
+// until another greeting. RSET does not change the greeting mode.
+// The mode is available during Backend.NewSession and cleared if it fails.
+func (c *Conn) ESMTP() bool {
+	return atomic.LoadUint32(&c.esmtp) != 0
+}
+
+func (c *Conn) setGreeting(hostname string, enhanced bool) {
+	c.helo = hostname
+	var mode uint32
+	if enhanced {
+		mode = 1
+	}
+	atomic.StoreUint32(&c.esmtp, mode)
 }
 
 func (c *Conn) Conn() net.Conn {
@@ -225,19 +244,20 @@ func (c *Conn) handleGreet(enhanced bool, arg string) {
 		c.writeResponse(501, EnhancedCode{5, 5, 2}, "Domain/address argument required for HELO")
 		return
 	}
-	// c.helo is populated before NewSession so
-	// NewSession can access it via Conn.Hostname.
-	c.helo = domain
-
 	// RFC 5321: "An EHLO command MAY be issued by a client later in the session"
 	if c.session != nil {
 		// RFC 5321: "... the SMTP server MUST clear all buffers
 		// and reset the state exactly as if a RSET command has been issued."
 		c.reset()
-	} else {
+	}
+
+	// c.helo is populated before NewSession so
+	// NewSession can access it via Conn.Hostname.
+	c.setGreeting(domain, enhanced)
+	if c.session == nil {
 		sess, err := c.server.Backend.NewSession(c)
 		if err != nil {
-			c.helo = ""
+			c.setGreeting("", false)
 			c.writeError(451, EnhancedCode{4, 0, 0}, err)
 			return
 		}
@@ -948,7 +968,7 @@ func (c *Conn) handleStartTLS() {
 		session.Logout()
 		c.setSession(nil)
 	}
-	c.helo = ""
+	c.setGreeting("", false)
 	c.didAuth = false
 	c.reset()
 }
@@ -1039,37 +1059,43 @@ func (c *Conn) handleBdat(arg string) {
 	}
 
 	if c.bdatPipe == nil {
+		c.locker.Lock()
 		var r *io.PipeReader
 		r, c.bdatPipe = io.Pipe()
 
 		c.dataResult = make(chan error, 1)
+		c.bdatDone = make(chan struct{})
+		done, result := c.bdatDone, c.dataResult
+		session, status, recipients := c.session, c.bdatStatus, c.recipients
+		c.locker.Unlock()
 
 		go func() {
+			defer close(done)
 			defer func() {
 				if err := recover(); err != nil {
-					c.handlePanic(err, c.bdatStatus)
+					c.handlePanic(err, status)
 
-					c.dataResult <- errPanic
+					result <- errPanic
 					r.CloseWithError(errPanic)
 				}
 			}()
 
 			var err error
 			if !c.server.LMTP {
-				err = c.Session().Data(r)
+				err = session.Data(r)
 			} else {
-				lmtpSession, ok := c.Session().(LMTPSession)
+				lmtpSession, ok := session.(LMTPSession)
 				if !ok {
-					err = c.Session().Data(r)
-					for _, rcpt := range c.recipients {
-						c.bdatStatus.SetStatus(rcpt, err)
+					err = session.Data(r)
+					for _, rcpt := range recipients {
+						status.SetStatus(rcpt, err)
 					}
 				} else {
-					err = lmtpSession.LMTPData(r, c.bdatStatus)
+					err = lmtpSession.LMTPData(r, status)
 				}
 			}
 
-			c.dataResult <- err
+			result <- err
 			r.CloseWithError(err)
 		}()
 	}
@@ -1080,7 +1106,14 @@ func (c *Conn) handleBdat(arg string) {
 	}()
 
 	chunk := io.LimitReader(c.text.R, int64(size))
-	_, err = io.Copy(c.bdatPipe, chunk)
+	n, err := io.Copy(c.bdatPipe, chunk)
+	if err == nil && n != int64(size) {
+		c.bdatPipe.CloseWithError(ErrDataReset)
+		err = <-c.dataResult
+		if err != errPanic {
+			err = io.ErrUnexpectedEOF
+		}
+	}
 	if err != nil {
 		// Backend might return an error early using CloseWithError without consuming
 		// the whole chunk.
@@ -1334,14 +1367,23 @@ func (c *Conn) readLine() (string, error) {
 	return c.text.ReadLine()
 }
 
+func (c *Conn) abortBdat() {
+	c.locker.Lock()
+	pipe, done := c.bdatPipe, c.bdatDone
+	c.locker.Unlock()
+	if pipe != nil {
+		pipe.CloseWithError(ErrDataReset)
+		<-done
+	}
+}
+
 func (c *Conn) reset() {
+	c.abortBdat()
+
 	c.locker.Lock()
 	defer c.locker.Unlock()
 
-	if c.bdatPipe != nil {
-		c.bdatPipe.CloseWithError(ErrDataReset)
-		c.bdatPipe = nil
-	}
+	c.bdatPipe = nil
 	c.bdatStatus = nil
 	c.bytesReceived = 0
 
