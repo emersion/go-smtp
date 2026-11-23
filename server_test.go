@@ -1044,6 +1044,156 @@ func TestServerBdatNoRecipientsDiscard(t *testing.T) {
 	}
 }
 
+type greetingDataSession struct {
+	smtp.Session
+	conn      *smtp.Conn
+	greetings chan string
+}
+
+func (s *greetingDataSession) Data(r io.Reader) error {
+	err := s.Session.Data(r)
+	if err != nil {
+		s.greetings <- s.conn.Hostname()
+	}
+	return err
+}
+
+func TestServerBdatResetReuse(t *testing.T) {
+	for _, command := range []string{"RSET", "EHLO next.example"} {
+		t.Run(command, func(t *testing.T) {
+			greetings := make(chan string, 1)
+			be, server, client, scan, _ := testServerEhlo(t, func(server *smtp.Server) {
+				be := server.Backend
+				server.Backend = smtp.BackendFunc(func(c *smtp.Conn) (smtp.Session, error) {
+					s, err := be.NewSession(c)
+					return &greetingDataSession{Session: s, conn: c, greetings: greetings}, err
+				})
+			})
+			defer server.Close()
+			defer client.Close()
+			client.SetDeadline(time.Now().Add(5 * time.Second))
+			for _, cmd := range []string{"MAIL FROM:<sender@example.com>", "RCPT TO:<recipient@example.com>", "BDAT 4\r\npart", command} {
+				if strings.HasPrefix(cmd, "BDAT") {
+					io.WriteString(client, cmd)
+				} else {
+					fmt.Fprint(client, cmd+"\r\n")
+				}
+				reply := readReply(t, scan)
+				for strings.HasPrefix(reply, "250-") {
+					reply = readReply(t, scan)
+				}
+				if !strings.HasPrefix(reply, "250 ") {
+					t.Fatal(reply)
+				}
+			}
+			select {
+			case host := <-greetings:
+				if host != "localhost" {
+					t.Errorf("aborted callback greeting = %q, want localhost", host)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("BDAT callback did not finish")
+			}
+			for _, cmd := range []string{"MAIL FROM:<sender@example.com>\r\n", "RCPT TO:<recipient@example.com>\r\n", "BDAT 4 LAST\r\nnext"} {
+				io.WriteString(client, cmd)
+				if reply := readReply(t, scan); !strings.HasPrefix(reply, "250 ") {
+					t.Fatal(reply)
+				}
+			}
+			if len(be.anonmsgs) != 1 || string(be.anonmsgs[0].Data) != "next" {
+				t.Error("wrong transaction accepted")
+			}
+		})
+	}
+}
+
+func TestServerGreetingModeAPI(t *testing.T) {
+	var conn *smtp.Conn
+	_, server, client, scan, _ := testServerEhlo(t, func(server *smtp.Server) {
+		be := server.Backend
+		server.Backend = smtp.BackendFunc(func(c *smtp.Conn) (smtp.Session, error) {
+			conn = c
+			mode, ok := interface{}(c).(interface{ ESMTP() bool })
+			if !ok || !mode.ESMTP() {
+				t.Error("NewSession cannot observe EHLO mode")
+			}
+			return be.NewSession(c)
+		})
+	})
+	defer server.Close()
+	defer client.Close()
+	client.SetDeadline(time.Now().Add(5 * time.Second))
+	mode, ok := interface{}(conn).(interface{ ESMTP() bool })
+	if !ok {
+		t.Fatal("Conn has no ESMTP method")
+	}
+	for _, step := range []struct {
+		command  string
+		enhanced bool
+	}{{"RSET", true}, {"HELO esmtp.example", false}, {"EHLO plain.example", true}} {
+		fmt.Fprint(client, step.command+"\r\n")
+		reply := readReply(t, scan)
+		for strings.HasPrefix(reply, "250-") {
+			reply = readReply(t, scan)
+		}
+		if !strings.HasPrefix(reply, "250 ") {
+			t.Fatal(reply)
+		}
+		if mode.ESMTP() != step.enhanced {
+			t.Errorf("ESMTP after %s = %t", step.command, mode.ESMTP())
+		}
+	}
+}
+
+func TestServerBdatShortChunk(t *testing.T) {
+	for _, last := range []bool{false, true} {
+		t.Run(fmt.Sprintf("last=%t", last), func(t *testing.T) {
+			be, s, c, scanner, _ := testServerEhlo(t, func(s *smtp.Server) {
+				s.Backend.(*backend).dataErrors = make(chan error, 1)
+			})
+			defer s.Close()
+			defer c.Close()
+			if err := c.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+				t.Fatal(err)
+			}
+
+			for _, command := range []string{
+				"MAIL FROM:<sender@example.com>\r\n",
+				"RCPT TO:<recipient@example.com>\r\n",
+			} {
+				io.WriteString(c, command)
+				if res := readReply(t, scanner); !strings.HasPrefix(res, "250 ") {
+					t.Fatal("Invalid envelope response:", res)
+				}
+			}
+
+			command := "BDAT 8\r\nhello"
+			if last {
+				command = "BDAT 8 LAST\r\nhello"
+			}
+			io.WriteString(c, command)
+			if err := c.(*net.TCPConn).CloseWrite(); err != nil {
+				t.Fatal(err)
+			}
+			if res := readReply(t, scanner); !strings.HasPrefix(res, "554 ") {
+				t.Fatal("Invalid short BDAT response:", res)
+			}
+
+			select {
+			case err := <-be.dataErrors:
+				if err == nil {
+					t.Fatal("Backend accepted a truncated chunk")
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("Backend did not finish reading the chunk")
+			}
+			if len(be.messages) != 0 || len(be.anonmsgs) != 0 {
+				t.Fatal("Invalid number of sent messages:", be.messages, be.anonmsgs)
+			}
+		})
+	}
+}
+
 func TestServer_Chunking(t *testing.T) {
 	be, s, c, scanner := testServerAuthenticated(t)
 	defer s.Close()
