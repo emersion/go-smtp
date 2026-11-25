@@ -161,12 +161,13 @@ func (s *Server) handleConn(c *Conn) error {
 		s.locker.Unlock()
 	}()
 
-	if tlsConn, ok := c.conn.(*tls.Conn); ok {
+	conn := c.getConn()
+	if tlsConn, ok := conn.(*tls.Conn); ok {
 		if d := s.ReadTimeout; d != 0 {
-			c.conn.SetReadDeadline(time.Now().Add(d))
+			conn.SetReadDeadline(time.Now().Add(d))
 		}
 		if d := s.WriteTimeout; d != 0 {
-			c.conn.SetWriteDeadline(time.Now().Add(d))
+			conn.SetWriteDeadline(time.Now().Add(d))
 		}
 		if err := tlsConn.Handshake(); err != nil {
 			return err
@@ -276,7 +277,7 @@ func (s *Server) Close() error {
 	}
 
 	for conn := range s.conns {
-		conn.Close()
+		conn.closeConn()
 	}
 	s.locker.Unlock()
 
