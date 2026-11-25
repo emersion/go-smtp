@@ -44,6 +44,7 @@ type Conn struct {
 	fromReceived bool
 	recipients   []string
 	didAuth      bool
+	closed       bool
 }
 
 func newConn(c net.Conn, s *Server) *Conn {
@@ -180,13 +181,48 @@ func (c *Conn) Close() error {
 		c.session = nil
 	}
 
+	c.closed = true
 	return c.conn.Close()
+}
+
+// closeConn closes the underlying connection. Unlike Close, it doesn't touch
+// the session state: it is used when the connection is already being closed
+// from another goroutine (e.g. Server.Close) and the session is owned there.
+func (c *Conn) closeConn() error {
+	c.locker.Lock()
+	defer c.locker.Unlock()
+	c.closed = true
+	return c.conn.Close()
+}
+
+func (c *Conn) getConn() net.Conn {
+	c.locker.Lock()
+	defer c.locker.Unlock()
+	return c.conn
+}
+
+// setTLSConn replaces the underlying connection after a STARTTLS upgrade.
+// It returns false if the connection was closed while the TLS handshake was
+// in progress, in which case the TLS connection is closed instead.
+func (c *Conn) setTLSConn(tlsConn *tls.Conn) bool {
+	c.locker.Lock()
+	defer c.locker.Unlock()
+	if c.closed {
+		tlsConn.Close()
+		return false
+	}
+	c.conn = tlsConn
+	c.init()
+	return true
 }
 
 // TLSConnectionState returns the connection's TLS connection state.
 // Zero values are returned if the connection doesn't use TLS.
 func (c *Conn) TLSConnectionState() (state tls.ConnectionState, ok bool) {
-	tc, ok := c.conn.(*tls.Conn)
+	c.locker.Lock()
+	conn := c.conn
+	c.locker.Unlock()
+	tc, ok := conn.(*tls.Conn)
 	if !ok {
 		return
 	}
@@ -198,7 +234,7 @@ func (c *Conn) Hostname() string {
 }
 
 func (c *Conn) Conn() net.Conn {
-	return c.conn
+	return c.getConn()
 }
 
 func (c *Conn) authAllowed() bool {
@@ -930,15 +966,16 @@ func (c *Conn) handleStartTLS() {
 	c.writeResponse(220, EnhancedCode{2, 0, 0}, "Ready to start TLS")
 
 	// Upgrade to TLS
-	tlsConn := tls.Server(c.conn, c.server.TLSConfig)
+	tlsConn := tls.Server(c.getConn(), c.server.TLSConfig)
 
 	if err := tlsConn.Handshake(); err != nil {
 		c.writeResponse(550, EnhancedCode{5, 0, 0}, "Handshake error")
 		return
 	}
 
-	c.conn = tlsConn
-	c.init()
+	if !c.setTLSConn(tlsConn) {
+		return
+	}
 
 	// Reset all state and close the previous Session.
 	// This is different from just calling reset() since we want the Backend to
